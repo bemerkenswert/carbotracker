@@ -4,7 +4,7 @@
   "license": "MIT",
   "scripts": {
     "prettier:check": "npx nx format:check",
-    "prettier:write": "npx nx foramt:write",
+    "prettier:write": "npx nx format:write",
     "ci:check-formatting": "npm run prettier:check",
     "ci:lint": "npx nx affected --target=lint --base=origin/main",
     "ci:test": "npx nx affected --target=test --base=origin/main --codeCoverage=true --coverageReporters=text",

@@ -7,7 +7,7 @@
   "tags": [],
   "targets": {
     "deploy": {
-      "dependsOn": [{ "target": "build"}],
+      "dependsOn": [{ "target": "build" }],
       "executor": "nx:run-commands",
       "options": {
         "cwd": "apps/carbotracker",
@@ -17,7 +17,6 @@
           }
         ]
       }
-
     },
     "build": {
       "executor": "@angular-devkit/build-angular:browser",
