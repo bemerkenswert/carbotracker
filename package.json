@@ -2,7 +2,14 @@
   "name": "@carbotracker/source",
   "version": "0.0.0",
   "license": "MIT",
-  "scripts": {},
+  "scripts": {
+    "prettier:check": "npx nx format:check",
+    "prettier:write": "npx nx foramt:write",
+    "ci:check-formatting": "npm run prettier:check",
+    "ci:lint": "npx nx affected --target=lint --base=origin/main",
+    "ci:test": "npx nx affected --target=test --base=origin/main --codeCoverage=true --coverageReporters=text",
+    "ci:build": "npx nx affected --target=build --base=origin/main"
+  },
   "private": true,
   "devDependencies": {
     "@angular-devkit/build-angular": "~16.0.0",
@@ -49,6 +56,8 @@
     "@angular/platform-browser": "~16.0.0",
     "@angular/platform-browser-dynamic": "~16.0.0",
     "@angular/router": "~16.0.0",
+    "firebase": "^9.22.0",
+    "firebase-tools": "^12.1.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.13.0"

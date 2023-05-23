@@ -6,11 +6,24 @@
   "sourceRoot": "apps/carbotracker/src",
   "tags": [],
   "targets": {
+    "deploy": {
+      "dependsOn": [{ "target": "build"}],
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/carbotracker",
+        "commands": [
+          {
+            "command": "npx firebase deploy"
+          }
+        ]
+      }
+
+    },
     "build": {
       "executor": "@angular-devkit/build-angular:browser",
       "outputs": ["{options.outputPath}"],
       "options": {
-        "outputPath": "dist/apps/carbotracker",
+        "outputPath": "apps/carbotracker/.dist",
         "index": "apps/carbotracker/src/index.html",
         "main": "apps/carbotracker/src/main.ts",
         "polyfills": ["zone.js"],

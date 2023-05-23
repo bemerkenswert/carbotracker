@@ -2,6 +2,7 @@
 
 # compiled output
 dist
+.dist
 tmp
 /out-tsc
 
@@ -39,3 +40,4 @@ testem.log
 Thumbs.db
 
 .angular
+.firebase
