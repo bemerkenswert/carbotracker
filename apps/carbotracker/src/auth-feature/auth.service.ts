@@ -1,21 +1,46 @@
-import { Injectable, inject } from "@angular/core";
-import { FirebaseService } from "../app/firebase.service";
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { Injectable, OnDestroy, inject } from '@angular/core';
+import { FirebaseService } from '../app/firebase.service';
+import {
+  Unsubscribe,
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth';
+import { from, of } from 'rxjs';
+import { Store } from '@ngrx/store';
+import { AuthApiActions } from './auth.actions';
 
-@Injectable({ providedIn: 'root'})
-export class AuthService {
-    private readonly fireBaseService = inject(FirebaseService);
-    private readonly auth = getAuth();
-    
+@Injectable({ providedIn: 'root' })
+export class AuthService implements OnDestroy {
+  private readonly fireBaseService = inject(FirebaseService);
+  private readonly auth = getAuth();
+  private readonly store = inject(Store);
+  private readonly unsubscribe: Unsubscribe;
 
-    public login() {
-        
-       signInWithEmailAndPassword(this.auth, 'steffenlm@outlook.com', 'Josef_07!' ).then((val) => {
-        debugger;
+  constructor() {
+    this.unsubscribe = this.subscribeToStateChanges();
+  }
 
-       }).catch((val) => {
-        debugger;
-       });
-    }
+  public login(loginData: { email: string; password: string }) {
+    return from(
+      signInWithEmailAndPassword(this.auth, loginData.email, loginData.password)
+    );
+  }
+  public logout() {
+    return from(signOut(this.auth));
+  }
 
+  public ngOnDestroy(): void {
+    this.unsubscribe();
+  }
+
+  private subscribeToStateChanges() {
+    return this.auth.onAuthStateChanged((user) => {
+      if (user) {
+        this.store.dispatch(AuthApiActions.userIsLoggedIn({ uid: user.uid }));
+      } else {
+        this.store.dispatch(AuthApiActions.userIsLoggedOut());
+      }
+    });
+  }
 }

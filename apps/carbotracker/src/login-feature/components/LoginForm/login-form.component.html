@@ -1,19 +1,32 @@
-<mat-sidenav-container>
-  <form [formGroup]="loginFormGroup">
-    <mat-form-field>
-      <mat-label>Email</mat-label>
-      <input formControlName="email" matInput placeholder="max@glucose.com" />
-    </mat-form-field>
-    <mat-form-field>
-      <mat-label>Password</mat-label>
-      <input formControlName="password" matInput placeholder="********" />
-    </mat-form-field>
-    <button
-      mat-raised-button
-      [disabled]="loginFormGroup.invalid"
-      type="button"
-      (click)="onLogin()"
-    >
-      was los
-    </button>
-  </form>
+<form [formGroup]="loginFormGroup">
+  <mat-form-field>
+    <mat-label>Email</mat-label>
+    <input formControlName="email" matInput placeholder="max@glucose.com" />
+  </mat-form-field>
+  <mat-form-field>
+    <mat-label>Password</mat-label>
+    <input
+      type="password"
+      formControlName="password"
+      matInput
+      placeholder="********"
+    />
+  </mat-form-field>
+  <button
+    color="primary"
+    mat-raised-button
+    type="button"
+    (click)="onLogout()"
+  >
+    Logout
+  </button>
+  <button
+    color="primary"
+    mat-raised-button
+    [disabled]="loginFormGroup.invalid"
+    type="button"
+    (click)="onLogin()"
+  >
+    Login
+  </button>
+</form>

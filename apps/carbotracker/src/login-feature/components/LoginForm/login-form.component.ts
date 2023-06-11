@@ -1,10 +1,29 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  FormBuilder,
+  FormControl,
+  ReactiveFormsModule,
+  Validators,
+} from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { AuthService } from 'apps/carbotracker/src/auth-feature/auth.service';
+import { Store } from '@ngrx/store';
+import { LoginFormComponentActions } from '../../login.actions';
+
+const createLoginFormGroup = () =>
+  inject(FormBuilder).group({
+    email: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required],
+    }),
+    password: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required],
+    }),
+  });
 
 @Component({
   selector: 'carbotracker-login-form',
@@ -21,15 +40,18 @@ import { AuthService } from 'apps/carbotracker/src/auth-feature/auth.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LoginFormComponent {
-
-  protected readonly loginFormGroup = inject(FormBuilder).group({
-    email: ['', [Validators.required]],
-    password: ['', [Validators.required]],
-  });
-
-  private authService = inject(AuthService);
+  private readonly store = inject(Store);
+  private readonly auth = inject(AuthService);
+  protected readonly loginFormGroup = createLoginFormGroup();
 
   public onLogin() {
-    this.authService.login();
+    const formValue = this.loginFormGroup.getRawValue();
+    this.store.dispatch(LoginFormComponentActions.loginClicked(formValue));
+  }
+
+  public onLogout() {
+    this.auth.logout().subscribe((v) => {
+      debugger;
+    });
   }
 }
