@@ -1,16 +1,11 @@
-import { Component, inject } from '@angular/core';
-import { FireStore } from './firestore.service';
-
-// Import the functions you need from the SDKs you need
+import { Component } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
 
 @Component({
   standalone: true,
-  imports: [],
+  imports: [RouterOutlet],
   selector: 'carbotracker-root',
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
 })
-export class AppComponent {
-  title = 'carbotracker';
-  fireStore = inject(FireStore);
-}
+export class AppComponent {}

@@ -1,12 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { AppComponent } from './app.component';
-import { FireStore } from './firestore.service';
+import { FirebaseService } from './firebase.service';
 
 describe('AppComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AppComponent],
-      providers: [{ provide: FireStore, useValue: {} }],
+      providers: [{ provide: FirebaseService, useValue: {} }],
     }).compileComponents();
   });
 
