@@ -32,7 +32,7 @@ jobs:
       - name: test affected code
         run: npm run ci:test
 
-      - name: test affected code
+      - name: build affected code
         run: npm run ci:build
 
       - uses: FirebaseExtended/action-hosting-deploy@v0
