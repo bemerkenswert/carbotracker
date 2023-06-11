@@ -1,4 +1,4 @@
-<mat-nav-list *ngIf="products().length > 0; else: emptyList">
+<mat-nav-list *ngIf="products().length > 0; else emptyList">
   <mat-list-item
     *ngFor="let product of products(); trackBy: getProductId"
     (click)="onProductClick(product)"
@@ -11,8 +11,7 @@
 </mat-nav-list>
 
 <ng-template #emptyList>
-  No Products created yet.
-  Add some to fill you list!
+  No Products created yet. Add some to fill you list!
 </ng-template>
 
 <button

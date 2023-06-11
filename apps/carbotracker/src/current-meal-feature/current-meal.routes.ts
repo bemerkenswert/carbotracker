@@ -1,4 +1,3 @@
-
 import { Routes } from '@angular/router';
 import { CurrentMealPageComponent } from './pages/CurrentMealPage/current-meal-page.component';
 
