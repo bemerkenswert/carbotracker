@@ -1,9 +1,6 @@
 import { ApplicationConfig, inject } from '@angular/core';
 import { provideAnimations } from '@angular/platform-browser/animations';
-import {
-  provideRouter,
-  withComponentInputBinding,
-} from '@angular/router';
+import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
 import { provideRouterStore, routerReducer } from '@ngrx/router-store';
 import { Store, provideState, provideStore } from '@ngrx/store';
