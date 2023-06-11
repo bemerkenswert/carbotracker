@@ -4,16 +4,15 @@ import { Unsubscribe } from 'firebase/auth';
 import {
   collection,
   doc,
-  getDoc,
   getFirestore,
   onSnapshot,
   query,
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { Product } from '../product.model';
-import { ProductsApiActions } from '../+state/products.actions';
 import { from } from 'rxjs';
+import { ProductsApiActions } from '../+state/products.actions';
+import { Product } from '../product.model';
 
 @Injectable({ providedIn: 'root' })
 export class ProductsService {

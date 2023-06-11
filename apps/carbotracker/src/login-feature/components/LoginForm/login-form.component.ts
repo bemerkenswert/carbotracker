@@ -5,12 +5,12 @@ import {
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms';
+import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatButtonModule } from '@angular/material/button';
 import { MatSidenavModule } from '@angular/material/sidenav';
-import { AuthService } from 'apps/carbotracker/src/auth-feature/auth.service';
 import { Store } from '@ngrx/store';
+import { AuthService } from '../../../auth-feature/auth.service';
 import { LoginFormComponentActions } from '../../login.actions';
 
 const createLoginFormGroup = () =>
@@ -50,8 +50,6 @@ export class LoginFormComponent {
   }
 
   public onLogout() {
-    this.auth.logout().subscribe((v) => {
-      debugger;
-    });
+    this.auth.logout().subscribe();
   }
 }

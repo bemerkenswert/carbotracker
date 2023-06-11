@@ -3,16 +3,15 @@ import { provideAnimations } from '@angular/platform-browser/animations';
 import {
   provideRouter,
   withComponentInputBinding,
-  withDebugTracing,
 } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
+import { provideRouterStore, routerReducer } from '@ngrx/router-store';
 import { Store, provideState, provideStore } from '@ngrx/store';
 import { provideStoreDevtools } from '@ngrx/store-devtools';
-import { filter, switchMap, tap } from 'rxjs';
+import { filter, switchMap } from 'rxjs';
 import * as authEffects from '../auth-feature/auth.effects';
-import * as appRouterEffects from './router.effects';
 import { authFeature } from '../auth-feature/auth.reducer';
-import { provideRouterStore, routerReducer } from '@ngrx/router-store';
+import * as appRouterEffects from './router.effects';
 
 const isLoggedIn = () => {
   const store = inject(Store);

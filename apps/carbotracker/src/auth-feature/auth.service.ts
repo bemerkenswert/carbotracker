@@ -1,13 +1,13 @@
 import { Injectable, OnDestroy, inject } from '@angular/core';
-import { FirebaseService } from '../app/firebase.service';
+import { Store } from '@ngrx/store';
 import {
   Unsubscribe,
   getAuth,
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
-import { from, of } from 'rxjs';
-import { Store } from '@ngrx/store';
+import { from } from 'rxjs';
+import { FirebaseService } from '../app/firebase.service';
 import { AuthApiActions } from './auth.actions';
 
 @Injectable({ providedIn: 'root' })
