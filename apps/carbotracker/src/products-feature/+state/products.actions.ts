@@ -19,6 +19,16 @@ export const EditProductPageComponentActions = createActionGroup({
       exisitingProduct: Product;
       changedProduct: Pick<Product, 'name' | 'carbs'>;
     }>(),
+    'Delete Clicked': props<{ selectedProduct: string }>(),
+  },
+});
+
+export const CreateProductPageComponentActions = createActionGroup({
+  source: 'Products | Create Product Page Component',
+  events: {
+    'Save Product Clicked': props<{
+      newProduct: Pick<Product, 'name' | 'carbs'>;
+    }>(),
   },
 });
 
@@ -28,6 +38,10 @@ export const ProductsApiActions = createActionGroup({
     'Products Collection Changed': props<{ products: Product[] }>(),
     'Unsubscribed From Products Stream': emptyProps(),
     'Updating Product Succeeded': emptyProps(),
-    'Updating Product Failed': emptyProps(),
+    'Updating Product Failed': props<{ error: unknown }>(),
+    'Creating Product Succeeded': emptyProps(),
+    'Creating Product Failed': props<{ error: unknown }>(),
+    'Deleting Product Succeeded': emptyProps(),
+    'Deleting Product Failed': props<{ error: unknown }>(),
   },
 });

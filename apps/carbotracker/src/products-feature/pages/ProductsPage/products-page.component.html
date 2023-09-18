@@ -1,3 +1,4 @@
+<ctui-toolbar title="all products"> </ctui-toolbar>
 <mat-nav-list *ngIf="products().length > 0; else emptyList">
   <mat-list-item
     *ngFor="let product of products(); trackBy: getProductId"

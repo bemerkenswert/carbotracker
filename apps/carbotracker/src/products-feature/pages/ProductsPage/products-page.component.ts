@@ -7,9 +7,14 @@ import {
   inject,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatListModule } from '@angular/material/list';
-import { CtuiFixedPositionDirective } from '@carbotracker/ui';
+import {
+  CtuiFixedPositionDirective,
+  CtuiToolbarComponent,
+} from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { ProductsPageComponentActions as ComponentActions } from '../../+state/products.actions';
 import { productsFeature } from '../../+state/products.reducer';
@@ -21,9 +26,12 @@ import { Product } from '../../product.model';
     NgIf,
     NgFor,
     MatButtonModule,
+    MatFormFieldModule,
     MatIconModule,
+    MatInputModule,
     MatListModule,
     CtuiFixedPositionDirective,
+    CtuiToolbarComponent,
   ],
   templateUrl: './products-page.component.html',
   styleUrls: ['./products-page.component.scss'],

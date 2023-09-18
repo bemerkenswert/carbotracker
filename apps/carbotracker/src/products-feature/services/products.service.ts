@@ -2,7 +2,9 @@ import { Injectable, inject } from '@angular/core';
 import { Store } from '@ngrx/store';
 import { Unsubscribe } from 'firebase/auth';
 import {
+  addDoc,
   collection,
+  deleteDoc,
   doc,
   getFirestore,
   onSnapshot,
@@ -29,21 +31,38 @@ export class ProductsService {
         where('creator', '==', params.uid)
       );
 
-      this.unsubscribe = onSnapshot(ownProductsQuery, (querySnapshot) => {
-        const products = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Product[];
-        this.store.dispatch(
-          ProductsApiActions.productsCollectionChanged({ products })
-        );
-      });
+      this.unsubscribe = onSnapshot(
+        ownProductsQuery,
+        (querySnapshot) => {
+          const products = querySnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })) as Product[];
+          this.store.dispatch(
+            ProductsApiActions.productsCollectionChanged({ products })
+          );
+        },
+        (error) => {
+          this.store.dispatch({ type: 'Error', error });
+        }
+      );
     }
+  }
+
+  public createProduct(
+    newProduct: Pick<Product, 'name' | 'carbs' | 'creator'>
+  ) {
+    return from(addDoc(this.products, newProduct));
   }
 
   public updateProduct({ name, id, carbs }: Product) {
     const productRef = doc(this.db, 'products', id);
     return from(updateDoc(productRef, { name, carbs }));
+  }
+
+  public deleteProduct(id: string) {
+    const productRef = doc(this.db, 'products', id);
+    return from(deleteDoc(productRef));
   }
 
   public unsubscribeFromOwnProducts() {

@@ -11,7 +11,10 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { CtuiFixedPositionDirective } from '@carbotracker/ui';
+import {
+  CtuiFixedPositionDirective,
+  CtuiToolbarComponent,
+} from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { EditProductPageComponentActions as ComponentActions } from '../../+state/products.actions';
 import { productsFeature } from '../../+state/products.reducer';
@@ -30,12 +33,13 @@ type FormModel = Pick<Product, 'name' | 'carbs'>;
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
+    CtuiToolbarComponent,
   ],
   templateUrl: './edit-product-page.component.html',
   styleUrls: ['./edit-product-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class EditProductPageComponent {
+export default class EditProductPageComponent {
   private readonly store = inject(Store);
   public readonly product = this.store.selectSignal(
     productsFeature.selectCurrentProduct
@@ -66,6 +70,10 @@ export class EditProductPageComponent {
           changedProduct: { ...this.model },
         })
       );
+  }
+
+  public onDeleteClicked(selectedProduct: string) {
+    this.store.dispatch(ComponentActions.deleteClicked({ selectedProduct }));
   }
 
   private reactToProductChanges() {

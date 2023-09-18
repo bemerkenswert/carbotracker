@@ -1,6 +1,6 @@
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { Actions, createEffect, ofType } from '@ngrx/effects';
+import { Actions, concatLatestFrom, createEffect, ofType } from '@ngrx/effects';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
 import {
@@ -9,17 +9,23 @@ import {
   filter,
   from,
   map,
+  mergeMap,
   of,
+  pipe,
   switchMap,
   tap,
 } from 'rxjs';
 import { authFeature } from '../../auth-feature/auth.reducer';
 import { ProductsService } from '../services/products.service';
 import {
+  CreateProductPageComponentActions,
   EditProductPageComponentActions,
   ProductsApiActions,
   ProductsPageComponentActions,
 } from './products.actions';
+
+const filterNull = <T>() =>
+  pipe(filter((value: T | null): value is T => Boolean(value)));
 
 export const startStreamingProducts$ = createEffect(
   (
@@ -68,6 +74,24 @@ export const navigateToEditProduct$ = createEffect(
   { dispatch: false, functional: true }
 );
 
+export const navigateToCreateProduct$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(ProductsPageComponentActions.addClicked),
+      exhaustMap(() => from(router.navigate(['app', 'products', 'create'])))
+    ),
+  { dispatch: false, functional: true }
+);
+
+export const navigateToProductsPage$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(ProductsApiActions.deletingProductSucceeded),
+      exhaustMap(() => from(router.navigate(['app', 'products'])))
+    ),
+  { dispatch: false, functional: true }
+);
+
 export const updateProduct$ = createEffect(
   (actions$ = inject(Actions), productsService = inject(ProductsService)) =>
     actions$.pipe(
@@ -80,8 +104,50 @@ export const updateProduct$ = createEffect(
           })
           .pipe(
             map(() => ProductsApiActions.updatingProductSucceeded()),
-            catchError(() => of(ProductsApiActions.updatingProductFailed()))
+            catchError((error) =>
+              of(ProductsApiActions.updatingProductFailed({ error }))
+            )
           )
+      )
+    ),
+  { dispatch: true, functional: true }
+);
+
+export const deleteProduct$ = createEffect(
+  (actions$ = inject(Actions), productsService = inject(ProductsService)) =>
+    actions$.pipe(
+      ofType(EditProductPageComponentActions.deleteClicked),
+      exhaustMap(({ selectedProduct }) =>
+        productsService.deleteProduct(selectedProduct).pipe(
+          map(() => ProductsApiActions.deletingProductSucceeded()),
+          catchError((error) =>
+            of(ProductsApiActions.deletingProductFailed({ error }))
+          )
+        )
+      )
+    ),
+  { dispatch: true, functional: true }
+);
+
+export const createProduct$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    productsService = inject(ProductsService),
+    store = inject(Store)
+  ) =>
+    actions$.pipe(
+      ofType(CreateProductPageComponentActions.saveProductClicked),
+      concatLatestFrom(() =>
+        store.select(authFeature.selectUserId).pipe(filterNull())
+      ),
+      map(([{ newProduct }, userId]) => ({ ...newProduct, creator: userId })),
+      mergeMap((newProduct) =>
+        productsService.createProduct({ ...newProduct }).pipe(
+          map(() => ProductsApiActions.creatingProductSucceeded()),
+          catchError((error) =>
+            of(ProductsApiActions.creatingProductFailed(error))
+          )
+        )
       )
     ),
   { dispatch: true, functional: true }

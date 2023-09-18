@@ -7,7 +7,7 @@
     "prettier:write": "npx nx format:write",
     "ci:check-formatting": "npm run prettier:check",
     "ci:lint": "npx nx affected --target=lint --base=origin/main",
-    "ci:test": "echo test",
+    "ci:test": "npx nx affected --target=test --base=origin/main --codeCoverage=true --coverageReporters=text",
     "ci:build": "npx nx affected --target=build --base=origin/main"
   },
   "private": true,

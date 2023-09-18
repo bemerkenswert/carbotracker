@@ -1,9 +1,9 @@
 import { Routes } from '@angular/router';
-import { ProductsPageComponent } from './pages/ProductsPage/products-page.component';
-import { provideState } from '@ngrx/store';
-import { productsFeature } from './+state/products.reducer';
 import { provideEffects } from '@ngrx/effects';
+import { provideState } from '@ngrx/store';
 import * as productsEffects from './+state/products.effects';
+import { productsFeature } from './+state/products.reducer';
+import { ProductsPageComponent } from './pages/ProductsPage/products-page.component';
 
 export const PRODUCTS_ROUTES: Routes = [
   {
@@ -12,10 +12,13 @@ export const PRODUCTS_ROUTES: Routes = [
     providers: [provideState(productsFeature), provideEffects(productsEffects)],
   },
   {
+    path: 'create',
+    loadComponent: () =>
+      import('./pages/CreateProductPage/create-product-page.component'),
+  },
+  {
     path: ':id',
     loadComponent: () =>
-      import('./pages/EditProductPage/edit-product-page.component').then(
-        (c) => c.EditProductPageComponent
-      ),
+      import('./pages/EditProductPage/edit-product-page.component'),
   },
 ];
