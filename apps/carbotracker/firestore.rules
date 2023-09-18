@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    allow read, write: if false;
+    match /products/{productId} {
+      function isDocOwner(request, resource) {
+        return request.auth.uid == resource.data.creator;
+      }
+      
+      function documentCreatorIsRequester(request) {
+        return request.resource.data.creator == request.auth.uid;
+      }
+      
+      allow read, update, delete: if isDocOwner(request, resource)
+      allow create: if documentCreatorIsRequester(request)
+    }
+  }
+}
