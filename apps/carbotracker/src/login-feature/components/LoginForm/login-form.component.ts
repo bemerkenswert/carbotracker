@@ -52,4 +52,8 @@ export class LoginFormComponent {
   public onLogout() {
     this.auth.logout().subscribe();
   }
+
+  public onSignUp() {
+    this.store.dispatch(LoginFormComponentActions.signUpClicked());
+  }
 }

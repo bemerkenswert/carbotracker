@@ -12,10 +12,8 @@
       placeholder="********"
     />
   </mat-form-field>
-  <button color="primary" mat-raised-button type="button" (click)="onLogout()">
-    Logout
-  </button>
   <button
+    class="login-button"
     color="primary"
     mat-raised-button
     [disabled]="loginFormGroup.invalid"
@@ -23,5 +21,8 @@
     (click)="onLogin()"
   >
     Login
+  </button>
+  <button color="basic" mat-raised-button type="button" (click)="onSignUp()">
+    Sign Up
   </button>
 </form>

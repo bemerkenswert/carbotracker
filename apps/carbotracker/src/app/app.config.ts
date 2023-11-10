@@ -1,4 +1,4 @@
-import { ApplicationConfig, inject } from '@angular/core';
+import { ApplicationConfig, importProvidersFrom, inject } from '@angular/core';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';

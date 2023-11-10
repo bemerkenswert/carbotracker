@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
+    "start:carbotracker": "npx nx serve carbotracker",
     "prettier:check": "npx nx format:check",
     "prettier:write": "npx nx format:write",
     "ci:check-formatting": "npm run prettier:check",
