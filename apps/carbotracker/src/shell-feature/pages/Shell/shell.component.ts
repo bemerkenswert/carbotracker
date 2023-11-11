@@ -19,12 +19,12 @@ interface NavItem {
 
 const selectIsProductsRoute = createSelector(
   getRouterSelectors().selectUrl,
-  (url): boolean => url.startsWith('/app/products')
+  (url): boolean => url.startsWith('/app/products'),
 );
 
 const selectIsCurrentMealRoute = createSelector(
   getRouterSelectors().selectUrl,
-  (url): boolean => url.startsWith('/app/current-meal')
+  (url): boolean => url.startsWith('/app/current-meal'),
 );
 
 const getNavItems = () => {
