@@ -9,6 +9,6 @@ export const isHandset = () =>
       .observe(Breakpoints.Handset)
       .pipe(
         map((result) => result.matches),
-        shareReplay()
-      )
+        shareReplay(),
+      ),
   );
