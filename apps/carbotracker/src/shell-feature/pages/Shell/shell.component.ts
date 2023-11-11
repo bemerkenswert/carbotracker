@@ -1,15 +1,15 @@
 import { AsyncPipe, NgFor, NgIf } from '@angular/common';
-import { Component, Signal, inject, signal } from '@angular/core';
+import { Component, Signal, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { RouterLinkActive, RouterOutlet } from '@angular/router';
+import { getRouterSelectors } from '@ngrx/router-store';
 import { Store, createSelector } from '@ngrx/store';
 import { isHandset } from '../../../util/breakpoint';
 import { ShellComponentActions } from '../../shell.actions';
-import { getRouterSelectors } from '@ngrx/router-store';
 
 interface NavItem {
   onClick: () => void;
