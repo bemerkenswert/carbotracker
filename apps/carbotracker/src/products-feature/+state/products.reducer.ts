@@ -27,15 +27,15 @@ export const productsFeature = createFeature({
       (state, { selectedProduct }): ProductsState => ({
         ...state,
         selectedProduct,
-      })
+      }),
     ),
     on(
       ProductsApiActions.productsCollectionChanged,
       (state, { products }): ProductsState => ({
         ...state,
         products: productsEntityAdapter.setAll(products, state.products),
-      })
-    )
+      }),
+    ),
   ),
   extraSelectors: ({ selectProducts, selectSelectedProduct }) => {
     const entitySelectors = productsEntityAdapter.getSelectors(selectProducts);
@@ -43,7 +43,7 @@ export const productsFeature = createFeature({
       selectSelectedProduct,
       entitySelectors.selectAll,
       (productId, products): Product | null =>
-        products.find((product) => product.id === productId) ?? null
+        products.find((product) => product.id === productId) ?? null,
     );
     return {
       ...entitySelectors,

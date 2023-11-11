@@ -31,21 +31,21 @@ export const startStreamingProducts$ = createEffect(
   (
     actions$ = inject(Actions),
     productsService = inject(ProductsService),
-    store = inject(Store)
+    store = inject(Store),
   ) =>
     actions$.pipe(
       ofType(routerNavigatedAction),
       filter(({ payload }) =>
-        payload.event.urlAfterRedirects.startsWith('/app/products')
+        payload.event.urlAfterRedirects.startsWith('/app/products'),
       ),
       switchMap(() => store.select(authFeature.selectUserId)),
       tap((uid) => {
         if (uid) {
           productsService.subscribeToOwnProducts({ uid });
         }
-      })
+      }),
     ),
-  { dispatch: false, functional: true }
+  { dispatch: false, functional: true },
 );
 
 export const stopStreamingProducts$ = createEffect(
@@ -54,13 +54,13 @@ export const stopStreamingProducts$ = createEffect(
       ofType(routerNavigatedAction),
       filter(
         ({ payload }) =>
-          !payload.event.urlAfterRedirects.startsWith('/app/products')
+          !payload.event.urlAfterRedirects.startsWith('/app/products'),
       ),
       tap(() => {
         productsService.unsubscribeFromOwnProducts();
-      })
+      }),
     ),
-  { dispatch: false, functional: true }
+  { dispatch: false, functional: true },
 );
 
 export const navigateToEditProduct$ = createEffect(
@@ -68,28 +68,28 @@ export const navigateToEditProduct$ = createEffect(
     actions$.pipe(
       ofType(ProductsPageComponentActions.productClicked),
       exhaustMap(({ product }) =>
-        from(router.navigate(['app', 'products', product.id]))
-      )
+        from(router.navigate(['app', 'products', product.id])),
+      ),
     ),
-  { dispatch: false, functional: true }
+  { dispatch: false, functional: true },
 );
 
 export const navigateToCreateProduct$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(
       ofType(ProductsPageComponentActions.addClicked),
-      exhaustMap(() => from(router.navigate(['app', 'products', 'create'])))
+      exhaustMap(() => from(router.navigate(['app', 'products', 'create']))),
     ),
-  { dispatch: false, functional: true }
+  { dispatch: false, functional: true },
 );
 
 export const navigateToProductsPage$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(
       ofType(ProductsApiActions.deletingProductSucceeded),
-      exhaustMap(() => from(router.navigate(['app', 'products'])))
+      exhaustMap(() => from(router.navigate(['app', 'products']))),
     ),
-  { dispatch: false, functional: true }
+  { dispatch: false, functional: true },
 );
 
 export const updateProduct$ = createEffect(
@@ -105,12 +105,12 @@ export const updateProduct$ = createEffect(
           .pipe(
             map(() => ProductsApiActions.updatingProductSucceeded()),
             catchError((error) =>
-              of(ProductsApiActions.updatingProductFailed({ error }))
-            )
-          )
-      )
+              of(ProductsApiActions.updatingProductFailed({ error })),
+            ),
+          ),
+      ),
     ),
-  { dispatch: true, functional: true }
+  { dispatch: true, functional: true },
 );
 
 export const deleteProduct$ = createEffect(
@@ -121,34 +121,34 @@ export const deleteProduct$ = createEffect(
         productsService.deleteProduct(selectedProduct).pipe(
           map(() => ProductsApiActions.deletingProductSucceeded()),
           catchError((error) =>
-            of(ProductsApiActions.deletingProductFailed({ error }))
-          )
-        )
-      )
+            of(ProductsApiActions.deletingProductFailed({ error })),
+          ),
+        ),
+      ),
     ),
-  { dispatch: true, functional: true }
+  { dispatch: true, functional: true },
 );
 
 export const createProduct$ = createEffect(
   (
     actions$ = inject(Actions),
     productsService = inject(ProductsService),
-    store = inject(Store)
+    store = inject(Store),
   ) =>
     actions$.pipe(
       ofType(CreateProductPageComponentActions.saveProductClicked),
       concatLatestFrom(() =>
-        store.select(authFeature.selectUserId).pipe(filterNull())
+        store.select(authFeature.selectUserId).pipe(filterNull()),
       ),
       map(([{ newProduct }, userId]) => ({ ...newProduct, creator: userId })),
       mergeMap((newProduct) =>
         productsService.createProduct({ ...newProduct }).pipe(
           map(() => ProductsApiActions.creatingProductSucceeded()),
           catchError((error) =>
-            of(ProductsApiActions.creatingProductFailed(error))
-          )
-        )
-      )
+            of(ProductsApiActions.creatingProductFailed(error)),
+          ),
+        ),
+      ),
     ),
-  { dispatch: true, functional: true }
+  { dispatch: true, functional: true },
 );

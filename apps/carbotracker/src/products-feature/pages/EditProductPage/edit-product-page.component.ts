@@ -42,7 +42,7 @@ type FormModel = Pick<Product, 'name' | 'carbs'>;
 export default class EditProductPageComponent {
   private readonly store = inject(Store);
   public readonly product = this.store.selectSignal(
-    productsFeature.selectCurrentProduct
+    productsFeature.selectCurrentProduct,
   );
 
   public readonly model: FormModel = {
@@ -57,7 +57,7 @@ export default class EditProductPageComponent {
   @Input()
   public set id(selectedProduct: string) {
     this.store.dispatch(
-      ComponentActions.selectedProductChanged({ selectedProduct })
+      ComponentActions.selectedProductChanged({ selectedProduct }),
     );
   }
 
@@ -68,7 +68,7 @@ export default class EditProductPageComponent {
         ComponentActions.saveProductClicked({
           exisitingProduct,
           changedProduct: { ...this.model },
-        })
+        }),
       );
   }
 
