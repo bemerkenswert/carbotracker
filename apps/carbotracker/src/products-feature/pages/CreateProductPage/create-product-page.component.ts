@@ -37,7 +37,7 @@ export default class CreateProductPageComponent {
     this.store.dispatch(
       ComponentActions.saveProductClicked({
         newProduct: { ...this.model },
-      })
+      }),
     );
   }
 }

@@ -22,7 +22,7 @@ export class ProductsService {
     if (this.unsubscribe === null) {
       const ownProductsQuery = query(
         this.products,
-        where('creator', '==', params.uid)
+        where('creator', '==', params.uid),
       );
 
       this.unsubscribe = onSnapshot(
@@ -33,12 +33,12 @@ export class ProductsService {
             ...doc.data(),
           })) as Product[];
           this.store.dispatch(
-            ProductsApiActions.productsCollectionChanged({ products })
+            ProductsApiActions.productsCollectionChanged({ products }),
           );
         },
         (error) => {
           this.store.dispatch(ProductsApiActions.unknownError({ error }));
-        }
+        },
       );
     }
   }

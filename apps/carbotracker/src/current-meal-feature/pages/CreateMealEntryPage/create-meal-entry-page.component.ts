@@ -42,7 +42,7 @@ type FormModel = {
 export default class CreateMealEntryPageComponent implements OnInit {
   private readonly store = inject(Store);
   protected readonly filteredProducts = this.store.selectSignal(
-    selectFilteredProducts
+    selectFilteredProducts,
   );
   public readonly model: FormModel = {
     amount: 0,
@@ -57,7 +57,7 @@ export default class CreateMealEntryPageComponent implements OnInit {
     if (event.target instanceof HTMLInputElement) {
       const productSearchTerm = event.target.value;
       this.store.dispatch(
-        ComponentActions.productSearchTermChanged({ productSearchTerm })
+        ComponentActions.productSearchTermChanged({ productSearchTerm }),
       );
     }
   }
@@ -73,7 +73,7 @@ export default class CreateMealEntryPageComponent implements OnInit {
       this.store.dispatch(
         ComponentActions.saveClicked({
           mealEntry: { amount, carbs, productId: id, name },
-        })
+        }),
       );
     }
   }

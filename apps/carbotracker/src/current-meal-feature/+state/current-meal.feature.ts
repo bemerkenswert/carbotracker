@@ -23,7 +23,10 @@ interface CurrentMealState {
 
 const mealEntriesEntityAdapter = createEntityAdapter<MealEntry>();
 const getMealEntriesSelectors = (
-  selectState: MemoizedSelector<Record<string, unknown>, EntityState<MealEntry>>
+  selectState: MemoizedSelector<
+    Record<string, unknown>,
+    EntityState<MealEntry>
+  >,
 ) => {
   const { selectAll, selectIds } =
     mealEntriesEntityAdapter.getSelectors(selectState);
@@ -32,7 +35,7 @@ const getMealEntriesSelectors = (
 
 const productsEntriesEntityAdapter = createEntityAdapter<Product>();
 const getProductsEntriesSelectors = (
-  selectState: MemoizedSelector<Record<string, unknown>, EntityState<Product>>
+  selectState: MemoizedSelector<Record<string, unknown>, EntityState<Product>>,
 ) => {
   const { selectAll, selectIds } =
     productsEntriesEntityAdapter.getSelectors(selectState);
@@ -58,14 +61,14 @@ export const currentMealFeature = createFeature({
       (state, { productSearchTerm }): CurrentMealState => ({
         ...state,
         productSearchTerm,
-      })
+      }),
     ),
     on(
       ProductsApiActions.productsCollectionChanged,
       (state, { products }): CurrentMealState => ({
         ...state,
         products: productsEntriesEntityAdapter.setAll(products, state.products),
-      })
+      }),
     ),
     on(
       CurrentMealApiActions.currentMealCollectionChanged,
@@ -74,23 +77,23 @@ export const currentMealFeature = createFeature({
           ...state,
           mealEntries: mealEntriesEntityAdapter.setAll(
             currentMeal.mealEntries,
-            state.mealEntries
+            state.mealEntries,
           ),
         };
-      }
-    )
+      },
+    ),
   ),
   extraSelectors(baseSelectors) {
     const mealEntrySelectors = getMealEntriesSelectors(
-      baseSelectors.selectMealEntries
+      baseSelectors.selectMealEntries,
     );
     const productsSelectors = getProductsEntriesSelectors(
-      baseSelectors.selectProducts
+      baseSelectors.selectProducts,
     );
 
     const selectCurrentMeal = createSelector(
       mealEntrySelectors.selectAllMealEntries,
-      (mealEntries): CurrentMeal => ({ mealEntries })
+      (mealEntries): CurrentMeal => ({ mealEntries }),
     );
 
     return {

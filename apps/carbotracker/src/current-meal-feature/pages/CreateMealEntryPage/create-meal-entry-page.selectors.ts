@@ -7,8 +7,9 @@ export const selectNotAddedProducts = createSelector(
   currentMealFeature.selectAllMealEntryIds,
   (products, mealEntryIds): Product[] =>
     products.filter(
-      (product) => !mealEntryIds.map((id) => id.toString()).includes(product.id)
-    )
+      (product) =>
+        !mealEntryIds.map((id) => id.toString()).includes(product.id),
+    ),
 );
 
 export const selectFilteredProducts = createSelector(
@@ -17,10 +18,10 @@ export const selectFilteredProducts = createSelector(
   (products, searchTerm): Product[] => {
     if (searchTerm) {
       return products.filter((product) =>
-        product.name.toLowerCase().includes(searchTerm.toLowerCase())
+        product.name.toLowerCase().includes(searchTerm.toLowerCase()),
       );
     } else {
       return products;
     }
-  }
+  },
 );

@@ -34,7 +34,7 @@ import { MealEntry } from '../../current-meal.model';
 export class CurrentMealPageComponent implements OnInit, OnDestroy {
   private readonly store = inject(Store);
   protected readonly mealEntries = this.store.selectSignal(
-    currentMealFeature.selectAllMealEntries
+    currentMealFeature.selectAllMealEntries,
   );
 
   public ngOnInit(): void {

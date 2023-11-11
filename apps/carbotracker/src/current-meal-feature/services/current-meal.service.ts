@@ -37,13 +37,13 @@ export class CurrentMealService {
             this.store.dispatch(
               ApiActions.currentMealCollectionChanged({
                 currentMeal: this.transform(data),
-              })
+              }),
             );
           }
         },
         (error) => {
           this.store.dispatch(ApiActions.unknownError({ error }));
-        }
+        },
       );
     }
   }
