@@ -1,12 +1,12 @@
 import { inject } from '@angular/core';
-import { Actions, act, createEffect, ofType } from '@ngrx/effects';
-import { catchError, from, map, of, switchMap, tap } from 'rxjs';
+import { Router } from '@angular/router';
+import { Actions, createEffect, ofType } from '@ngrx/effects';
+import { catchError, from, map, of, switchMap } from 'rxjs';
 import {
   LoginFormComponentActions,
   RoutingActions,
   SignUpFormComponentActions,
 } from './login.actions';
-import { Router } from '@angular/router';
 
 export const signUpUser$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
