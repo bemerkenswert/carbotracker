@@ -9,7 +9,8 @@
     "ci:check-formatting": "npm run prettier:check",
     "ci:lint": "npx nx affected --target=lint --base=origin/main",
     "ci:test": "npx nx affected --target=test --base=origin/main --codeCoverage=true --coverageReporters=text",
-    "ci:build": "npx nx affected --target=build --base=origin/main"
+    "ci:build": "npx nx affected --target=build --base=origin/main",
+    "ci:build:pullrequest": "npx nx affected --target=build --configuration=development --base=origin/main"
   },
   "private": true,
   "devDependencies": {
