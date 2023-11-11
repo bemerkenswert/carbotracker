@@ -14,7 +14,7 @@ const isLoggedIn = () => {
   const store = inject(Store);
   return store.select(authFeature.selectIsInitialized).pipe(
     filter((isInitialized) => isInitialized),
-    switchMap(() => store.select(authFeature.selectIsLoggedIn))
+    switchMap(() => store.select(authFeature.selectIsLoggedIn)),
   );
 };
 
@@ -47,7 +47,7 @@ export const appConfig: ApplicationConfig = {
           redirectTo: 'login',
         },
       ],
-      withComponentInputBinding()
+      withComponentInputBinding(),
     ),
   ],
 };

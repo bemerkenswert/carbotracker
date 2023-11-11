@@ -14,15 +14,15 @@ export const navigateToProducts$ = createEffect(
       switchMap(() =>
         from(router.navigate(['app', 'products'])).pipe(
           map(() =>
-            ShellRouterEffectsActions.navigationToProductsPageSuccessful()
+            ShellRouterEffectsActions.navigationToProductsPageSuccessful(),
           ),
           catchError(() =>
-            of(ShellRouterEffectsActions.navigationToProductsPageFailed())
-          )
-        )
-      )
+            of(ShellRouterEffectsActions.navigationToProductsPageFailed()),
+          ),
+        ),
+      ),
     ),
-  { dispatch: true, functional: true }
+  { dispatch: true, functional: true },
 );
 
 export const navigateToCurrentMeal$ = createEffect(
@@ -32,13 +32,13 @@ export const navigateToCurrentMeal$ = createEffect(
       switchMap(() =>
         from(router.navigate(['app', 'current-meal'])).pipe(
           map(() =>
-            ShellRouterEffectsActions.navigationToCurrentMealPageSuccessful()
+            ShellRouterEffectsActions.navigationToCurrentMealPageSuccessful(),
           ),
           catchError(() =>
-            of(ShellRouterEffectsActions.navigationToCurrentMealPageFailed())
-          )
-        )
-      )
+            of(ShellRouterEffectsActions.navigationToCurrentMealPageFailed()),
+          ),
+        ),
+      ),
     ),
-  { dispatch: true, functional: true }
+  { dispatch: true, functional: true },
 );
