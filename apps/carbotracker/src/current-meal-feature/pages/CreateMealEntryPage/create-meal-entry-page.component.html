@@ -1,0 +1,43 @@
+<form #productForm="ngForm" (ngSubmit)="onSubmit()">
+  <mat-form-field>
+    <mat-label>Amount</mat-label>
+    <input
+      name="amount"
+      required
+      min="0"
+      type="number"
+      [(ngModel)]="model.amount"
+      matInput
+    />
+  </mat-form-field>
+  <mat-form-field>
+    <mat-label>Product</mat-label>
+    <input
+      placeholder="Select Product"
+      name="product"
+      required
+      type="text"
+      matInput
+      (input)="onFilterChange($event)"
+      [(ngModel)]="model.product"
+      [matAutocomplete]="productAutoComplete"
+    />
+    <mat-autocomplete
+      #productAutoComplete="matAutocomplete"
+      [displayWith]="displayProduct"
+    >
+      <mat-option *ngFor="let product of filteredProducts()" [value]="product">
+        {{ product.name }} {{ product.carbs }}g
+      </mat-option>
+    </mat-autocomplete>
+  </mat-form-field>
+  <button
+    color="primary"
+    type="submit"
+    [disabled]="productForm.invalid || productForm.pristine"
+    mat-fab
+    ctuiFixedPosition
+  >
+    <mat-icon>save</mat-icon>
+  </button>
+</form>

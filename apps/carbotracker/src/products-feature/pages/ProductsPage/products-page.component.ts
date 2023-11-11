@@ -40,7 +40,7 @@ import { Product } from '../../product.model';
 export class ProductsPageComponent implements OnInit, OnDestroy {
   private readonly store = inject(Store);
   protected readonly products = this.store.selectSignal(
-    productsFeature.selectAll
+    productsFeature.selectAll,
   );
 
   public ngOnInit(): void {

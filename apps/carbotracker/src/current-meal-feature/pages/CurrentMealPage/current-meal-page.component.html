@@ -1,1 +1,26 @@
-<p>current-meal-page works!</p>
+<ctui-toolbar title="current meal"> </ctui-toolbar>
+<mat-nav-list *ngIf="mealEntries().length > 0; else emptyList">
+  <mat-list-item
+    *ngFor="let mealEntry of mealEntries(); trackBy: getMealEntryId"
+    (click)="onMealEntryClick(mealEntry)"
+  >
+    <h4 matListItemTitle>{{ mealEntry.name }}</h4>
+    <p matListItemLine>
+      <span>{{ mealEntry.carbs }}g</span>
+    </p>
+  </mat-list-item>
+</mat-nav-list>
+
+<ng-template #emptyList>
+  No Current Meal created yet. Add some products to fill your list!
+</ng-template>
+
+<button
+  (click)="onAddClick()"
+  mat-fab
+  color="primary"
+  ctuiFixedPosition
+  type="button"
+>
+  <mat-icon>add</mat-icon>
+</button>
