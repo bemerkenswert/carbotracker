@@ -14,14 +14,14 @@ export const SHELL_ROUTES: Routes = [
         path: 'products',
         loadChildren: () =>
           import('../products-feature/products.routes').then(
-            (m) => m.PRODUCTS_ROUTES
+            (m) => m.PRODUCTS_ROUTES,
           ),
       },
       {
         path: 'current-meal',
         loadChildren: () =>
           import('../current-meal-feature/current-meal.routes').then(
-            (m) => m.CURRENT_MEAL_ROUTES
+            (m) => m.CURRENT_MEAL_ROUTES,
           ),
       },
     ],

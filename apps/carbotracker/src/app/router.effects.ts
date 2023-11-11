@@ -8,7 +8,7 @@ export const navigateToProducts$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(
       ofType(AuthApiActions.loginSuccessful),
-      switchMap(() => from(router.navigate(['app', 'products'])))
+      switchMap(() => from(router.navigate(['app', 'products']))),
     ),
-  { functional: true, dispatch: false }
+  { functional: true, dispatch: false },
 );
