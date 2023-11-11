@@ -34,7 +34,7 @@ export const authFeature = createFeature({
           ...state.user,
           uid,
         },
-      })
+      }),
     ),
     on(
       AuthApiActions.userIsLoggedOut,
@@ -47,7 +47,7 @@ export const authFeature = createFeature({
           ...state.user,
           uid: null,
         },
-      })
-    )
+      }),
+    ),
   ),
 });

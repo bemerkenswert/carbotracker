@@ -12,11 +12,11 @@ export const loginUser$ = createEffect(
       exhaustMap(({ email, password }) =>
         authService.login({ email, password }).pipe(
           map((userCredential) =>
-            AuthApiActions.loginSuccessful({ userCredential })
+            AuthApiActions.loginSuccessful({ userCredential }),
           ),
-          catchError((error) => of(AuthApiActions.loginFailed({ error })))
-        )
-      )
+          catchError((error) => of(AuthApiActions.loginFailed({ error }))),
+        ),
+      ),
     ),
-  { functional: true }
+  { functional: true },
 );

@@ -23,7 +23,11 @@ export class AuthService implements OnDestroy {
 
   public login(loginData: { email: string; password: string }) {
     return from(
-      signInWithEmailAndPassword(this.auth, loginData.email, loginData.password)
+      signInWithEmailAndPassword(
+        this.auth,
+        loginData.email,
+        loginData.password,
+      ),
     );
   }
   public logout() {
