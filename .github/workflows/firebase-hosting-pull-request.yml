@@ -21,7 +21,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: check for unformatted files
         run: npm run ci:check-formatting
