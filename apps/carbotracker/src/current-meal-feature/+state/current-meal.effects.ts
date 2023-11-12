@@ -24,6 +24,15 @@ export const navigateToCreateMealEntry$ = createEffect(
   { dispatch: false, functional: true },
 );
 
+export const navigateToCurrentMeal$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(CreateMealEntryPageComponentActions.saveClicked),
+      exhaustMap(() => from(router.navigate(['app', 'current-meal']))),
+    ),
+  { dispatch: false, functional: true },
+);
+
 export const addMealEntryToCurrentMeal = createEffect(
   (
     actions$ = inject(Actions),
