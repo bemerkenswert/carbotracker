@@ -31,7 +31,7 @@ import { MealEntry } from '../../current-meal.model';
   templateUrl: './current-meal-page.component.html',
   styleUrls: ['./current-meal-page.component.scss'],
 })
-export class CurrentMealPageComponent implements OnInit, OnDestroy {
+export default class CurrentMealPageComponent implements OnInit, OnDestroy {
   private readonly store = inject(Store);
   protected readonly mealEntries = this.store.selectSignal(
     currentMealFeature.selectAllMealEntries,
