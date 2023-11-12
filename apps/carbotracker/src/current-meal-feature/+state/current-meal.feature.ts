@@ -22,7 +22,7 @@ interface CurrentMealState {
 }
 
 const mealEntriesEntityAdapter = createEntityAdapter<MealEntry>({
-  selectId: mealEntry => mealEntry.productId
+  selectId: (mealEntry) => mealEntry.productId,
 });
 const getMealEntriesSelectors = (
   selectState: MemoizedSelector<
