@@ -97,11 +97,27 @@ export const currentMealFeature = createFeature({
       mealEntrySelectors.selectAllMealEntries,
       (mealEntries): CurrentMeal => ({ mealEntries }),
     );
+    const selectNotAddedProducts = createSelector(
+      productsSelectors.selectAllProductEntries,
+      mealEntrySelectors.selectAllMealEntryIds,
+      (products, mealEntryIds): Product[] =>
+        products.filter(
+          (product) =>
+            !mealEntryIds.map((id) => id.toString()).includes(product.id),
+        ),
+    );
+
+    const selectProductsAvailableToAdd = createSelector(
+      selectNotAddedProducts,
+      (products): boolean => products.length > 0,
+    );
 
     return {
       ...mealEntrySelectors,
       ...productsSelectors,
       selectCurrentMeal,
+      selectNotAddedProducts,
+      selectProductsAvailableToAdd,
     };
   },
 });

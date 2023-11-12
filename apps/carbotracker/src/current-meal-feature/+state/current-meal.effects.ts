@@ -69,7 +69,7 @@ export const startStreamingProducts$ = createEffect(
     actions$.pipe(
       ofType(routerNavigatedAction),
       filter(({ payload }) =>
-        payload.event.urlAfterRedirects.startsWith('/app/current-meal/create'),
+        payload.event.urlAfterRedirects.startsWith('/app/current-meal'),
       ),
       switchMap(() => store.select(authFeature.selectUserId)),
       tap((uid) => {
@@ -87,9 +87,7 @@ export const stopStreamingProducts$ = createEffect(
       ofType(routerNavigatedAction),
       filter(
         ({ payload }) =>
-          !payload.event.urlAfterRedirects.startsWith(
-            '/app/current-meal/create',
-          ),
+          !payload.event.urlAfterRedirects.startsWith('/app/current-meal'),
       ),
       tap(() => {
         productsService.unsubscribeFromOwnProducts();
