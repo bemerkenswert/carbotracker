@@ -21,7 +21,9 @@ interface CurrentMealState {
   error: string | null;
 }
 
-const mealEntriesEntityAdapter = createEntityAdapter<MealEntry>();
+const mealEntriesEntityAdapter = createEntityAdapter<MealEntry>({
+  selectId: mealEntry => mealEntry.productId
+});
 const getMealEntriesSelectors = (
   selectState: MemoizedSelector<
     Record<string, unknown>,
