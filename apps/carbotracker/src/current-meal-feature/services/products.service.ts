@@ -14,19 +14,15 @@ import { Product } from '../../products-feature/product.model';
 @Injectable({ providedIn: 'root' })
 export class ProductsService {
   private readonly store = inject(Store);
-  private readonly products = collection(getFirestore(), 'products');
-
   private unsubscribe: Unsubscribe | null = null;
 
   public subscribeToOwnProducts(params: { uid: string }) {
     if (this.unsubscribe === null) {
-      const ownProductsQuery = query(
-        this.products,
-        where('creator', '==', params.uid),
-      );
-
       this.unsubscribe = onSnapshot(
-        ownProductsQuery,
+        query(
+          collection(getFirestore(), 'products'),
+          where('creator', '==', params.uid),
+        ),
         (querySnapshot) => {
           const products = querySnapshot.docs.map((doc) => ({
             id: doc.id,
