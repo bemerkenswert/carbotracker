@@ -1,11 +1,11 @@
 import { inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
+import { catchError, from, map, of, switchMap } from 'rxjs';
 import {
   ShellComponentActions,
   ShellRouterEffectsActions,
 } from './shell.actions';
-import { switchMap, from, map, catchError, of } from 'rxjs';
-import { Router } from '@angular/router';
 
 export const navigateToProducts$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
@@ -22,7 +22,7 @@ export const navigateToProducts$ = createEffect(
         ),
       ),
     ),
-  { dispatch: true, functional: true },
+  { functional: true },
 );
 
 export const navigateToCurrentMeal$ = createEffect(
@@ -40,5 +40,5 @@ export const navigateToCurrentMeal$ = createEffect(
         ),
       ),
     ),
-  { dispatch: true, functional: true },
+  { functional: true },
 );

@@ -8,7 +8,7 @@ import { provideStoreDevtools } from '@ngrx/store-devtools';
 import { filter, switchMap } from 'rxjs';
 import * as authEffects from '../auth-feature/auth.effects';
 import { authFeature } from '../auth-feature/auth.reducer';
-import * as appRouterEffects from './router.effects';
+import * as appEffects from './app.effects';
 
 const isLoggedIn = () => {
   const store = inject(Store);
@@ -26,7 +26,7 @@ export const appConfig: ApplicationConfig = {
     }),
     provideRouterStore(),
     provideState(authFeature),
-    provideEffects([appRouterEffects, authEffects]),
+    provideEffects([appEffects, authEffects]),
     provideStoreDevtools(),
     provideRouter(
       [

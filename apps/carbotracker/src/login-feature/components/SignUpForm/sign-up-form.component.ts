@@ -6,23 +6,15 @@ import {
   Validators,
 } from '@angular/forms';
 
+import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { Store } from '@ngrx/store';
-import { MatButtonModule } from '@angular/material/button';
 import { SignUpFormComponentActions } from '../../login.actions';
 
 const createRegisterFormGroup = () =>
   inject(FormBuilder).group({
-    firstName: new FormControl('', {
-      nonNullable: true,
-      validators: [Validators.required],
-    }),
-    lastName: new FormControl('', {
-      nonNullable: true,
-      validators: [Validators.required],
-    }),
     email: new FormControl('', {
       nonNullable: true,
       validators: [Validators.required],

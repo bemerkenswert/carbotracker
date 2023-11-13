@@ -12,12 +12,12 @@ export const SignUpFormComponentActions = createActionGroup({
   source: 'Login | Sign Up Form Component',
   events: {
     'Sign Up Clicked': props<{
-      firstName: string;
-      lastName: string;
       email: string;
       password: string;
     }>(),
     'Go Back Clicked': emptyProps(),
+    'Sign Up Successful': emptyProps(),
+    'Sign Up Failed': emptyProps(),
   },
 });
 

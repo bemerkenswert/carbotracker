@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
-import { ShellComponent } from './pages/Shell/shell.component';
 import { provideEffects } from '@ngrx/effects';
+import { ShellComponent } from './pages/Shell/shell.component';
 import * as shellEffects from './shell.effects';
 
 export const SHELL_ROUTES: Routes = [
@@ -9,7 +9,7 @@ export const SHELL_ROUTES: Routes = [
     component: ShellComponent,
     providers: [provideEffects(shellEffects)],
     children: [
-      { path: '', pathMatch: 'full', redirectTo: 'products' },
+      { path: '', pathMatch: 'full', redirectTo: 'current-meal' },
       {
         path: 'products',
         loadChildren: () =>

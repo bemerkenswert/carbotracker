@@ -7,8 +7,9 @@ import {
   RoutingActions,
   SignUpFormComponentActions,
 } from './login.actions';
+import { SignUpService } from './sign-up.service';
 
-export const signUpUser$ = createEffect(
+export const navigateToSignUpPage$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(
       ofType(LoginFormComponentActions.signUpClicked),
@@ -30,6 +31,20 @@ export const goBack$ = createEffect(
         from(router.navigate(['login'])).pipe(
           map(() => RoutingActions.navigationToLoginPageSuccessful()),
           catchError(() => of(RoutingActions.navigationToLoginPageFailed())),
+        ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const signUpUser$ = createEffect(
+  (actions$ = inject(Actions), signUpService = inject(SignUpService)) =>
+    actions$.pipe(
+      ofType(SignUpFormComponentActions.signUpClicked),
+      switchMap(({ email, password }) =>
+        signUpService.signUp({ email, password }).pipe(
+          map(() => SignUpFormComponentActions.signUpSuccessful()),
+          catchError(() => of(SignUpFormComponentActions.signUpFailed())),
         ),
       ),
     ),
