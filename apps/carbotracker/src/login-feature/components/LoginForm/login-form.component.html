@@ -1,4 +1,4 @@
-<form [formGroup]="loginFormGroup">
+<form [formGroup]="loginFormGroup" (submit)="onLogin()">
   <mat-form-field>
     <mat-label>Email</mat-label>
     <input formControlName="email" matInput placeholder="max@glucose.com" />
@@ -17,8 +17,7 @@
     color="primary"
     mat-raised-button
     [disabled]="loginFormGroup.invalid"
-    type="button"
-    (click)="onLogin()"
+    type="submit"
   >
     Login
   </button>
