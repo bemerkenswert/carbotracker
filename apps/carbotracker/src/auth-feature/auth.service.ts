@@ -2,17 +2,16 @@ import { Injectable, OnDestroy, inject } from '@angular/core';
 import { Store } from '@ngrx/store';
 import {
   Unsubscribe,
+  createUserWithEmailAndPassword,
   getAuth,
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth';
 import { from } from 'rxjs';
-import { FirebaseService } from '../app/firebase.service';
 import { AuthApiActions } from './auth.actions';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService implements OnDestroy {
-  private readonly fireBaseService = inject(FirebaseService);
   private readonly auth = getAuth();
   private readonly store = inject(Store);
   private readonly unsubscribe: Unsubscribe;
@@ -30,8 +29,19 @@ export class AuthService implements OnDestroy {
       ),
     );
   }
+
   public logout() {
     return from(signOut(this.auth));
+  }
+
+  public signUp(signUpData: { email: string; password: string }) {
+    return from(
+      createUserWithEmailAndPassword(
+        this.auth,
+        signUpData.email,
+        signUpData.password,
+      ),
+    );
   }
 
   public ngOnDestroy(): void {
