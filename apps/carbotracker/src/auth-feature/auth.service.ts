@@ -8,10 +8,12 @@ import {
   signOut,
 } from 'firebase/auth';
 import { from } from 'rxjs';
+import { FirebaseService } from '../app/firebase.service';
 import { AuthApiActions } from './auth.actions';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService implements OnDestroy {
+  private readonly fireBaseService = inject(FirebaseService);
   private readonly auth = getAuth();
   private readonly store = inject(Store);
   private readonly unsubscribe: Unsubscribe;
