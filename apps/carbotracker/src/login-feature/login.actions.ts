@@ -17,7 +17,11 @@ export const SignUpFormComponentActions = createActionGroup({
     }>(),
     'Go Back Clicked': emptyProps(),
     'Sign Up Successful': emptyProps(),
-    'Sign Up Failed': emptyProps(),
+    'Sign Up Failed Email Exists': props<{ email: string }>(),
+    'Sign Up Failed Weak Password': emptyProps(),
+    'Sign Up Failed Unknown Error': emptyProps(),
+    'Sign Up Showed Snackbar With Error Successful': emptyProps(),
+    'Sign Up Showed Snackbar With Error Failed': emptyProps(),
   },
 });
 

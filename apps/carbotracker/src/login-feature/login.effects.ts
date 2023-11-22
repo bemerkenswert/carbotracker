@@ -1,7 +1,13 @@
 import { inject } from '@angular/core';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
+import { Store } from '@ngrx/store';
+import { AuthError, AuthErrorCodes } from 'firebase/auth';
 import { catchError, from, map, of, switchMap } from 'rxjs';
+import { AppRouterEffectsActions } from '../app/app.actions';
+import { SnackbarComponent } from '../app/snackbar/snackbar.component';
+import { authFeature } from '../auth-feature/auth.reducer';
 import { AuthService } from '../auth-feature/auth.service';
 import {
   LoginFormComponentActions,
@@ -23,10 +29,13 @@ export const navigateToSignUpPage$ = createEffect(
   { functional: true },
 );
 
-export const goBack$ = createEffect(
+export const navigateToLoginPage$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(
-      ofType(SignUpFormComponentActions.goBackClicked),
+      ofType(
+        SignUpFormComponentActions.goBackClicked,
+        AppRouterEffectsActions.navigateToLoginPage,
+      ),
       switchMap(() =>
         from(router.navigate(['login'])).pipe(
           map(() => RoutingActions.navigationToLoginPageSuccessful()),
@@ -44,7 +53,53 @@ export const signUpUser$ = createEffect(
       switchMap(({ email, password }) =>
         authService.signUp({ email, password }).pipe(
           map(() => SignUpFormComponentActions.signUpSuccessful()),
-          catchError(() => of(SignUpFormComponentActions.signUpFailed())),
+          catchError((error: AuthError) => {
+            if (error.code === AuthErrorCodes.EMAIL_EXISTS) {
+              return of(
+                SignUpFormComponentActions.signUpFailedEmailExists({ email }),
+              );
+            } else if (error.code === AuthErrorCodes.WEAK_PASSWORD) {
+              return of(SignUpFormComponentActions.signUpFailedWeakPassword());
+            } else {
+              return of(SignUpFormComponentActions.signUpFailedUnknownError());
+            }
+          }),
+        ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const showSnackbarWithSignUpError$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    snackBar = inject(MatSnackBar),
+    store = inject(Store),
+  ) =>
+    actions$.pipe(
+      ofType(
+        SignUpFormComponentActions.signUpFailedEmailExists,
+        SignUpFormComponentActions.signUpFailedWeakPassword,
+      ),
+      switchMap((email) =>
+        store.select(authFeature.selectError).pipe(
+          switchMap((error) =>
+            of(
+              snackBar.openFromComponent(SnackbarComponent, {
+                data: { label: error, action: 'Go To Login', email },
+                // duration: 5000,
+              }),
+            ).pipe(
+              map(() =>
+                SignUpFormComponentActions.signUpShowedSnackbarWithErrorSuccessful(),
+              ),
+              catchError(() =>
+                of(
+                  SignUpFormComponentActions.signUpShowedSnackbarWithErrorFailed(),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     ),
