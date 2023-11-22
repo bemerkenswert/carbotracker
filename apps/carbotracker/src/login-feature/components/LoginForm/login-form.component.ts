@@ -1,4 +1,9 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnInit,
+  inject,
+} from '@angular/core';
 import {
   FormBuilder,
   FormControl,
@@ -10,7 +15,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { Store } from '@ngrx/store';
-import { take, tap } from 'rxjs';
+import { take } from 'rxjs';
 import { authFeature } from '../../../auth-feature/auth.reducer';
 import { AuthService } from '../../../auth-feature/auth.service';
 import { LoginFormComponentActions } from '../../login.actions';
@@ -41,17 +46,21 @@ const createLoginFormGroup = () =>
   styleUrls: ['./login-form.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class LoginFormComponent {
+export class LoginFormComponent implements OnInit {
   private readonly store = inject(Store);
   private readonly auth = inject(AuthService);
   protected readonly loginFormGroup = createLoginFormGroup();
-  public email = this.store
-    .select(authFeature.selectEmail)
-    .pipe(
-      take(1),
-      tap((email) => this.loginFormGroup.controls.email.setValue(email)),
-    )
-    .subscribe();
+
+  public ngOnInit(): void {
+    this.store
+      .select(authFeature.selectAlreadyExistingSignUpEmail)
+      .pipe(take(1))
+      .subscribe((email) => {
+        if (email) {
+          this.loginFormGroup.controls.email.setValue(email);
+        }
+      });
+  }
 
   public onLogin() {
     const formValue = this.loginFormGroup.getRawValue();

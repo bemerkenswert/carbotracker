@@ -1,4 +1,5 @@
 import { ApplicationConfig, inject } from '@angular/core';
+import { MAT_SNACK_BAR_DEFAULT_OPTIONS } from '@angular/material/snack-bar';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
@@ -49,5 +50,6 @@ export const appConfig: ApplicationConfig = {
       ],
       withComponentInputBinding(),
     ),
+    { provide: MAT_SNACK_BAR_DEFAULT_OPTIONS, useValue: { duration: 5000 } },
   ],
 };

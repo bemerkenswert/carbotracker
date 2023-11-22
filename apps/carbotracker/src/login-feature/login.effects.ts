@@ -2,17 +2,15 @@ import { inject } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
-import { Store } from '@ngrx/store';
 import { AuthError, AuthErrorCodes } from 'firebase/auth';
-import { catchError, from, map, of, switchMap } from 'rxjs';
-import { AppRouterEffectsActions } from '../app/app.actions';
-import { SnackbarComponent } from '../app/snackbar/snackbar.component';
-import { authFeature } from '../auth-feature/auth.reducer';
+import { catchError, filter, from, map, merge, of, switchMap } from 'rxjs';
 import { AuthService } from '../auth-feature/auth.service';
 import {
   LoginFormComponentActions,
   RoutingActions,
+  SignUpApiActions,
   SignUpFormComponentActions,
+  SignUpSnackBarActions,
 } from './login.actions';
 
 export const navigateToSignUpPage$ = createEffect(
@@ -34,7 +32,7 @@ export const navigateToLoginPage$ = createEffect(
     actions$.pipe(
       ofType(
         SignUpFormComponentActions.goBackClicked,
-        AppRouterEffectsActions.navigateToLoginPage,
+        SignUpSnackBarActions.goToLoginPageClicked,
       ),
       switchMap(() =>
         from(router.navigate(['login'])).pipe(
@@ -52,16 +50,15 @@ export const signUpUser$ = createEffect(
       ofType(SignUpFormComponentActions.signUpClicked),
       switchMap(({ email, password }) =>
         authService.signUp({ email, password }).pipe(
-          map(() => SignUpFormComponentActions.signUpSuccessful()),
+          map(() => SignUpApiActions.signUpSuccessful()),
           catchError((error: AuthError) => {
-            if (error.code === AuthErrorCodes.EMAIL_EXISTS) {
-              return of(
-                SignUpFormComponentActions.signUpFailedEmailExists({ email }),
-              );
-            } else if (error.code === AuthErrorCodes.WEAK_PASSWORD) {
-              return of(SignUpFormComponentActions.signUpFailedWeakPassword());
-            } else {
-              return of(SignUpFormComponentActions.signUpFailedUnknownError());
+            switch (error.code) {
+              case AuthErrorCodes.EMAIL_EXISTS:
+                return of(SignUpApiActions.signUpFailedEmailExists({ email }));
+              case AuthErrorCodes.WEAK_PASSWORD:
+                return of(SignUpApiActions.signUpFailedWeakPassword());
+              default:
+                return of(SignUpApiActions.signUpFailedUnknownError());
             }
           }),
         ),
@@ -70,37 +67,47 @@ export const signUpUser$ = createEffect(
   { functional: true },
 );
 
-export const showSnackbarWithSignUpError$ = createEffect(
-  (
-    actions$ = inject(Actions),
-    snackBar = inject(MatSnackBar),
-    store = inject(Store),
-  ) =>
+export const showEmailAlreadyExistsSnackBar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
     actions$.pipe(
-      ofType(
-        SignUpFormComponentActions.signUpFailedEmailExists,
-        SignUpFormComponentActions.signUpFailedWeakPassword,
-      ),
-      switchMap((email) =>
-        store.select(authFeature.selectError).pipe(
-          switchMap((error) =>
-            of(
-              snackBar.openFromComponent(SnackbarComponent, {
-                data: { label: error, action: 'Go To Login', email },
-                // duration: 5000,
-              }),
-            ).pipe(
-              map(() =>
-                SignUpFormComponentActions.signUpShowedSnackbarWithErrorSuccessful(),
-              ),
-              catchError(() =>
-                of(
-                  SignUpFormComponentActions.signUpShowedSnackbarWithErrorFailed(),
-                ),
-              ),
+      ofType(SignUpApiActions.signUpFailedEmailExists),
+      switchMap(({ email }) => {
+        const snackBarRef = snackBar.open(
+          'This email address already exists.',
+          'Go To Login',
+        );
+        const snackBarOpened$ = snackBarRef
+          .afterOpened()
+          .pipe(
+            map(() =>
+              SignUpSnackBarActions.showEmailAlreadyExistsSnackbarSuccessful(),
+            ),
+          );
+        const goToLoginPageClicked$ = snackBarRef.afterDismissed().pipe(
+          filter(({ dismissedByAction }) => dismissedByAction),
+          map(() => SignUpSnackBarActions.goToLoginPageClicked({ email })),
+        );
+        return merge(snackBarOpened$, goToLoginPageClicked$);
+      }),
+    ),
+  { functional: true },
+);
+
+export const showPasswordIsWeakSnackBar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(SignUpApiActions.signUpFailedWeakPassword),
+      switchMap(() =>
+        snackBar
+          .open(
+            'This password is too weak, it should be at least 6 characters.',
+          )
+          .afterOpened()
+          .pipe(
+            map(() =>
+              SignUpSnackBarActions.showPasswordIsWeakSnackbarSuccessful(),
             ),
           ),
-        ),
       ),
     ),
   { functional: true },

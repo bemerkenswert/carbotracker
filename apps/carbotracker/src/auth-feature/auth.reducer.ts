@@ -1,16 +1,14 @@
 import { createFeature, createReducer, createSelector, on } from '@ngrx/store';
-import { AppRouterEffectsActions } from '../app/app.actions';
-import { SignUpFormComponentActions } from '../login-feature/login.actions';
 import { AuthApiActions } from './auth.actions';
+import { SignUpSnackBarActions } from '../login-feature/login.actions';
 
 interface AuthState {
   isInitialized: boolean;
   isLoggedIn: boolean;
   user: {
     uid: string | null;
-    email: string | null;
   };
-  error: string | null;
+  alreadyExistingSignUpEmail: string | null;
 }
 
 const getInitialState = (): AuthState => ({
@@ -18,22 +16,24 @@ const getInitialState = (): AuthState => ({
   isLoggedIn: false,
   user: {
     uid: null,
-    email: null,
   },
-  error: null,
+  alreadyExistingSignUpEmail: null,
 });
 
 export const authFeature = createFeature({
   name: 'auth',
-  extraSelectors: ({ selectUser, selectError }) => ({
+  extraSelectors: ({ selectUser }) => ({
     selectUserId: createSelector(selectUser, (user) => user.uid),
-    selectError: createSelector(selectError, (error) => error),
-    selectEmail: createSelector(selectUser, (user) =>
-      user.email ? user.email : '',
-    ),
   }),
   reducer: createReducer(
     getInitialState(),
+    on(
+      SignUpSnackBarActions.goToLoginPageClicked,
+      (state, { email }): AuthState => ({
+        ...state,
+        alreadyExistingSignUpEmail: email,
+      }),
+    ),
     on(
       AuthApiActions.userIsLoggedIn,
       (state, { uid }): AuthState => ({
@@ -44,6 +44,7 @@ export const authFeature = createFeature({
           ...state.user,
           uid,
         },
+        alreadyExistingSignUpEmail: null,
       }),
     ),
     on(
@@ -56,30 +57,6 @@ export const authFeature = createFeature({
         user: {
           ...state.user,
           uid: null,
-        },
-      }),
-    ),
-    on(
-      SignUpFormComponentActions.signUpFailedEmailExists,
-      (state): AuthState => ({
-        ...state,
-        error: 'This email address already exists.',
-      }),
-    ),
-    on(
-      SignUpFormComponentActions.signUpFailedWeakPassword,
-      (state): AuthState => ({
-        ...state,
-        error: 'This password is too weak, it should be at least 6 characters.',
-      }),
-    ),
-    on(
-      AppRouterEffectsActions.navigateToLoginPage,
-      (state, { email }): AuthState => ({
-        ...state,
-        user: {
-          ...state.user,
-          email,
         },
       }),
     ),

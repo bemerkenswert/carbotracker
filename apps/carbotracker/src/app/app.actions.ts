@@ -5,6 +5,5 @@ export const AppRouterEffectsActions = createActionGroup({
   events: {
     'Navigation to App Successful': emptyProps(),
     'Navigation to App Failed': props<{ error: unknown }>(),
-    'Navigate to Login Page': props<{ email: string }>(),
   },
 });

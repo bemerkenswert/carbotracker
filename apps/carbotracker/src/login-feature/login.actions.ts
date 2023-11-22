@@ -16,12 +16,24 @@ export const SignUpFormComponentActions = createActionGroup({
       password: string;
     }>(),
     'Go Back Clicked': emptyProps(),
+  },
+});
+export const SignUpApiActions = createActionGroup({
+  source: 'Login | Sign Up Api',
+  events: {
     'Sign Up Successful': emptyProps(),
     'Sign Up Failed Email Exists': props<{ email: string }>(),
     'Sign Up Failed Weak Password': emptyProps(),
     'Sign Up Failed Unknown Error': emptyProps(),
-    'Sign Up Showed Snackbar With Error Successful': emptyProps(),
-    'Sign Up Showed Snackbar With Error Failed': emptyProps(),
+  },
+});
+
+export const SignUpSnackBarActions = createActionGroup({
+  source: 'Login | Sign Up Snack Bar',
+  events: {
+    'Show Email Already Exists Snackbar Successful': emptyProps(),
+    'Show Password Is Weak Snackbar Successful': emptyProps(),
+    'Go to Login Page Clicked': props<{ email: string }>(),
   },
 });
 
