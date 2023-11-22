@@ -1,4 +1,4 @@
-import { AsyncPipe, NgIf } from '@angular/common';
+import { NgIf } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import {
@@ -11,7 +11,7 @@ import { AppRouterEffectsActions } from '../app.actions';
 @Component({
   selector: 'carbotracker-snackbar',
   standalone: true,
-  imports: [AsyncPipe, MatButtonModule, MatSnackBarModule, NgIf],
+  imports: [MatButtonModule, MatSnackBarModule, NgIf],
   templateUrl: './snackbar.component.html',
   styleUrls: ['./snackbar.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
