@@ -3,9 +3,7 @@ import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { catchError, from, map, of, switchMap } from 'rxjs';
 import { AuthApiActions } from '../auth-feature/auth.actions';
-import {
-  SignUpApiActions
-} from '../login-feature/login.actions';
+import { SignUpApiActions } from '../login-feature/login.actions';
 import { AppRouterEffectsActions } from './app.actions';
 
 export const navigateToProducts$ = createEffect(
