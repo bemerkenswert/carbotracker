@@ -21,7 +21,6 @@ export class SnackbarComponent {
   public snackbarData = inject(MAT_SNACK_BAR_DATA);
 
   onClickOnSnackbar() {
-    console.log(this.snackbarData);
     this.store.dispatch(
       AppRouterEffectsActions.navigateToLoginPage(this.snackbarData.email),
     );
