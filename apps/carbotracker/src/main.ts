@@ -1,6 +1,16 @@
+import { isDevMode } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
-import { appConfig } from './app/app.config';
 import { AppComponent } from './app/app.component';
+import { appConfig } from './app/app.config';
+
+if (isDevMode()) {
+  console.error(
+    'Move logout router effects to auth effects: navigation on logout not working!',
+  );
+  console.error(
+    'Product page not working after direct login, F5 fixes the issue temporarily!',
+  );
+}
 
 bootstrapApplication(AppComponent, appConfig).catch((err) =>
   console.error(err),
