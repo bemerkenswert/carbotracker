@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { AuthError, AuthErrorCodes } from 'firebase/auth';
 import { catchError, filter, from, map, merge, of, switchMap } from 'rxjs';
+import { AuthApiActions } from '../auth-feature/auth.actions';
 import { AuthService } from '../auth-feature/auth.service';
 import {
   LoginFormComponentActions,
@@ -33,6 +34,7 @@ export const navigateToLoginPage$ = createEffect(
       ofType(
         SignUpFormComponentActions.goBackClicked,
         SignUpSnackBarActions.goToLoginPageClicked,
+        AuthApiActions.logoutSuccessful,
       ),
       switchMap(() =>
         from(router.navigate(['login'])).pipe(

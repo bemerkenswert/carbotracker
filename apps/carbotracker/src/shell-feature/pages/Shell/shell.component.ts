@@ -64,4 +64,9 @@ const getNavItems = () => {
 export class ShellComponent {
   protected readonly isHandset = isHandset();
   protected readonly navItems: NavItem[] = getNavItems();
+  private readonly store = inject(Store);
+
+  protected onLogout(): void {
+    this.store.dispatch(ShellComponentActions.logoutClicked());
+  }
 }

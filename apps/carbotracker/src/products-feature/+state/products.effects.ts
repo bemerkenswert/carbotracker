@@ -16,12 +16,14 @@ import {
   tap,
 } from 'rxjs';
 import { authFeature } from '../../auth-feature/auth.reducer';
+import { ShellComponentActions } from '../../shell-feature/shell.actions';
 import { ProductsService } from '../services/products.service';
 import {
   CreateProductPageComponentActions,
   EditProductPageComponentActions,
   ProductsApiActions,
   ProductsPageComponentActions,
+  ProductsRouterActions,
 } from './products.actions';
 
 const filterNull = <T>() =>
@@ -48,13 +50,25 @@ export const startStreamingProducts$ = createEffect(
   { dispatch: false, functional: true },
 );
 
-export const stopStreamingProducts$ = createEffect(
-  (actions$ = inject(Actions), productsService = inject(ProductsService)) =>
+export const navigatedAwayFromProductsPage$ = createEffect(
+  (actions$ = inject(Actions)) =>
     actions$.pipe(
       ofType(routerNavigatedAction),
       filter(
         ({ payload }) =>
           !payload.event.urlAfterRedirects.startsWith('/app/products'),
+      ),
+      map(() => ProductsRouterActions.navigatedAwayFromProductsPage()),
+    ),
+  { dispatch: true, functional: true },
+);
+
+export const stopStreamingProducts$ = createEffect(
+  (actions$ = inject(Actions), productsService = inject(ProductsService)) =>
+    actions$.pipe(
+      ofType(
+        ProductsRouterActions.navigatedAwayFromProductsPage,
+        ShellComponentActions.logoutClicked,
       ),
       tap(() => {
         productsService.unsubscribeFromOwnProducts();

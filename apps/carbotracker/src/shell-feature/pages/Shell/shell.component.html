@@ -31,6 +31,10 @@
         <mat-icon aria-label="Side nav toggle icon">menu</mat-icon>
       </button>
       <span>Carbotracker</span>
+      <span style="flex: 1 1 auto"></span>
+      <button mat-icon-button (click)="onLogout()">
+        <mat-icon>logout</mat-icon>
+      </button>
     </mat-toolbar>
     <router-outlet></router-outlet>
   </mat-sidenav-content>

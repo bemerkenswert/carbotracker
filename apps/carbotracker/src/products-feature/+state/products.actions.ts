@@ -45,3 +45,10 @@ export const ProductsApiActions = createActionGroup({
     'Deleting Product Failed': props<{ error: unknown }>(),
   },
 });
+
+export const ProductsRouterActions = createActionGroup({
+  source: 'Products | Router',
+  events: {
+    'Navigated Away From Products Page': emptyProps(),
+  },
+});

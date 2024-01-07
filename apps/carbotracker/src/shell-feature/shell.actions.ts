@@ -5,6 +5,7 @@ export const ShellComponentActions = createActionGroup({
   events: {
     'Products Clicked': emptyProps(),
     'Current Meal Clicked': emptyProps(),
+    'Logout Clicked': emptyProps(),
   },
 });
 
