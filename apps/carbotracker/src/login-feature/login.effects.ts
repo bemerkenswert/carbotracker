@@ -8,6 +8,7 @@ import { AuthApiActions } from '../auth-feature/auth.actions';
 import { AuthService } from '../auth-feature/auth.service';
 import {
   LoginFormComponentActions,
+  LoginSnackBarActions,
   RoutingActions,
   SignUpApiActions,
   SignUpFormComponentActions,
@@ -108,6 +109,24 @@ export const showPasswordIsWeakSnackBar$ = createEffect(
           .pipe(
             map(() =>
               SignUpSnackBarActions.showPasswordIsWeakSnackbarSuccessful(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const showPasswordIsWrongSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(AuthApiActions.loginFailedWrongPassword),
+      switchMap(() =>
+        snackBar
+          .open('This password is wrong, please try again.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              LoginSnackBarActions.showPasswordIsWrongSnackbarSuccessful(),
             ),
           ),
       ),

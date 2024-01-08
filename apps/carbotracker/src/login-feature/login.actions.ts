@@ -37,6 +37,13 @@ export const SignUpSnackBarActions = createActionGroup({
   },
 });
 
+export const LoginSnackBarActions = createActionGroup({
+  source: 'Login | Login Snack Bar',
+  events: {
+    'Show Password Is Wrong Snackbar Successful': emptyProps(),
+  },
+});
+
 export const RoutingActions = createActionGroup({
   source: 'Login | Routing',
   events: {

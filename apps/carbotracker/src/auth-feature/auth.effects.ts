@@ -1,5 +1,6 @@
 import { inject } from '@angular/core';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
+import { AuthError, AuthErrorCodes } from 'firebase/auth';
 import { catchError, exhaustMap, map, of } from 'rxjs';
 import { LoginFormComponentActions } from '../login-feature/login.actions';
 import { ShellComponentActions } from '../shell-feature/shell.actions';
@@ -15,7 +16,14 @@ export const loginUser$ = createEffect(
           map((userCredential) =>
             AuthApiActions.loginSuccessful({ userCredential }),
           ),
-          catchError((error) => of(AuthApiActions.loginFailed({ error }))),
+          catchError((error: AuthError) => {
+            switch (error.code) {
+              case AuthErrorCodes.INVALID_PASSWORD:
+                return of(AuthApiActions.loginFailedWrongPassword());
+              default:
+                return of(AuthApiActions.loginFailed({ error }));
+            }
+          }),
         ),
       ),
     ),

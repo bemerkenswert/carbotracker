@@ -10,5 +10,6 @@ export const AuthApiActions = createActionGroup({
     'Logout Failed': props<{ error: unknown }>(),
     'User Is Logged In': props<{ uid: string }>(),
     'User Is Logged Out': emptyProps(),
+    'Login Failed Wrong Password': emptyProps(),
   },
 });
