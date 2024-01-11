@@ -1,0 +1,21 @@
+<div class="account-page">
+  <h3>Account</h3>
+  <form [formGroup]="accountFormGroup" (submit)="onSaveChanges()">
+    <mat-form-field>
+      <mat-label>Email</mat-label>
+      <input matInput formControlName="email" />
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>Password</mat-label>
+      <input
+        type="password"
+        formControlName="password"
+        matInput
+        placeholder="********"
+      />
+    </mat-form-field>
+    <button color="primary" mat-raised-button type="submit">
+      Save changes
+    </button>
+  </form>
+</div>

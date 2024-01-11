@@ -16,7 +16,7 @@ import {
   tap,
 } from 'rxjs';
 import { authFeature } from '../../auth-feature/auth.reducer';
-import { ShellComponentActions } from '../../shell-feature/shell.actions';
+import { SettingsPageActions } from '../../settings-feature/settings.actions';
 import { ProductsService } from '../services/products.service';
 import {
   CreateProductPageComponentActions,
@@ -68,7 +68,7 @@ export const stopStreamingProducts$ = createEffect(
     actions$.pipe(
       ofType(
         ProductsRouterActions.navigatedAwayFromProductsPage,
-        ShellComponentActions.logoutClicked,
+        SettingsPageActions.logoutClicked,
       ),
       tap(() => {
         productsService.unsubscribeFromOwnProducts();

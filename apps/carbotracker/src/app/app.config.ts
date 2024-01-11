@@ -8,6 +8,8 @@ import { Store, provideState, provideStore } from '@ngrx/store';
 import { provideStoreDevtools } from '@ngrx/store-devtools';
 import { filter, switchMap } from 'rxjs';
 import * as authEffects from '../auth-feature/auth.effects';
+import * as loginEffects from '../login-feature/login.effects';
+
 import { authFeature } from '../auth-feature/auth.reducer';
 import { provideFirebase } from '../firebase/provide-firebase';
 import * as appEffects from './app.effects';
@@ -37,7 +39,7 @@ export const appConfig: ApplicationConfig = {
     }),
     provideRouterStore(),
     provideState(authFeature),
-    provideEffects([appEffects, authEffects]),
+    provideEffects([appEffects, authEffects, loginEffects]),
     provideStoreDevtools(),
     provideRouter(
       [

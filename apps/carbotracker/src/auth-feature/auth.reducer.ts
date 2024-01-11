@@ -1,12 +1,14 @@
 import { createFeature, createReducer, createSelector, on } from '@ngrx/store';
-import { AuthApiActions } from './auth.actions';
 import { SignUpSnackBarActions } from '../login-feature/login.actions';
+import { SettingsApiActions } from '../settings-feature/settings.actions';
+import { AuthApiActions } from './auth.actions';
 
 interface AuthState {
   isInitialized: boolean;
   isLoggedIn: boolean;
   user: {
     uid: string | null;
+    email: string | null;
   };
   alreadyExistingSignUpEmail: string | null;
 }
@@ -16,6 +18,7 @@ const getInitialState = (): AuthState => ({
   isLoggedIn: false,
   user: {
     uid: null,
+    email: null,
   },
   alreadyExistingSignUpEmail: null,
 });
@@ -24,6 +27,7 @@ export const authFeature = createFeature({
   name: 'auth',
   extraSelectors: ({ selectUser }) => ({
     selectUserId: createSelector(selectUser, (user) => user.uid),
+    selectEmail: createSelector(selectUser, (user) => user.email),
   }),
   reducer: createReducer(
     getInitialState(),
@@ -36,13 +40,14 @@ export const authFeature = createFeature({
     ),
     on(
       AuthApiActions.userIsLoggedIn,
-      (state, { uid }): AuthState => ({
+      (state, { uid, email }): AuthState => ({
         ...state,
         isInitialized: true,
         isLoggedIn: true,
         user: {
           ...state.user,
           uid,
+          email,
         },
         alreadyExistingSignUpEmail: null,
       }),
@@ -57,6 +62,16 @@ export const authFeature = createFeature({
         user: {
           ...state.user,
           uid: null,
+        },
+      }),
+    ),
+    on(
+      SettingsApiActions.updateEmailSuccessful,
+      (state, { email }): AuthState => ({
+        ...state,
+        user: {
+          ...state.user,
+          email: email,
         },
       }),
     ),

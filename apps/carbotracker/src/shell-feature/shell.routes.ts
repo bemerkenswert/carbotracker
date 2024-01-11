@@ -24,6 +24,13 @@ export const SHELL_ROUTES: Routes = [
             (m) => m.CURRENT_MEAL_ROUTES,
           ),
       },
+      {
+        path: 'settings',
+        loadChildren: () =>
+          import('../settings-feature/settings.routes').then(
+            (m) => m.SETTINGS_ROUTES,
+          ),
+      },
     ],
   },
 ];

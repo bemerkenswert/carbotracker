@@ -2,12 +2,15 @@ import { Injectable, OnDestroy, inject } from '@angular/core';
 import { Store } from '@ngrx/store';
 import {
   Unsubscribe,
+  User,
   createUserWithEmailAndPassword,
   getAuth,
   signInWithEmailAndPassword,
   signOut,
+  updateEmail,
+  updatePassword,
 } from 'firebase/auth';
-import { from } from 'rxjs';
+import { Observable, filter, from, of } from 'rxjs';
 import { AuthApiActions } from './auth.actions';
 
 @Injectable({ providedIn: 'root' })
@@ -44,6 +47,20 @@ export class AuthService implements OnDestroy {
     );
   }
 
+  public getUser(): Observable<User> {
+    return of(getAuth().currentUser).pipe(
+      filter((user): user is User => !!user),
+    );
+  }
+
+  public updateEmail(user: User, email: string): Observable<void> {
+    return from(updateEmail(user, email));
+  }
+
+  public updatePassword(user: User, password: string): Observable<void> {
+    return from(updatePassword(user, password));
+  }
+
   public ngOnDestroy(): void {
     this.unsubscribe();
   }
@@ -51,7 +68,9 @@ export class AuthService implements OnDestroy {
   private subscribeToStateChanges() {
     return this.auth.onAuthStateChanged((user) => {
       if (user) {
-        this.store.dispatch(AuthApiActions.userIsLoggedIn({ uid: user.uid }));
+        this.store.dispatch(
+          AuthApiActions.userIsLoggedIn({ uid: user.uid, email: user.email }),
+        );
       } else {
         this.store.dispatch(AuthApiActions.userIsLoggedOut());
       }

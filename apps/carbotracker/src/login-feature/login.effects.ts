@@ -6,6 +6,7 @@ import { AuthError, AuthErrorCodes } from 'firebase/auth';
 import { catchError, filter, from, map, merge, of, switchMap } from 'rxjs';
 import { AuthApiActions } from '../auth-feature/auth.actions';
 import { AuthService } from '../auth-feature/auth.service';
+import { SettingsApiActions } from '../settings-feature/settings.actions';
 import {
   LoginFormComponentActions,
   LoginSnackBarActions,
@@ -99,7 +100,10 @@ export const showEmailAlreadyExistsSnackBar$ = createEffect(
 export const showPasswordIsWeakSnackBar$ = createEffect(
   (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
     actions$.pipe(
-      ofType(SignUpApiActions.signUpFailedWeakPassword),
+      ofType(
+        SignUpApiActions.signUpFailedWeakPassword,
+        SettingsApiActions.updatePasswordFailedWeakPassword,
+      ),
       switchMap(() =>
         snackBar
           .open(

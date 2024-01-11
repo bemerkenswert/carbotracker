@@ -3,7 +3,7 @@ import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { AuthError, AuthErrorCodes } from 'firebase/auth';
 import { catchError, exhaustMap, map, of } from 'rxjs';
 import { LoginFormComponentActions } from '../login-feature/login.actions';
-import { ShellComponentActions } from '../shell-feature/shell.actions';
+import { SettingsPageActions } from '../settings-feature/settings.actions';
 import { AuthApiActions } from './auth.actions';
 import { AuthService } from './auth.service';
 
@@ -33,7 +33,7 @@ export const loginUser$ = createEffect(
 export const logoutUser$ = createEffect(
   (actions$ = inject(Actions), authService = inject(AuthService)) =>
     actions$.pipe(
-      ofType(ShellComponentActions.logoutClicked),
+      ofType(SettingsPageActions.logoutClicked),
       exhaustMap(() =>
         authService.logout().pipe(
           map(() => AuthApiActions.logoutSuccessful()),
