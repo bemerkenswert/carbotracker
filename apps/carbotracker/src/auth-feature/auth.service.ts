@@ -69,7 +69,10 @@ export class AuthService implements OnDestroy {
     return this.auth.onAuthStateChanged((user) => {
       if (user) {
         this.store.dispatch(
-          AuthApiActions.userIsLoggedIn({ uid: user.uid, email: user.email }),
+          AuthApiActions.userIsLoggedIn({
+            uid: user.uid,
+            email: user.email as string,
+          }),
         );
       } else {
         this.store.dispatch(AuthApiActions.userIsLoggedOut());
