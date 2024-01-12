@@ -126,7 +126,9 @@ export const navigateToChangePasswordPage$ = createEffect(
             SettingsRouterEffectsActions.navigationToChangePasswordPageSuccessful(),
           ),
           catchError(() =>
-            of(SettingsRouterEffectsActions.navigationToChangePasswordPageFailed()),
+            of(
+              SettingsRouterEffectsActions.navigationToChangePasswordPageFailed(),
+            ),
           ),
         ),
       ),
