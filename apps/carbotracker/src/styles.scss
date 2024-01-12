@@ -1,142 +1,18 @@
-/* You can add global styles to this file, and also import other style files */
-
-@use '@angular/material' as mat;
-// Plus imports for other components in your app.
-
-// Include the common styles for Angular Material. We include this here so that you only
-// have to load a single css file for Angular Material in your app.
-// Be sure that you only ever include this mixin once!
-@include mat.core();
-
-$node-primary-palette: (
-  50: #e5f4f3,
-  100: #bee4e1,
-  200: #93d3cd,
-  300: #67c1b8,
-  400: #47b3a9,
-  500: #26a69a,
-  600: #229e92,
-  700: #1c9588,
-  800: #178b7e,
-  900: #0d7b6c,
-  A100: #adfff3,
-  A200: #7affec,
-  A400: #47ffe4,
-  A700: #2dffe0,
-  contrast: (
-    50: #000000,
-    100: #000000,
-    200: #000000,
-    300: #000000,
-    400: #000000,
-    500: #ffffff,
-    600: #ffffff,
-    700: #ffffff,
-    800: #ffffff,
-    900: #ffffff,
-    A100: #000000,
-    A200: #000000,
-    A400: #000000,
-    A700: #000000,
-  ),
-);
-
-$node-accent-palette: (
-  50: #f6f7f8,
-  100: #e7ecee,
-  200: #d8dfe2,
-  300: #c8d2d6,
-  400: #bcc8ce,
-  500: #b0bec5,
-  600: #a9b8bf,
-  700: #a0afb8,
-  800: #97a7b0,
-  900: #8799a3,
-  A100: #ffffff,
-  A200: #ffffff,
-  A400: #ceeeff,
-  A700: #b5e5ff,
-  contrast: (
-    50: #000000,
-    100: #000000,
-    200: #000000,
-    300: #000000,
-    400: #000000,
-    500: #000000,
-    600: #000000,
-    700: #000000,
-    800: #000000,
-    900: #000000,
-    A100: #000000,
-    A200: #000000,
-    A400: #000000,
-    A700: #000000,
-  ),
-);
-
-// Define the palettes for your theme using the Material Design palettes available in palette.scss
-// (imported above). For each palette, you can optionally specify a default, lighter, and darker
-// hue. Available color palettes: https://material.io/design/color/
-$app-carbotracker-primary: mat.define-palette($node-primary-palette);
-$app-carbotracker-accent: mat.define-palette($node-accent-palette);
-
-// The warn palette is optional (defaults to red).
-$app-carbotracker-warn: mat.define-palette(mat.$red-palette);
-
-// Create the theme object. A theme consists of configurations for individual
-// theming systems such as "color" or "typography".
-$app-carbotracker-node-light: mat.define-light-theme(
-  (
-    color: (
-      primary: $app-carbotracker-primary,
-      accent: $app-carbotracker-accent,
-      warn: $app-carbotracker-warn,
-    ),
-  )
-);
-
-$app-carbotracker-node-dark: mat.define-dark-theme(
-  (
-    color: (
-      primary: $app-carbotracker-primary,
-      accent: $app-carbotracker-accent,
-      warn: $app-carbotracker-warn,
-    ),
-  )
-);
-
-// Include theme styles for core and each component used in your app.
-// Alternatively, you can import and @include the theme mixins for each component
-// that you are using.
-@include mat.all-component-themes($app-carbotracker-node-light);
+@import './styles/theme.scss';
+@import './styles/fonts/all-fonts.scss';
 
 /* You can add global styles to this file, and also import other style files */
-
 html,
 body {
   height: 100%;
 }
 body {
   margin: 0;
-  font-family: 'Dosis', Roboto, 'Helvetica Neue', sans-serif;
+  font-family: 'Dosis Variable', Roboto, 'Helvetica Neue', sans-serif;
   font-size: 20px;
 }
 
 button {
-  font-family: 'Dosis';
+  font-family: 'Dosis Variable', Roboto, 'Helvetica Neue', sans-serif;
   font-size: 20px;
-}
-
-@font-face {
-  font-family: 'YesevaOne';
-  src: url('assets/fonts/Yeseva_One/YesevaOne-Regular.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Dosis';
-  src: url('assets/fonts/Dosis/Dosis-VariableFont_wght.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
 }
