@@ -1,10 +1,31 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
 
+export const SettingsRouterEffectsActions = createActionGroup({
+  source: 'Settings | Router Effects',
+  events: {
+    'Navigation to Account Page Successful': emptyProps(),
+    'Navigation to Account Page Failed': emptyProps(),
+    'Navigation to Change Password Page Successful': emptyProps(),
+    'Navigation to Change Password Page Failed': emptyProps(),
+  },
+});
+
 export const SettingsPageActions = createActionGroup({
   source: 'Settings | Settings Page',
   events: {
     'Logout Clicked': emptyProps(),
     'Account Clicked': emptyProps(),
+  },
+});
+
+export const ChangePasswordPageActions = createActionGroup({
+  source: 'Settings | Change Password Page',
+  events: {
+    'Change Password Clicked': props<{
+      oldPassword: string;
+      newPassword: string;
+      confirmPassword: string;
+    }>(),
   },
 });
 
@@ -31,9 +52,7 @@ export const AccountPageSnackBarActions = createActionGroup({
 export const AccountPageActions = createActionGroup({
   source: 'Settings | Account Page',
   events: {
-    'Save Changes Clicked': props<{
-      email: string;
-      password: string;
-    }>(),
+    'Save Changes Clicked': props<{ email: string }>(),
+    'Password Input Focused': emptyProps(),
   },
 });

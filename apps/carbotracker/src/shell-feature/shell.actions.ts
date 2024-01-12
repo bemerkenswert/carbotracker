@@ -18,7 +18,5 @@ export const ShellRouterEffectsActions = createActionGroup({
     'Navigation to Current Meal Page Failed': emptyProps(),
     'Navigation to Settings Page Successful': emptyProps(),
     'Navigation to Settings Page Failed': emptyProps(),
-    'Navigation to Account Page Successful': emptyProps(),
-    'Navigation to Account Page Failed': emptyProps(),
   },
 });

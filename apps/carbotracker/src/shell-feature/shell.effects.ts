@@ -2,7 +2,6 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { catchError, from, map, of, switchMap } from 'rxjs';
-import { SettingsPageActions } from '../settings-feature/settings.actions';
 import {
   ShellComponentActions,
   ShellRouterEffectsActions,
@@ -55,24 +54,6 @@ export const navigateToSettingsPage$ = createEffect(
           ),
           catchError(() =>
             of(ShellRouterEffectsActions.navigationToSettingsPageFailed()),
-          ),
-        ),
-      ),
-    ),
-  { functional: true },
-);
-
-export const navigateToAccountPage$ = createEffect(
-  (actions$ = inject(Actions), router = inject(Router)) =>
-    actions$.pipe(
-      ofType(SettingsPageActions.accountClicked),
-      switchMap(() =>
-        from(router.navigate(['app', 'settings', 'account'])).pipe(
-          map(() =>
-            ShellRouterEffectsActions.navigationToAccountPageSuccessful(),
-          ),
-          catchError(() =>
-            of(ShellRouterEffectsActions.navigationToAccountPageFailed()),
           ),
         ),
       ),
