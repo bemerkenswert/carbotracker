@@ -106,7 +106,7 @@ export const updatePassword$ = createEffect(
     actions$.pipe(
       ofType(ChangePasswordPageActions.changePasswordClicked),
       concatLatestFrom(() => authService.getUser()),
-      switchMap(([{ oldPassword, newPassword }, user]) =>
+      switchMap(([{ newPassword }, user]) =>
         authService.updatePassword(user, newPassword).pipe(
           map(() => PasswordApiActions.updatePasswordSuccessful()),
           catchError((error: AuthError) => {
