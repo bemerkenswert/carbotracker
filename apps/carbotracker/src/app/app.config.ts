@@ -10,9 +10,7 @@ import { filter, switchMap } from 'rxjs';
 
 import { authFeature } from '../features/auth/+state/auth.store';
 import { getAuthProviders } from '../features/auth/auth.providers';
-import {
-  provideFirebase
-} from '../firebase/provide-firebase';
+import { provideFirebase } from '../firebase/provide-firebase';
 import * as appEffects from './app.effects';
 
 const isLoggedIn = () => {
