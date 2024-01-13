@@ -35,3 +35,21 @@ export const SignUpApiActions = createActionGroup({
     'Sign Up Failed Unknown Error': emptyProps(),
   },
 });
+
+export const EmailApiActions = createActionGroup({
+  source: 'Auth | Email Api',
+  events: {
+    'Update Email Successful': props<{ email: string; }>(),
+    'Update Email Failed': props<{ error: unknown; }>(),
+    'Update Email Failed Email Exists': emptyProps(),
+  },
+});
+
+export const PasswordApiActions = createActionGroup({
+  source: 'Settings | Password Api',
+  events: {
+    'Update Password Successful': emptyProps(),
+    'Update Password Failed': props<{ error: unknown; }>(),
+    'Update Password Failed Weak Password': emptyProps(),
+  },
+});

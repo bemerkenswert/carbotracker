@@ -1,14 +1,14 @@
 import { Routes } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
-import { AccountPageComponent } from './pages/AccountPage/account-page.component';
-import { SettingsPageComponent } from './pages/SettingsPage/settings-page.component';
-import * as settingsEffects from './settings.effects';
-import { ChangePasswordPageComponent } from './pages/ChangePasswordPage/ChangePasswordPage.component';
+import { AccountPageComponent } from './pages/account-page/account-page.component';
+import { SettingsPageComponent } from './pages/settings-page/settings-page.component';
+import { ChangePasswordPageComponent } from './pages/change-password-page/change-password-page.component';
+import { routingEffects, snackbarEffects } from './+state';
 
 export const SETTINGS_ROUTES: Routes = [
   {
     path: '',
-    providers: [provideEffects(settingsEffects)],
+    providers: [provideEffects(routingEffects, snackbarEffects)],
     children: [
       { path: '', pathMatch: 'full', component: SettingsPageComponent },
       { path: 'account', component: AccountPageComponent },

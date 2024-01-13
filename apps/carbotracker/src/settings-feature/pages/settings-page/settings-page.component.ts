@@ -3,7 +3,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
 import { Store } from '@ngrx/store';
-import { SettingsPageActions } from '../../settings.actions';
+import { SettingsPageActions } from '../../+state/actions/component.actions';
 
 @Component({
   selector: 'carbotracker-settings-page',

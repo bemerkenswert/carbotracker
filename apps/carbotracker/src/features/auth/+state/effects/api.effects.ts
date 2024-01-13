@@ -1,12 +1,18 @@
 import { inject } from '@angular/core';
-import { Actions, createEffect, ofType } from '@ngrx/effects';
+import { Actions, concatLatestFrom, createEffect, ofType } from '@ngrx/effects';
 import { AuthError, AuthErrorCodes } from 'firebase/auth';
-import { catchError, exhaustMap, map, of, switchMap } from 'rxjs';
-import { SettingsPageActions } from '../../../../settings-feature/settings.actions';
+import { catchError, exhaustMap, filter, map, of, switchMap } from 'rxjs';
+import {
+  AccountPageActions,
+  ChangePasswordPageActions,
+  SettingsPageActions,
+} from '../../../../settings-feature/+state/actions/component.actions';
 import { AuthService } from '../../services/auth.service';
 import {
+  EmailApiActions,
   LoginApiActions,
   LogoutApiActions,
+  PasswordApiActions,
   SignUpApiActions,
 } from '../actions/api.actions';
 import {
@@ -66,6 +72,51 @@ export const signUpUser$ = createEffect(
                 return of(SignUpApiActions.signUpFailedWeakPassword());
               default:
                 return of(SignUpApiActions.signUpFailedUnknownError());
+            }
+          }),
+        ),
+      ),
+    ),
+  { functional: true },
+);
+export const updateEmail$ = createEffect(
+  (actions$ = inject(Actions), authService = inject(AuthService)) =>
+    actions$.pipe(
+      ofType(AccountPageActions.saveChangesClicked),
+      concatLatestFrom(() => authService.getUser()),
+      filter(([{ email }, user]) => user.email !== email),
+      switchMap(([{ email }, user]) =>
+        authService.updateEmail(user, email).pipe(
+          map(() => EmailApiActions.updateEmailSuccessful({ email })),
+          catchError((error: AuthError) => {
+            switch (error.code) {
+              case AuthErrorCodes.EMAIL_EXISTS:
+                return of(EmailApiActions.updateEmailFailedEmailExists());
+              default:
+                return of(EmailApiActions.updateEmailFailed({ error }));
+            }
+          }),
+        ),
+      ),
+    ),
+  { functional: true },
+);
+export const updatePassword$ = createEffect(
+  (actions$ = inject(Actions), authService = inject(AuthService)) =>
+    actions$.pipe(
+      ofType(ChangePasswordPageActions.changePasswordClicked),
+      concatLatestFrom(() => authService.getUser()),
+      switchMap(([{ oldPassword, newPassword }, user]) =>
+        authService.updatePassword(user, newPassword).pipe(
+          map(() => PasswordApiActions.updatePasswordSuccessful()),
+          catchError((error: AuthError) => {
+            switch (error.code) {
+              case AuthErrorCodes.WEAK_PASSWORD:
+                return of(
+                  PasswordApiActions.updatePasswordFailedWeakPassword(),
+                );
+              default:
+                return of(PasswordApiActions.updatePasswordFailed({ error }));
             }
           }),
         ),

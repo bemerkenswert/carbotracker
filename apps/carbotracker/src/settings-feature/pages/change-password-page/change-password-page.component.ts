@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
+import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { Store } from '@ngrx/store';
-import { ChangePasswordPageActions as ComponentActions } from '../../settings.actions';
-import { MatButtonModule } from '@angular/material/button';
+import { ChangePasswordPageActions as ComponentActions } from '../../+state/actions/component.actions';
 
 @Component({
   selector: 'carbotracker-change-password-page',
@@ -15,8 +15,8 @@ import { MatButtonModule } from '@angular/material/button';
     MatInputModule,
     ReactiveFormsModule,
   ],
-  templateUrl: './ChangePasswordPage.component.html',
-  styleUrls: ['./ChangePasswordPage.component.scss'],
+  templateUrl: './change-password-page.component.html',
+  styleUrls: ['./change-password-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ChangePasswordPageComponent {
@@ -30,7 +30,10 @@ export class ChangePasswordPageComponent {
   private readonly store = inject(Store);
 
   protected onChangePassword() {
-    const formValue = this.changePasswordFormGroup.getRawValue();
-    this.store.dispatch(ComponentActions.changePasswordClicked(formValue));
+    const { oldPassword, newPassword } =
+      this.changePasswordFormGroup.getRawValue();
+    this.store.dispatch(
+      ComponentActions.changePasswordClicked({ oldPassword, newPassword }),
+    );
   }
 }

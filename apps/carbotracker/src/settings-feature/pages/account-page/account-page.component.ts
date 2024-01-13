@@ -6,7 +6,7 @@ import { MatInputModule } from '@angular/material/input';
 import { Store } from '@ngrx/store';
 import { take } from 'rxjs';
 import { authFeature } from '../../../features/auth/+state/auth.store';
-import { AccountPageActions } from '../../settings.actions';
+import { AccountPageActions } from '../../+state/actions/component.actions';
 
 const createAccountFormGroup = () =>
   inject(FormBuilder).nonNullable.group({

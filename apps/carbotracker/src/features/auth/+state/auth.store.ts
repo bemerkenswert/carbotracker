@@ -1,6 +1,5 @@
 import { createFeature, createReducer, createSelector, on } from '@ngrx/store';
-import { SettingsApiActions } from '../../../settings-feature/settings.actions';
-import { AuthApiActions, LoginApiActions } from './actions/api.actions';
+import { AuthApiActions, EmailApiActions, LoginApiActions } from './actions/api.actions';
 import { SignUpSnackBarActions } from './actions/snackbar.actions';
 
 type AuthState = {
@@ -66,7 +65,7 @@ export const authFeature = createFeature({
       }),
     ),
     on(
-      SettingsApiActions.updateEmailSuccessful,
+      EmailApiActions.updateEmailSuccessful,
       (state, { email }): AuthState => ({
         ...state,
         user: {

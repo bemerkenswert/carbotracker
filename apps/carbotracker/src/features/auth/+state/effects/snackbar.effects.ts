@@ -2,8 +2,7 @@ import { inject } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { filter, map, merge, switchMap } from 'rxjs';
-import { SettingsApiActions } from '../../../../settings-feature/settings.actions';
-import { LoginApiActions, SignUpApiActions } from '../actions/api.actions';
+import { LoginApiActions, PasswordApiActions, SignUpApiActions } from '../actions/api.actions';
 import {
   LoginSnackBarActions,
   SignUpSnackBarActions,
@@ -40,7 +39,7 @@ export const showPasswordIsWeakSnackBar$ = createEffect(
     actions$.pipe(
       ofType(
         SignUpApiActions.signUpFailedWeakPassword,
-        SettingsApiActions.updatePasswordFailedWeakPassword,
+        PasswordApiActions.updatePasswordFailedWeakPassword,
       ),
       switchMap(() =>
         snackBar
