@@ -1,5 +1,9 @@
 import { createFeature, createReducer, createSelector, on } from '@ngrx/store';
-import { AuthApiActions, EmailApiActions, LoginApiActions } from './actions/api.actions';
+import {
+  AuthApiActions,
+  EmailApiActions,
+  LoginApiActions,
+} from './actions/api.actions';
 import { SignUpSnackBarActions } from './actions/snackbar.actions';
 
 type AuthState = {

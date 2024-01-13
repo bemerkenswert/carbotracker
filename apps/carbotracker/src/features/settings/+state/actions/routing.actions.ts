@@ -1,6 +1,5 @@
 import { createActionGroup, emptyProps } from '@ngrx/store';
 
-
 export const SettingsRouterEffectsActions = createActionGroup({
   source: 'Settings | Router Effects',
   events: {

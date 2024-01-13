@@ -2,10 +2,7 @@ import { inject } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { map, switchMap } from 'rxjs';
-import {
-    EmailApiActions,
-    PasswordApiActions,
-} from '../../../auth/+state';
+import { EmailApiActions, PasswordApiActions } from '../../../auth/+state';
 import { AccountPageSnackBarActions } from '../actions/snackbar.actions';
 
 export const showEmailAlreadyExistsSnackBar$ = createEffect(
