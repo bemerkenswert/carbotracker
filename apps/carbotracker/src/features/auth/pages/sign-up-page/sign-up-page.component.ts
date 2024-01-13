@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 import { MatSidenavModule } from '@angular/material/sidenav';
-import { SignUpFormComponent } from '../../components/SignUpForm/sign-up-form.component';
+import { SignUpFormComponent } from '../../components/sign-up-form/sign-up-form.component';
 
 @Component({
   selector: 'carbotracker-sign-up-page',

@@ -4,14 +4,15 @@ import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
 import { provideRouterStore, routerReducer } from '@ngrx/router-store';
-import { Store, provideState, provideStore } from '@ngrx/store';
+import { Store, provideStore } from '@ngrx/store';
 import { provideStoreDevtools } from '@ngrx/store-devtools';
 import { filter, switchMap } from 'rxjs';
-import * as authEffects from '../auth-feature/auth.effects';
-import * as loginEffects from '../login-feature/login.effects';
 
-import { authFeature } from '../auth-feature/auth.reducer';
-import { provideFirebase } from '../firebase/provide-firebase';
+import { authFeature } from '../features/auth/+state/auth.store';
+import { getAuthProviders } from '../features/auth/auth.providers';
+import {
+  provideFirebase
+} from '../firebase/provide-firebase';
 import * as appEffects from './app.effects';
 
 const isLoggedIn = () => {
@@ -25,9 +26,7 @@ const isLoggedIn = () => {
 export const appConfig: ApplicationConfig = {
   providers: [
     provideAnimations(),
-    provideStore({
-      router: routerReducer,
-    }),
+    provideStore({ router: routerReducer }),
     provideFirebase({
       apiKey: 'AIzaSyBh6fpP_cO3C3bR-fzHR8WqHhPMURhvHqQ',
       authDomain: 'carbotracker.firebaseapp.com',
@@ -38,8 +37,8 @@ export const appConfig: ApplicationConfig = {
       measurementId: 'G-MKN5SN9M5D',
     }),
     provideRouterStore(),
-    provideState(authFeature),
-    provideEffects([appEffects, authEffects, loginEffects]),
+    getAuthProviders(),
+    provideEffects([appEffects]),
     provideStoreDevtools(),
     provideRouter(
       [
@@ -53,7 +52,7 @@ export const appConfig: ApplicationConfig = {
         {
           path: 'login',
           loadChildren: () =>
-            import('../login-feature/login.routes').then((m) => m.LOGIN_ROUTES),
+            import('../features/auth/auth.routes').then((m) => m.AUTH_ROUTES),
         },
         {
           path: '**',

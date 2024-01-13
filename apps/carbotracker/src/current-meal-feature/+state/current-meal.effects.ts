@@ -4,7 +4,7 @@ import { Actions, concatLatestFrom, createEffect, ofType } from '@ngrx/effects';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
 import { concatMap, exhaustMap, filter, from, of, switchMap, tap } from 'rxjs';
-import { authFeature } from '../../auth-feature/auth.reducer';
+import { authFeature } from '../../features/auth/+state/auth.store';
 import { CurrentMealService } from '../services/current-meal.service';
 import { ProductsService } from '../services/products.service';
 import {

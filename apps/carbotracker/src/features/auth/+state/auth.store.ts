@@ -1,9 +1,9 @@
 import { createFeature, createReducer, createSelector, on } from '@ngrx/store';
-import { SignUpSnackBarActions } from '../login-feature/login.actions';
-import { SettingsApiActions } from '../settings-feature/settings.actions';
-import { AuthApiActions } from './auth.actions';
+import { SettingsApiActions } from '../../../settings-feature/settings.actions';
+import { AuthApiActions, LoginApiActions } from './actions/api.actions';
+import { SignUpSnackBarActions } from './actions/snackbar.actions';
 
-interface AuthState {
+type AuthState = {
   isInitialized: boolean;
   isLoggedIn: boolean;
   user: {
@@ -11,7 +11,7 @@ interface AuthState {
     email: string | null;
   };
   alreadyExistingSignUpEmail: string | null;
-}
+};
 
 const getInitialState = (): AuthState => ({
   isInitialized: false,
@@ -54,7 +54,7 @@ export const authFeature = createFeature({
     ),
     on(
       AuthApiActions.userIsLoggedOut,
-      AuthApiActions.loginFailed,
+      LoginApiActions.loginFailed,
       (state): AuthState => ({
         ...state,
         isInitialized: true,

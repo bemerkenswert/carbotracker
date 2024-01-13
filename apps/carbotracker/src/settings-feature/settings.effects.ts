@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 import { Actions, concatLatestFrom, createEffect, ofType } from '@ngrx/effects';
 import { AuthError, AuthErrorCodes } from 'firebase/auth';
 import { catchError, filter, from, map, of, switchMap } from 'rxjs';
-import { AuthService } from '../auth-feature/auth.service';
+import { AuthService } from '../features/auth/services/auth.service';
 import {
   AccountPageActions,
   AccountPageSnackBarActions,

@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { MatSidenavModule } from '@angular/material/sidenav';
-import { LoginFormComponent } from '../../components/LoginForm/login-form.component';
+import { LoginFormComponent } from '../../components/login-form/login-form.component';
 import { ReactiveFormsModule } from '@angular/forms';
 
 @Component({

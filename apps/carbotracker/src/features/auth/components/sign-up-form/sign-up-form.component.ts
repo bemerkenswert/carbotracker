@@ -11,7 +11,7 @@ import { MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { Store } from '@ngrx/store';
-import { SignUpFormComponentActions } from '../../login.actions';
+import { SignUpFormComponentActions } from '../../+state/actions/component.actions';
 
 const createRegisterFormGroup = () =>
   inject(FormBuilder).group({

@@ -16,9 +16,9 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { Store } from '@ngrx/store';
 import { take } from 'rxjs';
-import { authFeature } from '../../../auth-feature/auth.reducer';
-import { AuthService } from '../../../auth-feature/auth.service';
-import { LoginFormComponentActions } from '../../login.actions';
+import { authFeature } from '../../+state/auth.store';
+import { LoginFormComponentActions } from '../../+state/actions/component.actions';
+import { AuthService } from '../../services/auth.service';
 
 const createLoginFormGroup = () =>
   inject(FormBuilder).group({

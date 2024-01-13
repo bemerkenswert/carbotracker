@@ -11,7 +11,7 @@ import {
   updatePassword,
 } from 'firebase/auth';
 import { Observable, filter, from, of } from 'rxjs';
-import { AuthApiActions } from './auth.actions';
+import { AuthApiActions } from '../+state/actions/api.actions';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService implements OnDestroy {

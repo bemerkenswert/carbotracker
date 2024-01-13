@@ -5,7 +5,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { Store } from '@ngrx/store';
 import { take } from 'rxjs';
-import { authFeature } from '../../../auth-feature/auth.reducer';
+import { authFeature } from '../../../features/auth/+state/auth.store';
 import { AccountPageActions } from '../../settings.actions';
 
 const createAccountFormGroup = () =>

@@ -2,14 +2,16 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { catchError, from, map, of, switchMap } from 'rxjs';
-import { AuthApiActions } from '../auth-feature/auth.actions';
-import { SignUpApiActions } from '../login-feature/login.actions';
+import {
+  LoginApiActions,
+  SignUpApiActions,
+} from '../features/auth/+state/actions/api.actions';
 import { AppRouterEffectsActions } from './app.actions';
 
 export const navigateToProducts$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(
-      ofType(AuthApiActions.loginSuccessful),
+      ofType(LoginApiActions.loginSuccessful),
       switchMap(() => from(router.navigate(['app', 'products']))),
     ),
   { functional: true, dispatch: false },
