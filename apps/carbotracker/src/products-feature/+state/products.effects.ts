@@ -16,7 +16,7 @@ import {
   tap,
 } from 'rxjs';
 import { authFeature } from '../../features/auth/+state/auth.store';
-import { SettingsPageActions } from '../../settings-feature/+state/actions/component.actions';
+import { SettingsPageActions } from '../../features/settings/+state/actions/component.actions';
 import { ProductsService } from '../services/products.service';
 import {
   CreateProductPageComponentActions,

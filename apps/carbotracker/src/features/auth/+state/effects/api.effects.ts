@@ -6,7 +6,7 @@ import {
   AccountPageActions,
   ChangePasswordPageActions,
   SettingsPageActions,
-} from '../../../../settings-feature/+state/actions/component.actions';
+} from '../../../settings/+state/actions/component.actions';
 import { AuthService } from '../../services/auth.service';
 import {
   EmailApiActions,

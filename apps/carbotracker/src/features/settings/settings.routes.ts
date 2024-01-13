@@ -1,9 +1,9 @@
 import { Routes } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
-import { AccountPageComponent } from './pages/account-page/account-page.component';
-import { SettingsPageComponent } from './pages/settings-page/settings-page.component';
-import { ChangePasswordPageComponent } from './pages/change-password-page/change-password-page.component';
 import { routingEffects, snackbarEffects } from './+state';
+import { AccountPageComponent } from './pages/account-page/account-page.component';
+import { ChangePasswordPageComponent } from './pages/change-password-page/change-password-page.component';
+import { SettingsPageComponent } from './pages/settings-page/settings-page.component';
 
 export const SETTINGS_ROUTES: Routes = [
   {

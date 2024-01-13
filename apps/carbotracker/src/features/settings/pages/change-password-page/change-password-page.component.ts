@@ -4,7 +4,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { Store } from '@ngrx/store';
-import { ChangePasswordPageActions as ComponentActions } from '../../+state/actions/component.actions';
+import { ChangePasswordPageActions } from '../../+state';
 
 @Component({
   selector: 'carbotracker-change-password-page',
@@ -33,7 +33,10 @@ export class ChangePasswordPageComponent {
     const { oldPassword, newPassword } =
       this.changePasswordFormGroup.getRawValue();
     this.store.dispatch(
-      ComponentActions.changePasswordClicked({ oldPassword, newPassword }),
+      ChangePasswordPageActions.changePasswordClicked({
+        oldPassword,
+        newPassword,
+      }),
     );
   }
 }

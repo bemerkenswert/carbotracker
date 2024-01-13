@@ -27,7 +27,7 @@ export const SHELL_ROUTES: Routes = [
       {
         path: 'settings',
         loadChildren: () =>
-          import('../settings-feature/settings.routes').then(
+          import('../features/settings/settings.routes').then(
             (m) => m.SETTINGS_ROUTES,
           ),
       },

@@ -5,7 +5,7 @@ import { map, switchMap } from 'rxjs';
 import {
     EmailApiActions,
     PasswordApiActions,
-} from '../../../features/auth/+state';
+} from '../../../auth/+state';
 import { AccountPageSnackBarActions } from '../actions/snackbar.actions';
 
 export const showEmailAlreadyExistsSnackBar$ = createEffect(
