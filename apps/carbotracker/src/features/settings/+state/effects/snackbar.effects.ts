@@ -2,8 +2,15 @@ import { inject } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { map, switchMap } from 'rxjs';
-import { EmailApiActions, PasswordApiActions } from '../../../auth/+state';
-import { AccountPageSnackBarActions } from '../actions/snackbar.actions';
+import {
+  EmailApiActions,
+  LoginApiActions,
+  PasswordApiActions,
+} from '../../../auth/+state';
+import {
+  AccountPageSnackBarActions,
+  ChangePasswordPageSnackBarActions,
+} from '../actions/snackbar.actions';
 
 export const showEmailAlreadyExistsSnackBar$ = createEffect(
   (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
@@ -36,6 +43,24 @@ export const showPasswordWasChangedSnackbar$ = createEffect(
           .afterOpened()
           .pipe(
             map(() => AccountPageSnackBarActions.changesSuccessfulSnackbar()),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const showOldPasswordWasWrongSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(LoginApiActions.reauthenticateFailedWrongPassword),
+      switchMap(() =>
+        snackBar
+          .open('Old password is wrong. Please try again.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              ChangePasswordPageSnackBarActions.showOldPasswordWasWrongSnackbarSuccessful(),
+            ),
           ),
       ),
     ),

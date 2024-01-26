@@ -6,6 +6,7 @@ import {
   ShellComponentActions,
   ShellRouterEffectsActions,
 } from './shell.actions';
+import { PasswordApiActions } from '../features/auth/+state';
 
 export const navigateToProducts$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
@@ -46,7 +47,10 @@ export const navigateToCurrentMeal$ = createEffect(
 export const navigateToSettingsPage$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(
-      ofType(ShellComponentActions.settingsClicked),
+      ofType(
+        ShellComponentActions.settingsClicked,
+        PasswordApiActions.updatePasswordSuccessful,
+      ),
       switchMap(() =>
         from(router.navigate(['app', 'settings'])).pipe(
           map(() =>
