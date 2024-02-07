@@ -12,6 +12,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { Store } from '@ngrx/store';
 import { SignUpFormComponentActions } from '../../+state/actions/component.actions';
+import { PasswordLengthValidator } from '../../form/password-length.validator';
 
 const createRegisterFormGroup = () =>
   inject(FormBuilder).group({
@@ -21,7 +22,7 @@ const createRegisterFormGroup = () =>
     }),
     password: new FormControl('', {
       nonNullable: true,
-      validators: [Validators.required],
+      validators: [Validators.required, PasswordLengthValidator],
     }),
   });
 

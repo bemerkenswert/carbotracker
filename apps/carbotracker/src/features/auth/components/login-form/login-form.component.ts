@@ -19,6 +19,7 @@ import { take } from 'rxjs';
 import { authFeature } from '../../+state/auth.store';
 import { LoginFormComponentActions } from '../../+state/actions/component.actions';
 import { AuthService } from '../../services/auth.service';
+import { PasswordLengthValidator } from '../../form/password-length.validator';
 
 const createLoginFormGroup = () =>
   inject(FormBuilder).group({
@@ -28,7 +29,7 @@ const createLoginFormGroup = () =>
     }),
     password: new FormControl('', {
       nonNullable: true,
-      validators: [Validators.required],
+      validators: [Validators.required, PasswordLengthValidator],
     }),
   });
 
@@ -60,6 +61,8 @@ export class LoginFormComponent implements OnInit {
           this.loginFormGroup.controls.email.setValue(email);
         }
       });
+
+      this.loginFormGroup.statusChanges.subscribe(() => console.log(this.loginFormGroup));
   }
 
   public onLogin() {
