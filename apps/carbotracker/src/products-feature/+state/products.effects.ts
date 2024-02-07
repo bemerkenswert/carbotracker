@@ -101,8 +101,8 @@ export const navigateToProductsPage$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(
       ofType(
-        ProductsApiActions.deletingProductSucceeded,
-        ProductsApiActions.creatingProductSucceeded,
+        ProductsApiActions.deletingProductSuccessful,
+        ProductsApiActions.creatingProductSuccessful,
       ),
       exhaustMap(() => from(router.navigate(['app', 'products']))),
     ),
@@ -120,7 +120,7 @@ export const updateProduct$ = createEffect(
             ...changedProduct,
           })
           .pipe(
-            map(() => ProductsApiActions.updatingProductSucceeded()),
+            map(() => ProductsApiActions.updatingProductSuccessful()),
             catchError((error) =>
               of(ProductsApiActions.updatingProductFailed({ error })),
             ),
@@ -136,7 +136,7 @@ export const deleteProduct$ = createEffect(
       ofType(EditProductPageComponentActions.deleteClicked),
       exhaustMap(({ selectedProduct }) =>
         productsService.deleteProduct(selectedProduct).pipe(
-          map(() => ProductsApiActions.deletingProductSucceeded()),
+          map(() => ProductsApiActions.deletingProductSuccessful()),
           catchError((error) =>
             of(ProductsApiActions.deletingProductFailed({ error })),
           ),
@@ -160,7 +160,7 @@ export const createProduct$ = createEffect(
       map(([{ newProduct }, userId]) => ({ ...newProduct, creator: userId })),
       mergeMap((newProduct) =>
         productsService.createProduct({ ...newProduct }).pipe(
-          map(() => ProductsApiActions.creatingProductSucceeded()),
+          map(() => ProductsApiActions.creatingProductSuccessful()),
           catchError((error) =>
             of(ProductsApiActions.creatingProductFailed(error)),
           ),
