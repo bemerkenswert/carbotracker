@@ -60,7 +60,6 @@ export interface AuthEmulatorOptions {
   disableWarning?: boolean;
 }
 
-
 export function withAuthEmulator(
   options: AuthEmulatorOptions,
 ): EmulatorFeatures {
@@ -73,7 +72,9 @@ export function withAuthEmulator(
           const host = options.host ?? 'localhost';
           const port = options.port ?? 9099;
           const url = `http://${host}:${port}`;
-          connectAuthEmulator(getAuth(), url, { disableWarnings: options.disableWarning ?? false});
+          connectAuthEmulator(getAuth(), url, {
+            disableWarnings: options.disableWarning ?? false,
+          });
           try {
             const body = await fetch(url).then((response) => response.json());
             if (!body.authEmulator.ready) {

@@ -61,8 +61,6 @@ export class LoginFormComponent implements OnInit {
           this.loginFormGroup.controls.email.setValue(email);
         }
       });
-
-      this.loginFormGroup.statusChanges.subscribe(() => console.log(this.loginFormGroup));
   }
 
   public onLogin() {

@@ -10,7 +10,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updateEmail,
-  updatePassword
+  updatePassword,
 } from 'firebase/auth';
 import { Observable, filter, from, of } from 'rxjs';
 import { AuthApiActions } from '../+state/actions/api.actions';
