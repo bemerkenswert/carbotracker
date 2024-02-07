@@ -100,7 +100,10 @@ export const navigateToCreateProduct$ = createEffect(
 export const navigateToProductsPage$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(
-      ofType(ProductsApiActions.deletingProductSucceeded),
+      ofType(
+        ProductsApiActions.deletingProductSucceeded,
+        ProductsApiActions.creatingProductSucceeded,
+      ),
       exhaustMap(() => from(router.navigate(['app', 'products']))),
     ),
   { dispatch: false, functional: true },
