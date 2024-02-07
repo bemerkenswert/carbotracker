@@ -8,13 +8,13 @@ import { MatToolbarModule } from '@angular/material/toolbar';
   standalone: true,
   imports: [NgIf, MatIconModule, MatToolbarModule],
   template: `<mat-toolbar>
+    @if (showBackwardNavigation) {
     <mat-icon
       (click)="backwardNavigation.emit()"
       style="margin-right: 0.5rem; cursor: pointer"
-      *ngIf="showBackwardNavigation"
+      >chevron_left</mat-icon
     >
-      chevron_left
-    </mat-icon>
+    }
     <span>{{ title }}</span>
     <span style="flex: 1 1 auto"></span>
     <ng-content></ng-content>

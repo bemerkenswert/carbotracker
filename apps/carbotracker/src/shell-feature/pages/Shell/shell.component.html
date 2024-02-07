@@ -1,8 +1,8 @@
 <mat-sidenav-container class="sidenav-container">
   <mat-sidenav-content>
     <mat-toolbar color="primary">
+      @for (navItem of navItems; track navItem.icon) {
       <button
-        *ngFor="let navItem of navItems"
         mat-icon-button
         (click)="navItem.onClick()"
         [ngClass]="navItem.icon + '-button'"
@@ -14,6 +14,7 @@
           >{{ navItem.icon }}</mat-icon
         >
       </button>
+      }
     </mat-toolbar>
     <router-outlet></router-outlet>
   </mat-sidenav-content>

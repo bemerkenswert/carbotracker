@@ -58,8 +58,4 @@ export class ProductsPageComponent implements OnInit, OnDestroy {
   protected onProductClick(product: Product): void {
     this.store.dispatch(ComponentActions.productClicked({ product }));
   }
-
-  protected getProductId(index: number, product: Product) {
-    return product.id;
-  }
 }

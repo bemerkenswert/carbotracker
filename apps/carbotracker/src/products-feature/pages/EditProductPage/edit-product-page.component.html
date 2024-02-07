@@ -1,7 +1,7 @@
 <ng-container *ngIf="product() as product; else loading">
   <ctui-toolbar [title]="'Product: ' + product.name">
     <button mat-icon-button (click)="onDeleteClicked(product.id)">
-      <mat-icon> delete </mat-icon>
+      <mat-icon>delete</mat-icon>
     </button>
   </ctui-toolbar>
   <form #productForm="ngForm" (ngSubmit)="onSubmit()">
