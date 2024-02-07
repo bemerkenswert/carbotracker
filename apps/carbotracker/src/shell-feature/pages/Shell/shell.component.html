@@ -1,39 +1,18 @@
 <mat-sidenav-container class="sidenav-container">
-  <mat-sidenav
-    #drawer
-    class="sidenav"
-    fixedInViewport
-    [attr.role]="isHandset() ? 'dialog' : 'navigation'"
-    [mode]="isHandset() ? 'over' : 'side'"
-    [opened]="isHandset() === false"
-  >
-    <mat-toolbar>Menu</mat-toolbar>
-    <mat-nav-list>
-      <a
-        mat-list-item
-        *ngFor="let navItem of navItems"
-        (click)="navItem.onClick()"
-        [activated]="navItem.isActive()"
-      >
-        {{ navItem.name }}
-      </a>
-    </mat-nav-list>
-  </mat-sidenav>
   <mat-sidenav-content>
     <mat-toolbar color="primary">
       <button
-        *ngIf="isHandset()"
+        *ngFor="let navItem of navItems"
         mat-icon-button
-        type="button"
-        aria-label="Toggle sidenav"
-        (click)="drawer.toggle()"
+        (click)="navItem.onClick()"
+        [ngClass]="navItem.icon + '-button'"
       >
-        <mat-icon aria-label="Side nav toggle icon">menu</mat-icon>
-      </button>
-      <span>Carbotracker</span>
-      <span style="flex: 1 1 auto"></span>
-      <button mat-icon-button (click)="onSettings()">
-        <mat-icon>settings</mat-icon>
+        <mat-icon
+          [ngClass]="{
+            'highlight-active-icon': navItem.isActive()
+          }"
+          >{{ navItem.icon }}</mat-icon
+        >
       </button>
     </mat-toolbar>
     <router-outlet></router-outlet>
