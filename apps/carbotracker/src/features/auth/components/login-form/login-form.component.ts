@@ -16,8 +16,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { Store } from '@ngrx/store';
 import { take } from 'rxjs';
-import { authFeature } from '../../+state/auth.store';
 import { LoginFormComponentActions } from '../../+state/actions/component.actions';
+import { authFeature } from '../../+state/auth.store';
 import { AuthService } from '../../services/auth.service';
 
 const createLoginFormGroup = () =>
@@ -62,16 +62,16 @@ export class LoginFormComponent implements OnInit {
       });
   }
 
-  public onLogin() {
+  protected onLogin() {
     const formValue = this.loginFormGroup.getRawValue();
     this.store.dispatch(LoginFormComponentActions.loginClicked(formValue));
   }
 
-  public onLogout() {
+  protected onLogout() {
     this.auth.logout().subscribe();
   }
 
-  public onSignUp() {
+  protected onSignUp() {
     this.store.dispatch(LoginFormComponentActions.signUpClicked());
   }
 }

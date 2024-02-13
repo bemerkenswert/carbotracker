@@ -45,12 +45,12 @@ export class SignUpFormComponent {
   private readonly store = inject(Store);
   protected readonly signUpFormGroup = createRegisterFormGroup();
 
-  onSignUp() {
+  protected onSignUp() {
     const formValue = this.signUpFormGroup.getRawValue();
     this.store.dispatch(SignUpFormComponentActions.signUpClicked(formValue));
   }
 
-  onGoBack() {
+  protected onGoBack() {
     this.store.dispatch(SignUpFormComponentActions.goBackClicked());
   }
 }
