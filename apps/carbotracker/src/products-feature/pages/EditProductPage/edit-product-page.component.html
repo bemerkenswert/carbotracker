@@ -1,4 +1,5 @@
-<ng-container *ngIf="product() as product; else loading">
+@if (product(); as product) {
+<ng-container>
   <ctui-toolbar [title]="'Product: ' + product.name">
     <button mat-icon-button (click)="onDeleteClicked(product.id)">
       <mat-icon>delete</mat-icon>
@@ -36,5 +37,6 @@
     </button>
   </form>
 </ng-container>
-
-<ng-template #loading> Loading the selected product... </ng-template>
+} @else {
+<ng-template> Loading the selected product... </ng-template>
+}
