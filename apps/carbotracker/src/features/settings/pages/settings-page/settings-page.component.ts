@@ -6,6 +6,28 @@ import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { SettingsPageActions } from '../../+state';
 
+interface SettingItem {
+  onClick: () => void;
+  icon: string;
+  name: string;
+}
+
+const getSettingItems = (): SettingItem[] => {
+  const store = inject(Store);
+  return [
+    {
+      onClick: () => store.dispatch(SettingsPageActions.accountClicked()),
+      icon: 'person',
+      name: 'Account',
+    },
+    {
+      onClick: () => store.dispatch(SettingsPageActions.logoutClicked()),
+      icon: 'logout',
+      name: 'Logout',
+    },
+  ];
+};
+
 @Component({
   selector: 'carbotracker-settings-page',
   standalone: true,
@@ -19,13 +41,5 @@ import { SettingsPageActions } from '../../+state';
   styleUrls: ['./settings-page.component.scss'],
 })
 export class SettingsPageComponent {
-  private store = inject(Store);
-
-  protected onLogout(): void {
-    this.store.dispatch(SettingsPageActions.logoutClicked());
-  }
-
-  protected onAccount(): void {
-    this.store.dispatch(SettingsPageActions.accountClicked());
-  }
+  protected readonly settingItems: SettingItem[] = getSettingItems();
 }
