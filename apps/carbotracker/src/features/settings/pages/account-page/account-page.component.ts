@@ -37,7 +37,7 @@ export class AccountPageComponent implements OnInit {
   public ngOnInit(): void {
     this.email$.subscribe((email) => {
       if (email) {
-        return this.accountFormGroup.controls.email.setValue(email);
+        this.accountFormGroup.controls.email.setValue(email);
       }
     });
   }
