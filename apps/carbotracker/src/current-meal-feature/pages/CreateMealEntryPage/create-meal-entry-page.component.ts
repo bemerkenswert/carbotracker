@@ -1,4 +1,3 @@
-import { NgFor } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -33,7 +32,6 @@ type FormModel = {
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
-    NgFor,
   ],
   templateUrl: './create-meal-entry-page.component.html',
   styleUrls: ['./create-meal-entry-page.component.scss'],

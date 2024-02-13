@@ -3,10 +3,11 @@ import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { take } from 'rxjs';
-import { authFeature } from '../../../auth/+state';
 import { AccountPageActions } from '../../+state';
+import { authFeature } from '../../../auth/+state';
 
 const createAccountFormGroup = () =>
   inject(FormBuilder).nonNullable.group({
@@ -21,6 +22,7 @@ const createAccountFormGroup = () =>
     MatInputModule,
     MatFormFieldModule,
     ReactiveFormsModule,
+    CtuiToolbarComponent,
   ],
   templateUrl: './account-page.component.html',
   styleUrls: ['./account-page.component.scss'],
@@ -47,5 +49,9 @@ export class AccountPageComponent implements OnInit {
 
   protected onFocusPasswordInput() {
     this.store.dispatch(AccountPageActions.passwordInputFocused());
+  }
+
+  protected onGoBack() {
+    this.store.dispatch(AccountPageActions.goBackIconClicked());
   }
 }

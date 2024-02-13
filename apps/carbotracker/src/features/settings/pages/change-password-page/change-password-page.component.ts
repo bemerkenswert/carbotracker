@@ -3,6 +3,7 @@ import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { ChangePasswordPageActions } from '../../+state';
 
@@ -14,6 +15,7 @@ import { ChangePasswordPageActions } from '../../+state';
     MatFormFieldModule,
     MatInputModule,
     ReactiveFormsModule,
+    CtuiToolbarComponent,
   ],
   templateUrl: './change-password-page.component.html',
   styleUrls: ['./change-password-page.component.scss'],
@@ -38,5 +40,9 @@ export class ChangePasswordPageComponent {
         newPassword,
       }),
     );
+  }
+
+  protected onGoBack() {
+    this.store.dispatch(ChangePasswordPageActions.goBackIconClicked());
   }
 }

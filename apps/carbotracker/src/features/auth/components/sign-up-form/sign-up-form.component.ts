@@ -10,6 +10,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { SignUpFormComponentActions } from '../../+state/actions/component.actions';
 
@@ -34,6 +35,7 @@ const createRegisterFormGroup = () =>
     MatFormFieldModule,
     MatInputModule,
     ReactiveFormsModule,
+    CtuiToolbarComponent,
   ],
   templateUrl: './sign-up-form.component.html',
   styleUrls: ['./sign-up-form.component.scss'],

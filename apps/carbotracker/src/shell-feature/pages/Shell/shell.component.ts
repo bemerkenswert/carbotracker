@@ -1,4 +1,4 @@
-import { CommonModule, NgFor } from '@angular/common';
+import { NgClass } from '@angular/common';
 import { Component, Signal, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -55,13 +55,12 @@ const getNavItems = () => {
   selector: 'carbotracker-shell',
   standalone: true,
   imports: [
-    CommonModule,
     MatButtonModule,
     MatIconModule,
     MatSidenavModule,
     MatToolbarModule,
-    NgFor,
     RouterOutlet,
+    NgClass,
   ],
   templateUrl: './shell.component.html',
   styleUrls: ['./shell.component.scss'],

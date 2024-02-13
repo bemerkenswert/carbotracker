@@ -15,6 +15,7 @@ export const ChangePasswordPageActions = createActionGroup({
       oldPassword: string;
       newPassword: string;
     }>(),
+    'Go Back Icon Clicked': emptyProps(),
   },
 });
 
@@ -23,5 +24,6 @@ export const AccountPageActions = createActionGroup({
   events: {
     'Save Changes Clicked': props<{ email: string }>(),
     'Password Input Focused': emptyProps(),
+    'Go Back Icon Clicked': emptyProps(),
   },
 });

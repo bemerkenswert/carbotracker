@@ -1,10 +1,7 @@
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
-import { MatInputModule } from '@angular/material/input';
 import { MatListModule } from '@angular/material/list';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import {
   CtuiFixedPositionDirective,
   CtuiToolbarComponent,
@@ -21,11 +18,8 @@ import { MealEntry } from '../../current-meal.model';
     CtuiFixedPositionDirective,
     CtuiToolbarComponent,
     MatButtonModule,
-    MatFormFieldModule,
     MatIconModule,
-    MatInputModule,
     MatListModule,
-    MatTooltipModule,
   ],
   templateUrl: './current-meal-page.component.html',
   styleUrls: ['./current-meal-page.component.scss'],
