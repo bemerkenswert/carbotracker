@@ -1,12 +1,12 @@
 <ctui-toolbar title="Settings" subTitle="GENERAL"></ctui-toolbar>
 <mat-list>
-  @for (settingItem of settingItems; track settingItem.icon) {
+  @for (settingsItem of settingsItems; track settingsItem.icon) {
   <mat-list-item>
     <span matListItemIcon
-      ><mat-icon>{{ settingItem.icon }}</mat-icon></span
+      ><mat-icon>{{ settingsItem.icon }}</mat-icon></span
     >
-    <span class="list-item" (click)="settingItem.onClick()">{{
-      settingItem.name
+    <span class="list-item" (click)="settingsItem.onClick()">{{
+      settingsItem.name
     }}</span>
   </mat-list-item>
   }

@@ -6,13 +6,13 @@ import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { SettingsPageActions } from '../../+state';
 
-interface SettingItem {
+interface SettingsItem {
   onClick: () => void;
   icon: string;
   name: string;
 }
 
-const getSettingItems = (): SettingItem[] => {
+const getSettingsItems = (): SettingsItem[] => {
   const store = inject(Store);
   return [
     {
@@ -41,5 +41,5 @@ const getSettingItems = (): SettingItem[] => {
   styleUrls: ['./settings-page.component.scss'],
 })
 export class SettingsPageComponent {
-  protected readonly settingItems: SettingItem[] = getSettingItems();
+  protected readonly settingsItems: SettingsItem[] = getSettingsItems();
 }
