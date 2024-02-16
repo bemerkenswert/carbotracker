@@ -1,19 +1,16 @@
-<ctui-toolbar title="all products"> </ctui-toolbar>
-<mat-nav-list *ngIf="products().length > 0; else emptyList">
-  <mat-list-item
-    *ngFor="let product of products(); trackBy: getProductId"
-    (click)="onProductClick(product)"
-  >
+<ctui-toolbar title="Products"></ctui-toolbar>
+@if (products().length > 0;) {
+<mat-nav-list>
+  @for (product of products(); track product.id) {
+  <mat-list-item (click)="onProductClick(product)">
     <h4 matListItemTitle>{{ product.name }}</h4>
     <p matListItemLine>
       <span>{{ product.carbs }}g</span>
     </p>
   </mat-list-item>
+  }
 </mat-nav-list>
-
-<ng-template #emptyList>
-  No Products created yet. Add some to fill you list!
-</ng-template>
+} @else { No products created yet. Add some to fill you list! }
 
 <button
   (click)="onAddClick()"

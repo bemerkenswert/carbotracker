@@ -1,7 +1,12 @@
+:host {
+  display: block;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
 form {
   display: flex;
   flex-direction: column;
-  padding: 1rem;
 }
 
 .form-buttons {

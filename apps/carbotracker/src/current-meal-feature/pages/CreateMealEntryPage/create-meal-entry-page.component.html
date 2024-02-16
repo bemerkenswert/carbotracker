@@ -26,9 +26,11 @@
       #productAutoComplete="matAutocomplete"
       [displayWith]="displayProduct"
     >
-      <mat-option *ngFor="let product of filteredProducts()" [value]="product">
+      @for (product of filteredProducts(); track product.id) {
+      <mat-option [value]="product">
         {{ product.name }} {{ product.carbs }}g
       </mat-option>
+      }
     </mat-autocomplete>
   </mat-form-field>
   <button

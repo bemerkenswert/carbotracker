@@ -33,7 +33,7 @@ jobs:
         run: npm run ci:test
 
       - name: build affected code
-        run: npm run ci:build
+        run: npm run ci:build:pullrequest
 
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:

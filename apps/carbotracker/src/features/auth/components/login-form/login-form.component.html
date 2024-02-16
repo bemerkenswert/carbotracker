@@ -1,0 +1,30 @@
+<form [formGroup]="loginFormGroup" (submit)="onLogin()">
+  <mat-form-field>
+    <mat-label>Email</mat-label>
+    <input formControlName="email" matInput placeholder="max@glucose.com" />
+  </mat-form-field>
+  <mat-form-field>
+    <mat-label>Password</mat-label>
+    <input
+      type="password"
+      formControlName="password"
+      matInput
+      placeholder="********"
+    />
+    @if (loginFormGroup.controls.password.hasError('minlength')) {
+    <mat-error>Password is too short.</mat-error>
+    }
+  </mat-form-field>
+  <button
+    class="login-button"
+    color="primary"
+    mat-raised-button
+    [disabled]="loginFormGroup.invalid"
+    type="submit"
+  >
+    Login
+  </button>
+  <button color="basic" mat-raised-button type="button" (click)="onSignUp()">
+    Sign Up
+  </button>
+</form>

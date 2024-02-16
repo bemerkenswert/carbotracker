@@ -5,6 +5,7 @@ export const ShellComponentActions = createActionGroup({
   events: {
     'Products Clicked': emptyProps(),
     'Current Meal Clicked': emptyProps(),
+    'Settings Clicked': emptyProps(),
   },
 });
 
@@ -15,5 +16,7 @@ export const ShellRouterEffectsActions = createActionGroup({
     'Navigation to Products Page Failed': emptyProps(),
     'Navigation to Current Meal Page Successful': emptyProps(),
     'Navigation to Current Meal Page Failed': emptyProps(),
+    'Navigation to Settings Page Successful': emptyProps(),
+    'Navigation to Settings Page Failed': emptyProps(),
   },
 });

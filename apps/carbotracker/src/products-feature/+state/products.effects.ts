@@ -15,13 +15,15 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { authFeature } from '../../auth-feature/auth.reducer';
+import { authFeature } from '../../features/auth/+state/auth.store';
+import { SettingsPageActions } from '../../features/settings/+state/actions/component.actions';
 import { ProductsService } from '../services/products.service';
 import {
   CreateProductPageComponentActions,
   EditProductPageComponentActions,
   ProductsApiActions,
   ProductsPageComponentActions,
+  ProductsRouterActions,
 } from './products.actions';
 
 const filterNull = <T>() =>
@@ -48,13 +50,25 @@ export const startStreamingProducts$ = createEffect(
   { dispatch: false, functional: true },
 );
 
-export const stopStreamingProducts$ = createEffect(
-  (actions$ = inject(Actions), productsService = inject(ProductsService)) =>
+export const navigatedAwayFromProductsPage$ = createEffect(
+  (actions$ = inject(Actions)) =>
     actions$.pipe(
       ofType(routerNavigatedAction),
       filter(
         ({ payload }) =>
           !payload.event.urlAfterRedirects.startsWith('/app/products'),
+      ),
+      map(() => ProductsRouterActions.navigatedAwayFromProductsPage()),
+    ),
+  { dispatch: true, functional: true },
+);
+
+export const stopStreamingProducts$ = createEffect(
+  (actions$ = inject(Actions), productsService = inject(ProductsService)) =>
+    actions$.pipe(
+      ofType(
+        ProductsRouterActions.navigatedAwayFromProductsPage,
+        SettingsPageActions.logoutClicked,
       ),
       tap(() => {
         productsService.unsubscribeFromOwnProducts();
@@ -86,7 +100,10 @@ export const navigateToCreateProduct$ = createEffect(
 export const navigateToProductsPage$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(
-      ofType(ProductsApiActions.deletingProductSucceeded),
+      ofType(
+        ProductsApiActions.deletingProductSuccessful,
+        ProductsApiActions.creatingProductSuccessful,
+      ),
       exhaustMap(() => from(router.navigate(['app', 'products']))),
     ),
   { dispatch: false, functional: true },
@@ -103,7 +120,7 @@ export const updateProduct$ = createEffect(
             ...changedProduct,
           })
           .pipe(
-            map(() => ProductsApiActions.updatingProductSucceeded()),
+            map(() => ProductsApiActions.updatingProductSuccessful()),
             catchError((error) =>
               of(ProductsApiActions.updatingProductFailed({ error })),
             ),
@@ -119,7 +136,7 @@ export const deleteProduct$ = createEffect(
       ofType(EditProductPageComponentActions.deleteClicked),
       exhaustMap(({ selectedProduct }) =>
         productsService.deleteProduct(selectedProduct).pipe(
-          map(() => ProductsApiActions.deletingProductSucceeded()),
+          map(() => ProductsApiActions.deletingProductSuccessful()),
           catchError((error) =>
             of(ProductsApiActions.deletingProductFailed({ error })),
           ),
@@ -143,7 +160,7 @@ export const createProduct$ = createEffect(
       map(([{ newProduct }, userId]) => ({ ...newProduct, creator: userId })),
       mergeMap((newProduct) =>
         productsService.createProduct({ ...newProduct }).pipe(
-          map(() => ProductsApiActions.creatingProductSucceeded()),
+          map(() => ProductsApiActions.creatingProductSuccessful()),
           catchError((error) =>
             of(ProductsApiActions.creatingProductFailed(error)),
           ),
