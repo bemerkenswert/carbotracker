@@ -2,6 +2,7 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { catchError, from, map, of, switchMap } from 'rxjs';
+import { PasswordApiActions } from '../features/auth/+state';
 import { AccountPageActions } from '../features/settings/+state';
 import {
   ShellComponentActions,
@@ -50,6 +51,7 @@ export const navigateToSettingsPage$ = createEffect(
       ofType(
         ShellComponentActions.settingsClicked,
         AccountPageActions.goBackIconClicked,
+        PasswordApiActions.updatePasswordSuccessful,
       ),
       switchMap(() =>
         from(router.navigate(['app', 'settings'])).pipe(

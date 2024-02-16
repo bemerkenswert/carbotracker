@@ -7,6 +7,8 @@ export const LoginApiActions = createActionGroup({
     'Login Successful': props<{ userCredential: UserCredential }>(),
     'Login Failed': props<{ error: unknown }>(),
     'Login Failed Wrong Password': emptyProps(),
+    'Reauthenticate Failed Wrong Password': emptyProps(),
+    'Reauthenticate Failed': props<{ error: unknown }>(),
   },
 });
 

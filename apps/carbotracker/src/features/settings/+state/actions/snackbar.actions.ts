@@ -7,3 +7,10 @@ export const AccountPageSnackBarActions = createActionGroup({
     'Changes Successful Snackbar': emptyProps(),
   },
 });
+
+export const ChangePasswordPageSnackBarActions = createActionGroup({
+  source: 'Settings | Change Password Page Snack Bar',
+  events: {
+    'Show Old Password Was Wrong Snackbar Successful': emptyProps(),
+  },
+});

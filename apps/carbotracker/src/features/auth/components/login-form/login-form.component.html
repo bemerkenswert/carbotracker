@@ -11,6 +11,9 @@
       matInput
       placeholder="********"
     />
+    @if (loginFormGroup.controls.password.hasError('minlength')) {
+    <mat-error>Password is too short.</mat-error>
+    }
   </mat-form-field>
   <button
     class="login-button"

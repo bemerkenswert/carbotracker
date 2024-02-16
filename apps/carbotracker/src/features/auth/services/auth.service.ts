@@ -1,10 +1,12 @@
 import { Injectable, OnDestroy, inject } from '@angular/core';
 import { Store } from '@ngrx/store';
 import {
+  EmailAuthProvider,
   Unsubscribe,
   User,
   createUserWithEmailAndPassword,
   getAuth,
+  reauthenticateWithCredential,
   signInWithEmailAndPassword,
   signOut,
   updateEmail,
@@ -55,6 +57,11 @@ export class AuthService implements OnDestroy {
 
   public updateEmail(user: User, email: string): Observable<void> {
     return from(updateEmail(user, email));
+  }
+
+  public reauthenticate(user: User, email: string, password: string) {
+    const credentials = EmailAuthProvider.credential(email, password);
+    return from(reauthenticateWithCredential(user, credentials));
   }
 
   public updatePassword(user: User, password: string): Observable<void> {

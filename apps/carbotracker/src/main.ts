@@ -5,9 +5,6 @@ import { appConfig } from './app/app.config';
 
 if (isDevMode()) {
   console.error(
-    'Move logout router effects to auth effects: navigation on logout not working!',
-  );
-  console.error(
     'Product page not working after direct login, F5 fixes the issue temporarily!',
   );
 }

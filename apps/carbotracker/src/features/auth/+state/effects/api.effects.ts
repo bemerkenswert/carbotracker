@@ -106,20 +106,38 @@ export const updatePassword$ = createEffect(
     actions$.pipe(
       ofType(ChangePasswordPageActions.changePasswordClicked),
       concatLatestFrom(() => authService.getUser()),
-      switchMap(([{ newPassword }, user]) =>
-        authService.updatePassword(user, newPassword).pipe(
-          map(() => PasswordApiActions.updatePasswordSuccessful()),
-          catchError((error: AuthError) => {
-            switch (error.code) {
-              case AuthErrorCodes.WEAK_PASSWORD:
-                return of(
-                  PasswordApiActions.updatePasswordFailedWeakPassword(),
-                );
-              default:
-                return of(PasswordApiActions.updatePasswordFailed({ error }));
-            }
-          }),
-        ),
+      switchMap(([{ newPassword, oldPassword }, user]) =>
+        authService
+          .reauthenticate(user, user.email as string, oldPassword)
+          .pipe(
+            switchMap(() =>
+              authService.updatePassword(user, newPassword).pipe(
+                map(() => PasswordApiActions.updatePasswordSuccessful()),
+                catchError((error: AuthError) => {
+                  switch (error.code) {
+                    case AuthErrorCodes.WEAK_PASSWORD:
+                      return of(
+                        PasswordApiActions.updatePasswordFailedWeakPassword(),
+                      );
+                    default:
+                      return of(
+                        PasswordApiActions.updatePasswordFailed({ error }),
+                      );
+                  }
+                }),
+              ),
+            ),
+            catchError((error: AuthError) => {
+              switch (error.code) {
+                case AuthErrorCodes.INVALID_PASSWORD:
+                  return of(
+                    LoginApiActions.reauthenticateFailedWrongPassword(),
+                  );
+                default:
+                  return of(LoginApiActions.reauthenticateFailed({ error }));
+              }
+            }),
+          ),
       ),
     ),
   { functional: true },
