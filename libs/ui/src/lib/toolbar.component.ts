@@ -1,11 +1,10 @@
-import { NgIf } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 
 @Component({
   selector: 'ctui-toolbar',
   standalone: true,
-  imports: [NgIf, MatIconModule],
+  imports: [MatIconModule],
   template: `<div>
       @if (showBackwardNavigation) {
       <mat-icon

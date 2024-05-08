@@ -16,7 +16,7 @@ import { Observable, filter, from, of } from 'rxjs';
 import { AuthApiActions } from '../+state/actions/api.actions';
 
 @Injectable({ providedIn: 'root' })
-export class AuthService implements OnDestroy {
+export class AuthService {
   private readonly auth = getAuth();
   private readonly store = inject(Store);
   private readonly unsubscribe: Unsubscribe;
@@ -66,10 +66,6 @@ export class AuthService implements OnDestroy {
 
   public updatePassword(user: User, password: string): Observable<void> {
     return from(updatePassword(user, password));
-  }
-
-  public ngOnDestroy(): void {
-    this.unsubscribe();
   }
 
   private subscribeToStateChanges() {

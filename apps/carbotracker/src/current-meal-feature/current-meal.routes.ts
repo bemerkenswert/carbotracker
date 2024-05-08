@@ -4,7 +4,7 @@ import { provideState } from '@ngrx/store';
 import * as currentMealEffects from './+state/current-meal.effects';
 import { currentMealFeature } from './+state/current-meal.feature';
 
-export const CURRENT_MEAL_ROUTES: Routes = [
+const CURRENT_MEAL_ROUTES: Routes = [
   {
     path: '',
     loadComponent: () =>
@@ -20,3 +20,5 @@ export const CURRENT_MEAL_ROUTES: Routes = [
       import('./pages/CreateMealEntryPage/create-meal-entry-page.component'),
   },
 ];
+
+export default CURRENT_MEAL_ROUTES;

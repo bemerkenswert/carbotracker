@@ -5,7 +5,7 @@ import { AccountPageComponent } from './pages/account-page/account-page.componen
 import { ChangePasswordPageComponent } from './pages/change-password-page/change-password-page.component';
 import { SettingsPageComponent } from './pages/settings-page/settings-page.component';
 
-export const SETTINGS_ROUTES: Routes = [
+const SETTINGS_ROUTES: Routes = [
   {
     path: '',
     providers: [provideEffects(routingEffects, snackbarEffects)],
@@ -16,3 +16,5 @@ export const SETTINGS_ROUTES: Routes = [
     ],
   },
 ];
+
+export default SETTINGS_ROUTES;

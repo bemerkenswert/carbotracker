@@ -3,7 +3,7 @@ import { provideEffects } from '@ngrx/effects';
 import { ShellComponent } from './pages/Shell/shell.component';
 import * as shellEffects from './shell.effects';
 
-export const SHELL_ROUTES: Routes = [
+const SHELL_ROUTES: Routes = [
   {
     path: '',
     component: ShellComponent,
@@ -12,25 +12,19 @@ export const SHELL_ROUTES: Routes = [
       { path: '', pathMatch: 'full', redirectTo: 'current-meal' },
       {
         path: 'products',
-        loadChildren: () =>
-          import('../products-feature/products.routes').then(
-            (m) => m.PRODUCTS_ROUTES,
-          ),
+        loadChildren: () => import('../products-feature/products.routes'),
       },
       {
         path: 'current-meal',
         loadChildren: () =>
-          import('../current-meal-feature/current-meal.routes').then(
-            (m) => m.CURRENT_MEAL_ROUTES,
-          ),
+          import('../current-meal-feature/current-meal.routes'),
       },
       {
         path: 'settings',
-        loadChildren: () =>
-          import('../features/settings/settings.routes').then(
-            (m) => m.SETTINGS_ROUTES,
-          ),
+        loadChildren: () => import('../features/settings/settings.routes'),
       },
     ],
   },
 ];
+
+export default SHELL_ROUTES;

@@ -5,7 +5,7 @@ import * as productsEffects from './+state/products.effects';
 import { productsFeature } from './+state/products.reducer';
 import { ProductsPageComponent } from './pages/ProductsPage/products-page.component';
 
-export const PRODUCTS_ROUTES: Routes = [
+const PRODUCTS_ROUTES: Routes = [
   {
     path: '',
     component: ProductsPageComponent,
@@ -22,3 +22,5 @@ export const PRODUCTS_ROUTES: Routes = [
       import('./pages/EditProductPage/edit-product-page.component'),
   },
 ];
+
+export default PRODUCTS_ROUTES;
