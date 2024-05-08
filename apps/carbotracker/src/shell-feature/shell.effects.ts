@@ -1,11 +1,13 @@
 import { inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
+import { catchError, from, map, of, switchMap } from 'rxjs';
+import { PasswordApiActions } from '../features/auth/+state';
+import { AccountPageActions } from '../features/settings/+state';
 import {
   ShellComponentActions,
   ShellRouterEffectsActions,
 } from './shell.actions';
-import { switchMap, from, map, catchError, of } from 'rxjs';
-import { Router } from '@angular/router';
 
 export const navigateToProducts$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
@@ -22,7 +24,7 @@ export const navigateToProducts$ = createEffect(
         ),
       ),
     ),
-  { dispatch: true, functional: true },
+  { functional: true },
 );
 
 export const navigateToCurrentMeal$ = createEffect(
@@ -40,5 +42,27 @@ export const navigateToCurrentMeal$ = createEffect(
         ),
       ),
     ),
-  { dispatch: true, functional: true },
+  { functional: true },
+);
+
+export const navigateToSettingsPage$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(
+        ShellComponentActions.settingsClicked,
+        AccountPageActions.goBackIconClicked,
+        PasswordApiActions.updatePasswordSuccessful,
+      ),
+      switchMap(() =>
+        from(router.navigate(['app', 'settings'])).pipe(
+          map(() =>
+            ShellRouterEffectsActions.navigationToSettingsPageSuccessful(),
+          ),
+          catchError(() =>
+            of(ShellRouterEffectsActions.navigationToSettingsPageFailed()),
+          ),
+        ),
+      ),
+    ),
+  { functional: true },
 );

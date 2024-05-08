@@ -4,7 +4,7 @@ import { Actions, concatLatestFrom, createEffect, ofType } from '@ngrx/effects';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
 import { concatMap, exhaustMap, filter, from, of, switchMap, tap } from 'rxjs';
-import { authFeature } from '../../auth-feature/auth.reducer';
+import { authFeature } from '../../features/auth/+state/auth.store';
 import { CurrentMealService } from '../services/current-meal.service';
 import { ProductsService } from '../services/products.service';
 import {
@@ -20,6 +20,15 @@ export const navigateToCreateMealEntry$ = createEffect(
       exhaustMap(() =>
         from(router.navigate(['app', 'current-meal', 'create'])),
       ),
+    ),
+  { dispatch: false, functional: true },
+);
+
+export const navigateToCurrentMeal$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(CreateMealEntryPageComponentActions.saveClicked),
+      exhaustMap(() => from(router.navigate(['app', 'current-meal']))),
     ),
   { dispatch: false, functional: true },
 );
@@ -60,7 +69,7 @@ export const startStreamingProducts$ = createEffect(
     actions$.pipe(
       ofType(routerNavigatedAction),
       filter(({ payload }) =>
-        payload.event.urlAfterRedirects.startsWith('/app/current-meal/create'),
+        payload.event.urlAfterRedirects.startsWith('/app/current-meal'),
       ),
       switchMap(() => store.select(authFeature.selectUserId)),
       tap((uid) => {
@@ -78,9 +87,7 @@ export const stopStreamingProducts$ = createEffect(
       ofType(routerNavigatedAction),
       filter(
         ({ payload }) =>
-          !payload.event.urlAfterRedirects.startsWith(
-            '/app/current-meal/create',
-          ),
+          !payload.event.urlAfterRedirects.startsWith('/app/current-meal'),
       ),
       tap(() => {
         productsService.unsubscribeFromOwnProducts();

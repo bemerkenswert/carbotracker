@@ -1,4 +1,3 @@
-import { NgIf } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -27,7 +26,6 @@ type FormModel = Pick<Product, 'name' | 'carbs'>;
   standalone: true,
   imports: [
     CtuiFixedPositionDirective,
-    NgIf,
     FormsModule,
     MatButtonModule,
     MatFormFieldModule,

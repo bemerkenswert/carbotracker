@@ -1,0 +1,31 @@
+<form [formGroup]="signUpFormGroup" (submit)="onSignUp()">
+  <h3>Sign Up</h3>
+  <mat-form-field>
+    <mat-label>Email</mat-label>
+    <input formControlName="email" matInput placeholder="max@glucose.com" />
+  </mat-form-field>
+  <mat-form-field>
+    <mat-label>Password</mat-label>
+    <input
+      type="password"
+      formControlName="password"
+      matInput
+      placeholder="********"
+    />
+    @if (signUpFormGroup.controls.password.hasError('minlength')) {
+    <mat-error>Password is too short.</mat-error>
+    }
+  </mat-form-field>
+  <button
+    class="sign-up-button"
+    color="primary"
+    mat-raised-button
+    [disabled]="signUpFormGroup.invalid"
+    type="submit"
+  >
+    Sign Up
+  </button>
+  <button color="primary" mat-raised-button (click)="onGoBack()">
+    Go Back
+  </button>
+</form>
