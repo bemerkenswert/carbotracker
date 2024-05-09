@@ -23,7 +23,7 @@
     "@angular/cli": "~17.3.0",
     "@angular/compiler-cli": "17.3.8",
     "@angular/language-service": "17.3.8",
-    "@ngrx/schematics": "17.0.1",
+    "@ngrx/schematics": "17.2.0",
     "@ngrx/store-devtools": "17.0.1",
     "@nx/angular": "19.0.1",
     "@nx/cypress": "19.0.1",
