@@ -2,18 +2,18 @@
   <mat-sidenav-content>
     <mat-toolbar color="primary">
       @for (navItem of navItems; track navItem.icon) {
-      <button
-        mat-icon-button
-        (click)="navItem.onClick()"
-        [ngClass]="navItem.icon + '-button'"
-      >
-        <mat-icon
-          [ngClass]="{
-            'highlight-active-icon': navItem.isActive()
-          }"
-          >{{ navItem.icon }}</mat-icon
+        <button
+          mat-icon-button
+          (click)="navItem.onClick()"
+          [ngClass]="navItem.icon + '-button'"
         >
-      </button>
+          <mat-icon
+            [ngClass]="{
+              'highlight-active-icon': navItem.isActive()
+            }"
+            >{{ navItem.icon }}</mat-icon
+          >
+        </button>
       }
     </mat-toolbar>
     <router-outlet></router-outlet>
