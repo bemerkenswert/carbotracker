@@ -69,7 +69,7 @@
     "@ngrx/entity": "17.0.1",
     "@ngrx/router-store": "17.0.1",
     "@ngrx/store": "17.0.1",
-    "firebase": "^9.22.0",
+    "firebase": "^10.11.1",
     "firebase-tools": "^13.8.1",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
