@@ -1,16 +1,18 @@
 <ctui-toolbar title="Products"></ctui-toolbar>
-@if (products().length > 0;) {
-<mat-nav-list>
-  @for (product of products(); track product.id) {
-  <mat-list-item (click)="onProductClick(product)">
-    <h4 matListItemTitle>{{ product.name }}</h4>
-    <p matListItemLine>
-      <span>{{ product.carbs }}g</span>
-    </p>
-  </mat-list-item>
-  }
-</mat-nav-list>
-} @else { No products created yet. Add some to fill you list! }
+@if (products().length > 0) {
+  <mat-nav-list>
+    @for (product of products(); track product.id) {
+      <mat-list-item (click)="onProductClick(product)">
+        <h4 matListItemTitle>{{ product.name }}</h4>
+        <p matListItemLine>
+          <span>{{ product.carbs }}g</span>
+        </p>
+      </mat-list-item>
+    }
+  </mat-nav-list>
+} @else {
+  No products created yet. Add some to fill you list!
+}
 
 <button
   (click)="onAddClick()"
