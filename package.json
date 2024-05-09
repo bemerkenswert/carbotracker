@@ -20,7 +20,7 @@
     "@angular-eslint/eslint-plugin": "17.3.0",
     "@angular-eslint/eslint-plugin-template": "17.3.0",
     "@angular-eslint/template-parser": "17.3.0",
-    "@angular/cli": "~17.0.0",
+    "@angular/cli": "~17.3.0",
     "@angular/compiler-cli": "17.3.8",
     "@angular/language-service": "17.3.8",
     "@ngrx/schematics": "17.0.1",
@@ -38,7 +38,7 @@
     "@types/node": "^18.16.9",
     "@typescript-eslint/eslint-plugin": "7.8.0",
     "@typescript-eslint/parser": "7.8.0",
-    "cypress": "^13.0.0",
+    "cypress": "^13.6.6",
     "eslint": "8.57.0",
     "eslint-config-prettier": "9.0.0",
     "eslint-plugin-cypress": "2.15.1",
@@ -76,4 +76,3 @@
     "zone.js": "0.14.5"
   }
 }
-

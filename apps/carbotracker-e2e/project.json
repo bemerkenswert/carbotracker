@@ -3,6 +3,8 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "apps/carbotracker-e2e/src",
   "projectType": "application",
+  "tags": [],
+  "implicitDependencies": ["carbotracker"],
   "targets": {
     "e2e": {
       "executor": "@nx/cypress:cypress",
@@ -22,12 +24,7 @@
     },
     "lint": {
       "executor": "@nx/eslint:lint",
-      "outputs": ["{options.outputFile}"],
-      "options": {
-        "lintFilePatterns": ["apps/carbotracker-e2e/**/*.{js,ts}"]
-      }
+      "outputs": ["{options.outputFile}"]
     }
-  },
-  "tags": [],
-  "implicitDependencies": ["carbotracker"]
+  }
 }
