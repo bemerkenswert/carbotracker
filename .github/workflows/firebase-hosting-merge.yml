@@ -18,7 +18,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci
 
       - name: build carbotracker
         run: npx nx build carbotracker
