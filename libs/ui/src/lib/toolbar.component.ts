@@ -26,7 +26,7 @@ import { MatIconModule } from '@angular/material/icon';
 })
 export class CtuiToolbarComponent {
   @Input({ required: true }) public title!: string;
-  @Input() public subTitle: string = '';
+  @Input() public subTitle = '';
   @Input() public showBackwardNavigation = false;
   @Output() public readonly backwardNavigation = new EventEmitter<void>();
 }
