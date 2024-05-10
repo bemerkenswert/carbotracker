@@ -20,6 +20,7 @@ export const EditProductPageComponentActions = createActionGroup({
       changedProduct: Pick<Product, 'name' | 'carbs'>;
     }>(),
     'Delete Clicked': props<{ selectedProduct: string }>(),
+    'Go Back Icon Clicked': emptyProps(),
   },
 });
 
@@ -29,6 +30,7 @@ export const CreateProductPageComponentActions = createActionGroup({
     'Save Product Clicked': props<{
       newProduct: Pick<Product, 'name' | 'carbs'>;
     }>(),
+    'Go Back Icon Clicked': emptyProps(),
   },
 });
 
