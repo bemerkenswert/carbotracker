@@ -4,7 +4,10 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { CtuiFixedPositionDirective, CtuiToolbarComponent } from '@carbotracker/ui';
+import {
+  CtuiFixedPositionDirective,
+  CtuiToolbarComponent,
+} from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { CreateProductPageComponentActions as ComponentActions } from '../../+state/products.actions';
 import { Product } from '../../product.model';
@@ -21,7 +24,7 @@ type FormModel = Pick<Product, 'name' | 'carbs'>;
     MatIconModule,
     MatInputModule,
     CtuiFixedPositionDirective,
-    CtuiToolbarComponent
+    CtuiToolbarComponent,
   ],
   templateUrl: './create-product-page.component.html',
   styleUrls: ['./create-product-page.component.scss'],
@@ -43,6 +46,6 @@ export default class CreateProductPageComponent {
   }
 
   public onGoBack() {
-    this.store.dispatch(ComponentActions.goBackIconClicked())
+    this.store.dispatch(ComponentActions.goBackIconClicked());
   }
 }

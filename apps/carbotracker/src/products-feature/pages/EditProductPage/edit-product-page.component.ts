@@ -85,6 +85,6 @@ export default class EditProductPageComponent {
   }
 
   public onGoBack() {
-    this.store.dispatch(ComponentActions.goBackIconClicked())
+    this.store.dispatch(ComponentActions.goBackIconClicked());
   }
 }
