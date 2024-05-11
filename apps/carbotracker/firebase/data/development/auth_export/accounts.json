@@ -1,1 +1,30 @@
-{"kind":"identitytoolkit#DownloadAccountResponse","users":[{"localId":"yZdJ9LqjE2gwUkhfXOVgVvlx7oJj","lastLoginAt":"1715437792292","displayName":"Zio Zucker","photoUrl":"","emailVerified":true,"email":"z@z.com","salt":"fakeSalt6SRJCzqrtrAOPU3bzTbN","passwordHash":"fakeHash:salt=fakeSalt6SRJCzqrtrAOPU3bzTbN:password=zzzzzz","passwordUpdatedAt":1715437777578,"validSince":"1715437777","mfaInfo":[],"createdAt":"1715437777578","providerUserInfo":[{"providerId":"password","email":"z@z.com","federatedId":"z@z.com","rawId":"z@z.com","displayName":"Zio Zucker","photoUrl":""}],"lastRefreshAt":"2024-05-11T14:29:52.293Z"}]}
+{
+  "kind": "identitytoolkit#DownloadAccountResponse",
+  "users": [
+    {
+      "localId": "yZdJ9LqjE2gwUkhfXOVgVvlx7oJj",
+      "lastLoginAt": "1715437792292",
+      "displayName": "Zio Zucker",
+      "photoUrl": "",
+      "emailVerified": true,
+      "email": "z@z.com",
+      "salt": "fakeSalt6SRJCzqrtrAOPU3bzTbN",
+      "passwordHash": "fakeHash:salt=fakeSalt6SRJCzqrtrAOPU3bzTbN:password=zzzzzz",
+      "passwordUpdatedAt": 1715437777578,
+      "validSince": "1715437777",
+      "mfaInfo": [],
+      "createdAt": "1715437777578",
+      "providerUserInfo": [
+        {
+          "providerId": "password",
+          "email": "z@z.com",
+          "federatedId": "z@z.com",
+          "rawId": "z@z.com",
+          "displayName": "Zio Zucker",
+          "photoUrl": ""
+        }
+      ],
+      "lastRefreshAt": "2024-05-11T14:29:52.293Z"
+    }
+  ]
+}
