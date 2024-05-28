@@ -105,6 +105,7 @@ export const navigateToProductsPage$ = createEffect(
         ProductsApiActions.creatingProductSuccessful,
         CreateProductPageComponentActions.goBackIconClicked,
         EditProductPageComponentActions.goBackIconClicked,
+        ProductsApiActions.updatingProductSuccessful,
       ),
       exhaustMap(() => from(router.navigate(['app', 'products']))),
     ),
