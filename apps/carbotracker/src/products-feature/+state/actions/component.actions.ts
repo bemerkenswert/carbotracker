@@ -1,5 +1,5 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
-import { Product } from '../product.model';
+import { Product } from '../../product.model';
 
 export const ProductsPageComponentActions = createActionGroup({
   source: 'Products | Products Page Component',
@@ -31,26 +31,5 @@ export const CreateProductPageComponentActions = createActionGroup({
       newProduct: Pick<Product, 'name' | 'carbs'>;
     }>(),
     'Go Back Icon Clicked': emptyProps(),
-  },
-});
-
-export const ProductsApiActions = createActionGroup({
-  source: 'Products | Products Api',
-  events: {
-    'Products Collection Changed': props<{ products: Product[] }>(),
-    'Unsubscribed From Products Stream': emptyProps(),
-    'Updating Product Successful': emptyProps(),
-    'Updating Product Failed': props<{ error: unknown }>(),
-    'Creating Product Successful': emptyProps(),
-    'Creating Product Failed': props<{ error: unknown }>(),
-    'Deleting Product Successful': emptyProps(),
-    'Deleting Product Failed': props<{ error: unknown }>(),
-  },
-});
-
-export const ProductsRouterActions = createActionGroup({
-  source: 'Products | Router',
-  events: {
-    'Navigated Away From Products Page': emptyProps(),
   },
 });

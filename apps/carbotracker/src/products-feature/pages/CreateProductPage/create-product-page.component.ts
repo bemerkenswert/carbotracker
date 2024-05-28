@@ -9,7 +9,7 @@ import {
   CtuiToolbarComponent,
 } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
-import { CreateProductPageComponentActions as ComponentActions } from '../../+state/products.actions';
+import { CreateProductPageComponentActions as ComponentActions } from '../../+state/actions/component.actions';
 import { Product } from '../../product.model';
 
 type FormModel = Pick<Product, 'name' | 'carbs'>;
