@@ -86,7 +86,7 @@
     "serve:firebase-emulated": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "npx firebase emulators:exec 'npx nx serve carbotracker' --ui --import=firebase/data/development -c firebase/config/firebase.json",
+        "command": "npx firebase emulators:exec 'npx nx serve carbotracker' --ui --import=firebase-data/development -c ./firebase.json",
         "cwd": "apps/carbotracker"
       }
     },
