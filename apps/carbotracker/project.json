@@ -60,7 +60,13 @@
           "vendorChunk": true,
           "extractLicenses": false,
           "sourceMap": true,
-          "namedChunks": true
+          "namedChunks": true,
+          "fileReplacements": [
+            {
+              "replace": "apps/carbotracker/src/environments/environment.ts",
+              "with": "apps/carbotracker/src/environments/environment.development.ts"
+            }
+          ]
         }
       },
       "defaultConfiguration": "production"
@@ -76,6 +82,13 @@
         }
       },
       "defaultConfiguration": "development"
+    },
+    "serve:firebase-emulated": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx firebase emulators:exec 'npx nx serve carbotracker' --ui --import=firebase-data/development -c ./firebase.json",
+        "cwd": "apps/carbotracker"
+      }
     },
     "extract-i18n": {
       "executor": "@angular-devkit/build-angular:extract-i18n",

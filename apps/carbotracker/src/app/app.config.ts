@@ -8,9 +8,9 @@ import { Store, provideStore } from '@ngrx/store';
 import { provideStoreDevtools } from '@ngrx/store-devtools';
 import { filter, switchMap } from 'rxjs';
 
+import { environment } from '../environments/environment.development';
 import { authFeature } from '../features/auth/+state/auth.store';
 import { getAuthProviders } from '../features/auth/auth.providers';
-import { provideFirebase } from '../firebase/provide-firebase';
 import * as appEffects from './app.effects';
 
 const isLoggedIn = () => {
@@ -25,15 +25,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideAnimations(),
     provideStore({ router: routerReducer }),
-    provideFirebase({
-      apiKey: 'AIzaSyBh6fpP_cO3C3bR-fzHR8WqHhPMURhvHqQ',
-      authDomain: 'carbotracker.firebaseapp.com',
-      projectId: 'carbotracker',
-      storageBucket: 'carbotracker.appspot.com',
-      messagingSenderId: '909622893544',
-      appId: '1:909622893544:web:8f64f0bd468a035e33e25d',
-      measurementId: 'G-MKN5SN9M5D',
-    }),
+    environment.fireBaseProvider(),
     provideRouterStore(),
     getAuthProviders(),
     provideEffects([appEffects]),
