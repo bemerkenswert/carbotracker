@@ -1,5 +1,4 @@
 import { inject } from '@angular/core';
-import { Router } from '@angular/router';
 import { Actions, concatLatestFrom, createEffect, ofType } from '@ngrx/effects';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
@@ -7,7 +6,6 @@ import {
   catchError,
   exhaustMap,
   filter,
-  from,
   map,
   mergeMap,
   of,
@@ -15,16 +13,15 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { authFeature } from '../../features/auth/+state/auth.store';
-import { SettingsPageActions } from '../../features/settings/+state/actions/component.actions';
-import { ProductsService } from '../services/products.service';
+import { authFeature } from '../../../features/auth/+state/auth.store';
+import { SettingsPageActions } from '../../../features/settings/+state';
+import { ProductsService } from '../../services/products.service';
+import { ProductsApiActions } from '../actions/api.actions';
 import {
   CreateProductPageComponentActions,
   EditProductPageComponentActions,
-  ProductsApiActions,
-  ProductsPageComponentActions,
-  ProductsRouterActions,
-} from './products.actions';
+} from '../actions/component.actions';
+import { ProductsRouterActions } from '../actions/routing.actions';
 
 const filterNull = <T>() =>
   pipe(filter((value: T | null): value is T => Boolean(value)));
@@ -50,19 +47,6 @@ export const startStreamingProducts$ = createEffect(
   { dispatch: false, functional: true },
 );
 
-export const navigatedAwayFromProductsPage$ = createEffect(
-  (actions$ = inject(Actions)) =>
-    actions$.pipe(
-      ofType(routerNavigatedAction),
-      filter(
-        ({ payload }) =>
-          !payload.event.urlAfterRedirects.startsWith('/app/products'),
-      ),
-      map(() => ProductsRouterActions.navigatedAwayFromProductsPage()),
-    ),
-  { dispatch: true, functional: true },
-);
-
 export const stopStreamingProducts$ = createEffect(
   (actions$ = inject(Actions), productsService = inject(ProductsService)) =>
     actions$.pipe(
@@ -73,40 +57,6 @@ export const stopStreamingProducts$ = createEffect(
       tap(() => {
         productsService.unsubscribeFromOwnProducts();
       }),
-    ),
-  { dispatch: false, functional: true },
-);
-
-export const navigateToEditProduct$ = createEffect(
-  (actions$ = inject(Actions), router = inject(Router)) =>
-    actions$.pipe(
-      ofType(ProductsPageComponentActions.productClicked),
-      exhaustMap(({ product }) =>
-        from(router.navigate(['app', 'products', product.id])),
-      ),
-    ),
-  { dispatch: false, functional: true },
-);
-
-export const navigateToCreateProduct$ = createEffect(
-  (actions$ = inject(Actions), router = inject(Router)) =>
-    actions$.pipe(
-      ofType(ProductsPageComponentActions.addClicked),
-      exhaustMap(() => from(router.navigate(['app', 'products', 'create']))),
-    ),
-  { dispatch: false, functional: true },
-);
-
-export const navigateToProductsPage$ = createEffect(
-  (actions$ = inject(Actions), router = inject(Router)) =>
-    actions$.pipe(
-      ofType(
-        ProductsApiActions.deletingProductSuccessful,
-        ProductsApiActions.creatingProductSuccessful,
-        CreateProductPageComponentActions.goBackIconClicked,
-        EditProductPageComponentActions.goBackIconClicked,
-      ),
-      exhaustMap(() => from(router.navigate(['app', 'products']))),
     ),
   { dispatch: false, functional: true },
 );
