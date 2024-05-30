@@ -13,7 +13,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { from } from 'rxjs';
-import { ProductsApiActions } from '../+state/products.actions';
+import { ProductsApiActions } from '../+state/actions/api.actions';
 import { Product } from '../product.model';
 
 @Injectable({ providedIn: 'root' })

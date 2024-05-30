@@ -13,7 +13,7 @@ import {
   CtuiToolbarComponent,
 } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
-import { ProductsPageComponentActions as ComponentActions } from '../../+state/products.actions';
+import { ProductsPageComponentActions as ComponentActions } from '../../+state/actions/component.actions';
 import { productsFeature } from '../../+state/products.reducer';
 import { Product } from '../../product.model';
 @Component({

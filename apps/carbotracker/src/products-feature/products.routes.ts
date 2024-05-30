@@ -1,7 +1,9 @@
 import { Routes } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
 import { provideState } from '@ngrx/store';
-import * as productsEffects from './+state/products.effects';
+import * as apiEffects from './+state/effects/api.effects';
+import * as routingEffects from './+state/effects/routing.effects';
+import * as snackbarEffects from './+state/effects/snackbar.effects';
 import { productsFeature } from './+state/products.reducer';
 import { ProductsPageComponent } from './pages/ProductsPage/products-page.component';
 
@@ -9,7 +11,10 @@ const PRODUCTS_ROUTES: Routes = [
   {
     path: '',
     component: ProductsPageComponent,
-    providers: [provideState(productsFeature), provideEffects(productsEffects)],
+    providers: [
+      provideState(productsFeature),
+      provideEffects(apiEffects, routingEffects, snackbarEffects),
+    ],
   },
   {
     path: 'create',

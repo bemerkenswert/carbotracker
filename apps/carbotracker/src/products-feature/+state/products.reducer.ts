@@ -1,10 +1,8 @@
 import { EntityState, createEntityAdapter } from '@ngrx/entity';
 import { createFeature, createReducer, createSelector, on } from '@ngrx/store';
 import { Product } from '../product.model';
-import {
-  EditProductPageComponentActions,
-  ProductsApiActions,
-} from './products.actions';
+import { ProductsApiActions } from './actions/api.actions';
+import { EditProductPageComponentActions } from './actions/component.actions';
 
 interface ProductsState {
   products: EntityState<Product>;
