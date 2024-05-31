@@ -19,7 +19,7 @@ export const EditProductPageComponentActions = createActionGroup({
       exisitingProduct: Product;
       changedProduct: Pick<Product, 'name' | 'carbs'>;
     }>(),
-    'Delete Clicked': props<{ selectedProduct: string }>(),
+    'Delete Clicked': props<{ selectedProduct: Product }>(),
     'Go Back Icon Clicked': emptyProps(),
   },
 });

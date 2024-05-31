@@ -1,26 +1,15 @@
-import { Component, Inject } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
-
-export interface ConfirmationDialogConfig {
-  title: string;
-  content: string;
-}
+import { ConfirmationDialogData } from './confirmation-dialog.model';
 
 @Component({
   selector: 'ctui-confirmation-dialog',
   standalone: true,
-  imports: [MatDialogModule],
+  imports: [MatDialogModule, MatButtonModule],
   templateUrl: './confirmation-dialog.component.html',
   styleUrls: ['./confirmation-dialog.component.scss'],
 })
 export class ConfirmationDialogComponent {
-  constructor(@Inject(MAT_DIALOG_DATA) public data: ConfirmationDialogConfig) {}
-
-  onAbortClick() {
-    console.log('test');
-  }
-
-  onConfirmClick() {
-    console.log('test');
-  }
+  protected readonly data: ConfirmationDialogData = inject(MAT_DIALOG_DATA);
 }

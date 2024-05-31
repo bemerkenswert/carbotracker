@@ -3,6 +3,13 @@
   <p>{{ data.content }}</p>
 </mat-dialog-content>
 <mat-dialog-actions>
-  <button mat-button (click)="onAbortClick()">Abort</button>
-  <button mat-button (click)="onConfirmClick()" cdkFocusInitial>Confirm</button>
+  <button mat-button [matDialogClose]="{ confirmed: false }">Abort</button>
+  <button
+    color="primary"
+    mat-raised-button
+    [matDialogClose]="{ confirmed: true }"
+    cdkFocusInitial
+  >
+    Confirm
+  </button>
 </mat-dialog-actions>
