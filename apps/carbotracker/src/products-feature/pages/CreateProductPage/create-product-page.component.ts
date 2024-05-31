@@ -34,7 +34,7 @@ export default class CreateProductPageComponent {
 
   public readonly model: FormModel = {
     name: '',
-    carbs: 0,
+    carbs: null,
   };
 
   public onSubmit() {

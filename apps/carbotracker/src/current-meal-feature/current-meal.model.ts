@@ -1,7 +1,7 @@
 export type MealEntry = {
   productId: string;
   name: string;
-  carbs: number;
+  carbs: number | null;
   amount: number;
 };
 

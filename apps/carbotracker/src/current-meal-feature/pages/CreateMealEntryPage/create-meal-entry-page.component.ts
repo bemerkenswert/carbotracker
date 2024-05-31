@@ -17,7 +17,7 @@ import { Product } from '../../../products-feature/product.model';
 import { selectFilteredProducts } from './create-meal-entry-page.selectors';
 
 type FormModel = {
-  amount: number;
+  amount: number | null;
   product: Product | null;
 };
 
@@ -43,7 +43,7 @@ export default class CreateMealEntryPageComponent implements OnInit {
     selectFilteredProducts,
   );
   public readonly model: FormModel = {
-    amount: 0,
+    amount: null,
     product: null,
   };
 
@@ -65,7 +65,7 @@ export default class CreateMealEntryPageComponent implements OnInit {
   }
 
   public onSubmit() {
-    if (this.model.product && this.model.amount > 0) {
+    if (this.model.product && this.model.amount && this.model.amount > 0) {
       const { amount, product } = this.model;
       const { name, id, carbs } = product;
       this.store.dispatch(
