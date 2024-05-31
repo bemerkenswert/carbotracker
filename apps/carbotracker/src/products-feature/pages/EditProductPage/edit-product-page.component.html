@@ -1,46 +1,46 @@
 @if (product(); as product) {
-<ng-container>
-  <ctui-toolbar
-    title="Edit product"
-    [showBackwardNavigation]="true"
-    (backwardNavigation)="onGoBack()"
-  >
-    <button mat-icon-button (click)="onDeleteClicked(product)">
-      <mat-icon>delete</mat-icon>
-    </button>
-  </ctui-toolbar>
-  <form #productForm="ngForm" (ngSubmit)="onSubmit()">
-    <mat-form-field>
-      <mat-label formGroupBane>Product name</mat-label>
-      <input
-        name="name"
-        required
-        type="text"
-        [(ngModel)]="model.name"
-        matInput
-      />
-    </mat-form-field>
-    <mat-form-field>
-      <mat-label>Carbohydrates per 100g</mat-label>
-      <input
-        name="carbs"
-        required
-        type="number"
-        [(ngModel)]="model.carbs"
-        matInput
-      />
-    </mat-form-field>
-    <button
-      color="primary"
-      type="submit"
-      [disabled]="productForm.invalid || productForm.pristine"
-      mat-fab
-      ctuiFixedPosition
+  <ng-container>
+    <ctui-toolbar
+      title="Edit product"
+      [showBackwardNavigation]="true"
+      (backwardNavigation)="onGoBack()"
     >
-      <mat-icon>save</mat-icon>
-    </button>
-  </form>
-</ng-container>
+      <button mat-icon-button (click)="onDeleteClicked(product)">
+        <mat-icon>delete</mat-icon>
+      </button>
+    </ctui-toolbar>
+    <form #productForm="ngForm" (ngSubmit)="onSubmit()">
+      <mat-form-field>
+        <mat-label formGroupBane>Product name</mat-label>
+        <input
+          name="name"
+          required
+          type="text"
+          [(ngModel)]="model.name"
+          matInput
+        />
+      </mat-form-field>
+      <mat-form-field>
+        <mat-label>Carbohydrates per 100g</mat-label>
+        <input
+          name="carbs"
+          required
+          type="number"
+          [(ngModel)]="model.carbs"
+          matInput
+        />
+      </mat-form-field>
+      <button
+        color="primary"
+        type="submit"
+        [disabled]="productForm.invalid || productForm.pristine"
+        mat-fab
+        ctuiFixedPosition
+      >
+        <mat-icon>save</mat-icon>
+      </button>
+    </form>
+  </ng-container>
 } @else {
-<ng-template> Loading the selected product... </ng-template>
+  <ng-template> Loading the selected product... </ng-template>
 }
