@@ -21,6 +21,7 @@ import {
   CreateProductPageComponentActions,
   EditProductPageComponentActions,
 } from '../actions/component.actions';
+import { DeleteProductConfirmationDialogActions } from '../actions/dialog.actions';
 import { ProductsRouterActions } from '../actions/routing.actions';
 
 const filterNull = <T>() =>
@@ -85,9 +86,9 @@ export const updateProduct$ = createEffect(
 export const deleteProduct$ = createEffect(
   (actions$ = inject(Actions), productsService = inject(ProductsService)) =>
     actions$.pipe(
-      ofType(EditProductPageComponentActions.deleteClicked),
+      ofType(DeleteProductConfirmationDialogActions.confirmClicked),
       exhaustMap(({ selectedProduct }) =>
-        productsService.deleteProduct(selectedProduct).pipe(
+        productsService.deleteProduct(selectedProduct.id).pipe(
           map(() => ProductsApiActions.deletingProductSuccessful()),
           catchError((error) =>
             of(ProductsApiActions.deletingProductFailed({ error })),

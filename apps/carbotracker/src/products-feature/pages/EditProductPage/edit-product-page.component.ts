@@ -70,7 +70,7 @@ export default class EditProductPageComponent {
       );
   }
 
-  public onDeleteClicked(selectedProduct: string) {
+  public onDeleteClicked(selectedProduct: Product) {
     this.store.dispatch(ComponentActions.deleteClicked({ selectedProduct }));
   }
 
