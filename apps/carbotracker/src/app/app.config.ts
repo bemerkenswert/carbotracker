@@ -8,7 +8,7 @@ import { Store, provideStore } from '@ngrx/store';
 import { provideStoreDevtools } from '@ngrx/store-devtools';
 import { filter, switchMap } from 'rxjs';
 
-import { environment } from '../environments/environment.development';
+import { environment } from '../environments/environment';
 import { authFeature } from '../features/auth/+state/auth.store';
 import { getAuthProviders } from '../features/auth/auth.providers';
 import * as appEffects from './app.effects';
