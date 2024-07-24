@@ -14,5 +14,9 @@ service cloud.firestore {
       allow read, update, delete: if isDocOwner(request, resource)
       allow create: if documentCreatorIsRequester(request)
     }
+
+    match /current-meals/{currentMealId}  {   
+      allow read, write: if true
+    } 
   }
 }
