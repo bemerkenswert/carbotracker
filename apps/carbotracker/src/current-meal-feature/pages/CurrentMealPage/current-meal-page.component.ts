@@ -10,6 +10,8 @@ import { Store } from '@ngrx/store';
 import { CurrentMealPageComponentActions as ComponentActions } from '../../+state/current-meal.actions';
 import { currentMealFeature } from '../../+state/current-meal.feature';
 import { MealEntry } from '../../current-meal.model';
+import { selectSumOfCurrentMealCarbs } from './current-meal-page.selector';
+import { DecimalPipe } from '@angular/common';
 
 @Component({
   selector: 'carbotracker-current-meal-page',
@@ -20,6 +22,7 @@ import { MealEntry } from '../../current-meal.model';
     MatButtonModule,
     MatIconModule,
     MatListModule,
+    DecimalPipe,
   ],
   templateUrl: './current-meal-page.component.html',
   styleUrls: ['./current-meal-page.component.scss'],
@@ -31,6 +34,9 @@ export default class CurrentMealPageComponent implements OnInit, OnDestroy {
   );
   protected readonly productsAvailable = this.store.selectSignal(
     currentMealFeature.selectProductsAvailableToAdd,
+  );
+  protected readonly sumOfCurrentMealCarbs = this.store.selectSignal(
+    selectSumOfCurrentMealCarbs,
   );
 
   public ngOnInit(): void {
