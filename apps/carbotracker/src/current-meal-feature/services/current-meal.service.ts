@@ -6,7 +6,7 @@ import {
   doc,
   getFirestore,
   onSnapshot,
-  updateDoc,
+  setDoc,
 } from 'firebase/firestore';
 import { from } from 'rxjs';
 import { CurrentMealApiActions as ApiActions } from '../+state/current-meal.actions';
@@ -24,7 +24,7 @@ export class CurrentMealService {
   }) {
     const mealEntries = [...params.currentMeal.mealEntries, params.mealEntry];
     const document = this.getCurrentMealDocument(params);
-    return from(updateDoc(document, { mealEntries }));
+    return from(setDoc(document, { mealEntries }));
   }
 
   public subscribeToOwnCurrentMeal(params: { uid: string }) {
