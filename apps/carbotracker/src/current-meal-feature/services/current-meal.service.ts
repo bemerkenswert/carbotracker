@@ -6,7 +6,7 @@ import {
   doc,
   getFirestore,
   onSnapshot,
-  setDoc
+  setDoc,
 } from 'firebase/firestore';
 import { from } from 'rxjs';
 import { CurrentMealApiActions as ApiActions } from '../+state/current-meal.actions';
