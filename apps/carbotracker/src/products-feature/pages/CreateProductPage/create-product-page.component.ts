@@ -10,9 +10,8 @@ import {
 } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { CreateProductPageComponentActions as ComponentActions } from '../../+state/actions/component.actions';
-import { Product } from '../../product.model';
 
-type FormModel = Pick<Product, 'name' | 'carbs'>;
+type FormModel = { name: string; carbs: number | null };
 
 @Component({
   selector: 'carbotracker-create-product-page',
@@ -38,11 +37,16 @@ export default class CreateProductPageComponent {
   };
 
   public onSubmit() {
-    this.store.dispatch(
-      ComponentActions.saveProductClicked({
-        newProduct: { ...this.model },
-      }),
-    );
+    if (this.model.carbs) {
+      this.store.dispatch(
+        ComponentActions.saveProductClicked({
+          newProduct: {
+            name: this.model.name,
+            carbs: this.model.carbs,
+          },
+        }),
+      );
+    }
   }
 
   public onGoBack() {
