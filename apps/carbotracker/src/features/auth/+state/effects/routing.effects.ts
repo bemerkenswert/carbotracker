@@ -1,7 +1,8 @@
 import { DOCUMENT } from '@angular/common';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { Actions, concatLatestFrom, createEffect, ofType } from '@ngrx/effects';
+import { Actions, createEffect, ofType } from '@ngrx/effects';
+import { concatLatestFrom } from '@ngrx/operators';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { catchError, from, map, of, switchMap, tap } from 'rxjs';
 import { LoginApiActions, LogoutApiActions } from '../actions/api.actions';
