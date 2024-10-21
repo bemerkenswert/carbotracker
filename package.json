@@ -29,7 +29,7 @@
     "@nx/cypress": "19.8.4",
     "@nx/eslint": "19.8.4",
     "@nx/eslint-plugin": "19.8.4",
-    "@nx/jest": "19.8.4",
+    "@nx/jest": "20.0.3",
     "@nx/js": "19.8.4",
     "@nx/web": "19.8.4",
     "@nx/workspace": "19.8.4",
