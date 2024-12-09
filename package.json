@@ -28,7 +28,7 @@
     "@nx/angular": "19.8.4",
     "@nx/cypress": "19.8.4",
     "@nx/eslint": "19.8.4",
-    "@nx/eslint-plugin": "19.8.4",
+    "@nx/eslint-plugin": "20.2.1",
     "@nx/jest": "19.8.4",
     "@nx/js": "19.8.4",
     "@nx/web": "19.8.4",
