@@ -6,6 +6,7 @@ mat-sidenav-container {
 
 h1 {
   @include font-family-yeseva-one;
+  margin-top: 3rem;
 }
 
 h1,
@@ -14,9 +15,6 @@ p {
   text-align: center;
 }
 
-.carbotracker-details {
-  font-size: 14px;
-  margin: 25%;
-  text-align: center;
-  width: 50%;
+div {
+  margin-top: 4rem;
 }
