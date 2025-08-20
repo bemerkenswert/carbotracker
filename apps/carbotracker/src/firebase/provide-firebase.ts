@@ -1,4 +1,10 @@
-import { EnvironmentProviders, InjectionToken, Provider, makeEnvironmentProviders, provideEnvironmentInitializer } from '@angular/core';
+import {
+  EnvironmentProviders,
+  InjectionToken,
+  Provider,
+  makeEnvironmentProviders,
+  provideEnvironmentInitializer,
+} from '@angular/core';
 import { FirebaseApp, FirebaseOptions, initializeApp } from 'firebase/app';
 import { connectAuthEmulator, getAuth } from 'firebase/auth';
 import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore';
@@ -38,11 +44,11 @@ export function provideFirebase(
 ): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideEnvironmentInitializer(() => {
-        const initializerFn = (() => {
+      const initializerFn = (() => {
         return () => initializeApp(options);
       })();
-        return initializerFn();
-      }),
+      return initializerFn();
+    }),
     features.map((feature) => feature.ɵproviders),
   ]);
 }
@@ -58,7 +64,7 @@ export function withAuthEmulator(
 ): EmulatorFeatures {
   const providers = [
     provideEnvironmentInitializer(() => {
-        const initializerFn = (() => {
+      const initializerFn = (() => {
         return async () => {
           const host = options.host ?? 'localhost';
           const port = options.port ?? 9099;
@@ -76,8 +82,8 @@ export function withAuthEmulator(
           }
         };
       })();
-        return initializerFn();
-      }),
+      return initializerFn();
+    }),
   ];
   return emulatorFeature(EmulatorFeatureKind.AuthFeature, providers);
 }
@@ -92,7 +98,7 @@ export function withFirestoreEmulator(
 ): EmulatorFeatures {
   const providers = [
     provideEnvironmentInitializer(() => {
-        const initializerFn = (() => {
+      const initializerFn = (() => {
         return async () => {
           const host = options.host ?? 'localhost';
           const port = options.port ?? 8080;
@@ -108,8 +114,8 @@ export function withFirestoreEmulator(
           }
         };
       })();
-        return initializerFn();
-      }),
+      return initializerFn();
+    }),
   ];
   return emulatorFeature(EmulatorFeatureKind.FirestoreFeature, providers);
 }

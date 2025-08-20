@@ -52,17 +52,17 @@ const getNavItems = () => {
 };
 
 @Component({
-    selector: 'carbotracker-shell',
-    imports: [
-        MatButtonModule,
-        MatIconModule,
-        MatSidenavModule,
-        MatToolbarModule,
-        RouterOutlet,
-        NgClass,
-    ],
-    templateUrl: './shell.component.html',
-    styleUrls: ['./shell.component.scss']
+  selector: 'carbotracker-shell',
+  imports: [
+    MatButtonModule,
+    MatIconModule,
+    MatSidenavModule,
+    MatToolbarModule,
+    RouterOutlet,
+    NgClass,
+  ],
+  templateUrl: './shell.component.html',
+  styleUrls: ['./shell.component.scss'],
 })
 export class ShellComponent {
   protected readonly navItems: NavItem[] = getNavItems();

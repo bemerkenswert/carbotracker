@@ -4,10 +4,10 @@ import { MatSidenavModule } from '@angular/material/sidenav';
 import { SignUpFormComponent } from '../../components/sign-up-form/sign-up-form.component';
 
 @Component({
-    selector: 'carbotracker-sign-up-page',
-    imports: [MatSidenavModule, ReactiveFormsModule, SignUpFormComponent],
-    templateUrl: './sign-up-page.component.html',
-    styleUrls: ['./sign-up-page.component.scss'],
-    changeDetection: ChangeDetectionStrategy.OnPush
+  selector: 'carbotracker-sign-up-page',
+  imports: [MatSidenavModule, ReactiveFormsModule, SignUpFormComponent],
+  templateUrl: './sign-up-page.component.html',
+  styleUrls: ['./sign-up-page.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SignUpPageComponent {}

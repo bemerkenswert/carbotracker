@@ -14,18 +14,18 @@ import { CreateProductPageComponentActions as ComponentActions } from '../../+st
 type FormModel = { name: string; carbs: number | null };
 
 @Component({
-    selector: 'carbotracker-create-product-page',
-    imports: [
-        FormsModule,
-        MatButtonModule,
-        MatFormFieldModule,
-        MatIconModule,
-        MatInputModule,
-        CtuiFixedPositionDirective,
-        CtuiToolbarComponent,
-    ],
-    templateUrl: './create-product-page.component.html',
-    styleUrls: ['./create-product-page.component.scss']
+  selector: 'carbotracker-create-product-page',
+  imports: [
+    FormsModule,
+    MatButtonModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    CtuiFixedPositionDirective,
+    CtuiToolbarComponent,
+  ],
+  templateUrl: './create-product-page.component.html',
+  styleUrls: ['./create-product-page.component.scss'],
 })
 export default class CreateProductPageComponent {
   private readonly store = inject(Store);

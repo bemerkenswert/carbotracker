@@ -4,10 +4,10 @@ import { LoginFormComponent } from '../../components/login-form/login-form.compo
 import { ReactiveFormsModule } from '@angular/forms';
 
 @Component({
-    selector: 'carbotracker-login-page',
-    imports: [MatSidenavModule, ReactiveFormsModule, LoginFormComponent],
-    templateUrl: './login-page.component.html',
-    styleUrls: ['./login-page.component.scss'],
-    changeDetection: ChangeDetectionStrategy.OnPush
+  selector: 'carbotracker-login-page',
+  imports: [MatSidenavModule, ReactiveFormsModule, LoginFormComponent],
+  templateUrl: './login-page.component.html',
+  styleUrls: ['./login-page.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LoginPageComponent {}

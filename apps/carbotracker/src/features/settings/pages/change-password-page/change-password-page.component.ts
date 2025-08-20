@@ -23,17 +23,17 @@ const SameValueValidator = <T>(
 };
 
 @Component({
-    selector: 'carbotracker-change-password-page',
-    imports: [
-        MatButtonModule,
-        MatFormFieldModule,
-        MatInputModule,
-        ReactiveFormsModule,
-        CtuiToolbarComponent,
-    ],
-    templateUrl: './change-password-page.component.html',
-    styleUrls: ['./change-password-page.component.scss'],
-    changeDetection: ChangeDetectionStrategy.OnPush
+  selector: 'carbotracker-change-password-page',
+  imports: [
+    MatButtonModule,
+    MatFormFieldModule,
+    MatInputModule,
+    ReactiveFormsModule,
+    CtuiToolbarComponent,
+  ],
+  templateUrl: './change-password-page.component.html',
+  styleUrls: ['./change-password-page.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ChangePasswordPageComponent {
   private readonly fromBuilder = inject(FormBuilder);

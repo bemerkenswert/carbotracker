@@ -34,17 +34,17 @@ const createLoginFormGroup = () =>
   });
 
 @Component({
-    selector: 'carbotracker-login-form',
-    imports: [
-        MatButtonModule,
-        MatFormFieldModule,
-        MatInputModule,
-        ReactiveFormsModule,
-        MatSidenavModule,
-    ],
-    templateUrl: './login-form.component.html',
-    styleUrls: ['./login-form.component.scss'],
-    changeDetection: ChangeDetectionStrategy.OnPush
+  selector: 'carbotracker-login-form',
+  imports: [
+    MatButtonModule,
+    MatFormFieldModule,
+    MatInputModule,
+    ReactiveFormsModule,
+    MatSidenavModule,
+  ],
+  templateUrl: './login-form.component.html',
+  styleUrls: ['./login-form.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LoginFormComponent implements OnInit {
   private readonly store = inject(Store);
