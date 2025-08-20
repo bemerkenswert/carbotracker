@@ -17,18 +17,17 @@ import { ProductsPageComponentActions as ComponentActions } from '../../+state/a
 import { productsFeature } from '../../+state/products.reducer';
 import { Product } from '../../product.model';
 @Component({
-  selector: 'carbotracker-products-page',
-  standalone: true,
-  imports: [
-    MatButtonModule,
-    MatIconModule,
-    MatListModule,
-    CtuiFixedPositionDirective,
-    CtuiToolbarComponent,
-  ],
-  templateUrl: './products-page.component.html',
-  styleUrls: ['./products-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'carbotracker-products-page',
+    imports: [
+        MatButtonModule,
+        MatIconModule,
+        MatListModule,
+        CtuiFixedPositionDirective,
+        CtuiToolbarComponent,
+    ],
+    templateUrl: './products-page.component.html',
+    styleUrls: ['./products-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ProductsPageComponent implements OnInit, OnDestroy {
   private readonly store = inject(Store);

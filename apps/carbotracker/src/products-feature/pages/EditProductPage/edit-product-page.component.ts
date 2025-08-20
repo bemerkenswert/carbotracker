@@ -22,20 +22,19 @@ import { Product } from '../../product.model';
 type FormModel = Pick<Product, 'name' | 'carbs'>;
 
 @Component({
-  selector: 'carbotracker-edit-product-page',
-  standalone: true,
-  imports: [
-    CtuiFixedPositionDirective,
-    FormsModule,
-    MatButtonModule,
-    MatFormFieldModule,
-    MatIconModule,
-    MatInputModule,
-    CtuiToolbarComponent,
-  ],
-  templateUrl: './edit-product-page.component.html',
-  styleUrls: ['./edit-product-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'carbotracker-edit-product-page',
+    imports: [
+        CtuiFixedPositionDirective,
+        FormsModule,
+        MatButtonModule,
+        MatFormFieldModule,
+        MatIconModule,
+        MatInputModule,
+        CtuiToolbarComponent,
+    ],
+    templateUrl: './edit-product-page.component.html',
+    styleUrls: ['./edit-product-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export default class EditProductPageComponent {
   private readonly store = inject(Store);

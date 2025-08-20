@@ -15,17 +15,16 @@ const createAccountFormGroup = () =>
   });
 
 @Component({
-  selector: 'carbotracker-account-page',
-  standalone: true,
-  imports: [
-    MatButtonModule,
-    MatInputModule,
-    MatFormFieldModule,
-    ReactiveFormsModule,
-    CtuiToolbarComponent,
-  ],
-  templateUrl: './account-page.component.html',
-  styleUrls: ['./account-page.component.scss'],
+    selector: 'carbotracker-account-page',
+    imports: [
+        MatButtonModule,
+        MatInputModule,
+        MatFormFieldModule,
+        ReactiveFormsModule,
+        CtuiToolbarComponent,
+    ],
+    templateUrl: './account-page.component.html',
+    styleUrls: ['./account-page.component.scss']
 })
 export class AccountPageComponent implements OnInit {
   protected readonly accountFormGroup = createAccountFormGroup();

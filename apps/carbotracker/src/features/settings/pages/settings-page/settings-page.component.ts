@@ -29,16 +29,15 @@ const getSettingsItems = (): SettingsItem[] => {
 };
 
 @Component({
-  selector: 'carbotracker-settings-page',
-  standalone: true,
-  imports: [
-    MatButtonModule,
-    MatIconModule,
-    MatListModule,
-    CtuiToolbarComponent,
-  ],
-  templateUrl: './settings-page.component.html',
-  styleUrls: ['./settings-page.component.scss'],
+    selector: 'carbotracker-settings-page',
+    imports: [
+        MatButtonModule,
+        MatIconModule,
+        MatListModule,
+        CtuiToolbarComponent,
+    ],
+    templateUrl: './settings-page.component.html',
+    styleUrls: ['./settings-page.component.scss']
 })
 export class SettingsPageComponent {
   protected readonly settingsItems: SettingsItem[] = getSettingsItems();

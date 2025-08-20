@@ -1,10 +1,4 @@
-import {
-  ENVIRONMENT_INITIALIZER,
-  EnvironmentProviders,
-  InjectionToken,
-  Provider,
-  makeEnvironmentProviders,
-} from '@angular/core';
+import { EnvironmentProviders, InjectionToken, Provider, makeEnvironmentProviders, provideEnvironmentInitializer } from '@angular/core';
 import { FirebaseApp, FirebaseOptions, initializeApp } from 'firebase/app';
 import { connectAuthEmulator, getAuth } from 'firebase/auth';
 import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore';
@@ -43,13 +37,12 @@ export function provideFirebase(
   ...features: EmulatorFeatures[]
 ): EnvironmentProviders {
   return makeEnvironmentProviders([
-    {
-      provide: ENVIRONMENT_INITIALIZER,
-      multi: true,
-      useFactory: () => {
+    provideEnvironmentInitializer(() => {
+        const initializerFn = (() => {
         return () => initializeApp(options);
-      },
-    },
+      })();
+        return initializerFn();
+      }),
     features.map((feature) => feature.ɵproviders),
   ]);
 }
@@ -64,10 +57,8 @@ export function withAuthEmulator(
   options: AuthEmulatorOptions,
 ): EmulatorFeatures {
   const providers = [
-    {
-      provide: ENVIRONMENT_INITIALIZER,
-      multi: true,
-      useFactory: () => {
+    provideEnvironmentInitializer(() => {
+        const initializerFn = (() => {
         return async () => {
           const host = options.host ?? 'localhost';
           const port = options.port ?? 9099;
@@ -84,8 +75,9 @@ export function withAuthEmulator(
             throw new Error('Auth not ready!');
           }
         };
-      },
-    },
+      })();
+        return initializerFn();
+      }),
   ];
   return emulatorFeature(EmulatorFeatureKind.AuthFeature, providers);
 }
@@ -99,10 +91,8 @@ export function withFirestoreEmulator(
   options: FirestoreEmulatorOptions,
 ): EmulatorFeatures {
   const providers = [
-    {
-      provide: ENVIRONMENT_INITIALIZER,
-      multi: true,
-      useFactory: () => {
+    provideEnvironmentInitializer(() => {
+        const initializerFn = (() => {
         return async () => {
           const host = options.host ?? 'localhost';
           const port = options.port ?? 8080;
@@ -117,8 +107,9 @@ export function withFirestoreEmulator(
             throw new Error('Firestore not ready!');
           }
         };
-      },
-    },
+      })();
+        return initializerFn();
+      }),
   ];
   return emulatorFeature(EmulatorFeatureKind.FirestoreFeature, providers);
 }

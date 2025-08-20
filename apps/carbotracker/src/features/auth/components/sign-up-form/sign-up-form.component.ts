@@ -28,19 +28,18 @@ const createRegisterFormGroup = () =>
   });
 
 @Component({
-  selector: 'carbotracker-sign-up-form',
-  standalone: true,
-  imports: [
-    MatButtonModule,
-    MatDialogModule,
-    MatFormFieldModule,
-    MatInputModule,
-    ReactiveFormsModule,
-    CtuiToolbarComponent,
-  ],
-  templateUrl: './sign-up-form.component.html',
-  styleUrls: ['./sign-up-form.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'carbotracker-sign-up-form',
+    imports: [
+        MatButtonModule,
+        MatDialogModule,
+        MatFormFieldModule,
+        MatInputModule,
+        ReactiveFormsModule,
+        CtuiToolbarComponent,
+    ],
+    templateUrl: './sign-up-form.component.html',
+    styleUrls: ['./sign-up-form.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SignUpFormComponent {
   private readonly store = inject(Store);

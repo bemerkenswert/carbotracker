@@ -2,10 +2,9 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 
 @Component({
-  selector: 'ctui-toolbar',
-  standalone: true,
-  imports: [MatIconModule],
-  template: `<div>
+    selector: 'ctui-toolbar',
+    imports: [MatIconModule],
+    template: `<div>
       @if (showBackwardNavigation) {
         <mat-icon
           (click)="backwardNavigation.emit()"
@@ -20,9 +19,9 @@ import { MatIconModule } from '@angular/material/icon';
     @if (subTitle) {
       <h6>{{ subTitle }}</h6>
     }`,
-  styles: [
-    'div { display: flex; flex-direction: row; align-items: center; } h6 { margin: 0; }',
-  ],
+    styles: [
+        'div { display: flex; flex-direction: row; align-items: center; } h6 { margin: 0; }',
+    ]
 })
 export class CtuiToolbarComponent {
   @Input({ required: true }) public title!: string;

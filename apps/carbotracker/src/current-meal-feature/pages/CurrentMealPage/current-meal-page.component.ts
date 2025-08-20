@@ -14,18 +14,17 @@ import { selectSumOfCurrentMealCarbs } from './current-meal-page.selector';
 import { DecimalPipe } from '@angular/common';
 
 @Component({
-  selector: 'carbotracker-current-meal-page',
-  standalone: true,
-  imports: [
-    CtuiFixedPositionDirective,
-    CtuiToolbarComponent,
-    MatButtonModule,
-    MatIconModule,
-    MatListModule,
-    DecimalPipe,
-  ],
-  templateUrl: './current-meal-page.component.html',
-  styleUrls: ['./current-meal-page.component.scss'],
+    selector: 'carbotracker-current-meal-page',
+    imports: [
+        CtuiFixedPositionDirective,
+        CtuiToolbarComponent,
+        MatButtonModule,
+        MatIconModule,
+        MatListModule,
+        DecimalPipe,
+    ],
+    templateUrl: './current-meal-page.component.html',
+    styleUrls: ['./current-meal-page.component.scss']
 })
 export default class CurrentMealPageComponent implements OnInit, OnDestroy {
   private readonly store = inject(Store);

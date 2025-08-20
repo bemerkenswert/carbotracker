@@ -22,20 +22,19 @@ type FormModel = {
 };
 
 @Component({
-  selector: 'carbotracker-create-meal-entry-page',
-  standalone: true,
-  imports: [
-    CtuiFixedPositionDirective,
-    FormsModule,
-    MatAutocompleteModule,
-    MatButtonModule,
-    MatFormFieldModule,
-    MatIconModule,
-    MatInputModule,
-  ],
-  templateUrl: './create-meal-entry-page.component.html',
-  styleUrls: ['./create-meal-entry-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'carbotracker-create-meal-entry-page',
+    imports: [
+        CtuiFixedPositionDirective,
+        FormsModule,
+        MatAutocompleteModule,
+        MatButtonModule,
+        MatFormFieldModule,
+        MatIconModule,
+        MatInputModule,
+    ],
+    templateUrl: './create-meal-entry-page.component.html',
+    styleUrls: ['./create-meal-entry-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export default class CreateMealEntryPageComponent implements OnInit {
   private readonly store = inject(Store);
