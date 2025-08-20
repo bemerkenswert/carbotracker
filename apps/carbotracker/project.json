@@ -81,7 +81,8 @@
           "buildTarget": "carbotracker:build:development"
         }
       },
-      "defaultConfiguration": "development"
+      "defaultConfiguration": "development",
+      "continuous": true
     },
     "serve:firebase-emulated": {
       "executor": "nx:run-commands",
