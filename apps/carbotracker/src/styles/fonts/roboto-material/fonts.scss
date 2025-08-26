@@ -1,7 +1,7 @@
-@import '@fontsource/roboto/300.css';
-@import '@fontsource/roboto/400.css';
-@import '@fontsource/roboto/500.css';
-@import '@fontsource/material-icons';
+@use '@fontsource/roboto/300.css' as roboto_300;
+@use '@fontsource/roboto/400.css' as roboto_400;
+@use '@fontsource/roboto/500.css' as roboto_500;
+@use '@fontsource/material-icons';
 
 .material-icons {
   font-family: 'Material Icons';
