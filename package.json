@@ -65,6 +65,8 @@
     "@angular/platform-browser-dynamic": "19.2.9",
     "@angular/router": "19.2.9",
     "@fontsource-variable/dosis": "^5.0.18",
+    "@fontsource/material-icons": "^5.2.5",
+    "@fontsource/roboto": "^5.2.6",
     "@fontsource/yeseva-one": "^5.0.18",
     "@ngrx/component-store": "19.2.1",
     "@ngrx/effects": "19.2.1",
