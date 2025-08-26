@@ -15,7 +15,6 @@ import { DecimalPipe } from '@angular/common';
 
 @Component({
   selector: 'carbotracker-current-meal-page',
-  standalone: true,
   imports: [
     CtuiFixedPositionDirective,
     CtuiToolbarComponent,

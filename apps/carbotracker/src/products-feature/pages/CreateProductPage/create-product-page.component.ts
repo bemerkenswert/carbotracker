@@ -15,7 +15,6 @@ type FormModel = { name: string; carbs: number | null };
 
 @Component({
   selector: 'carbotracker-create-product-page',
-  standalone: true,
   imports: [
     FormsModule,
     MatButtonModule,

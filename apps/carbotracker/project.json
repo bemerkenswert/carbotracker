@@ -44,7 +44,7 @@
             {
               "type": "initial",
               "maximumWarning": "500kb",
-              "maximumError": "1mb"
+              "maximumError": "2mb"
             },
             {
               "type": "anyComponentStyle",
@@ -81,7 +81,8 @@
           "buildTarget": "carbotracker:build:development"
         }
       },
-      "defaultConfiguration": "development"
+      "defaultConfiguration": "development",
+      "continuous": true
     },
     "serve:firebase-emulated": {
       "executor": "nx:run-commands",

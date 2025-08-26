@@ -1,5 +1,5 @@
-@import './styles/theme.scss';
-@import './styles/fonts/all-fonts.scss';
+@use './styles/theme';
+@use './styles/fonts/all-fonts';
 
 /* You can add global styles to this file, and also import other style files */
 html,

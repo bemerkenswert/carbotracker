@@ -5,7 +5,6 @@ import { ReactiveFormsModule } from '@angular/forms';
 
 @Component({
   selector: 'carbotracker-login-page',
-  standalone: true,
   imports: [MatSidenavModule, ReactiveFormsModule, LoginFormComponent],
   templateUrl: './login-page.component.html',
   styleUrls: ['./login-page.component.scss'],

@@ -16,7 +16,6 @@ const createAccountFormGroup = () =>
 
 @Component({
   selector: 'carbotracker-account-page',
-  standalone: true,
   imports: [
     MatButtonModule,
     MatInputModule,

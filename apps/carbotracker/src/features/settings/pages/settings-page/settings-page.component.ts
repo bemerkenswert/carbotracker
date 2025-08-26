@@ -30,7 +30,6 @@ const getSettingsItems = (): SettingsItem[] => {
 
 @Component({
   selector: 'carbotracker-settings-page',
-  standalone: true,
   imports: [
     MatButtonModule,
     MatIconModule,
