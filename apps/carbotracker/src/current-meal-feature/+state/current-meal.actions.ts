@@ -8,6 +8,7 @@ export const CurrentMealPageComponentActions = createActionGroup({
     'Entered Current Meal Page': emptyProps(),
     'Left Current Meal Page': emptyProps(),
     'Meal Entry Clicked': props<{ mealEntry: MealEntry }>(),
+    'Clear Current Meal Clicked': emptyProps(),
     'Add Clicked': emptyProps(),
   },
 });
