@@ -1,7 +1,6 @@
 import {
   EnvironmentProviders,
   InjectionToken,
-  Provider,
   makeEnvironmentProviders,
   provideEnvironmentInitializer,
 } from '@angular/core';
@@ -20,7 +19,7 @@ export declare interface EmulatorFeature<
   FeatureKind extends EmulatorFeatureKind,
 > {
   ɵkind: FeatureKind;
-  ɵproviders: Provider[];
+  ɵproviders: EnvironmentProviders[];
 }
 
 export declare type AuthFeature =
@@ -33,7 +32,7 @@ export declare type EmulatorFeatures = AuthFeature | FirestoreFeature;
 
 function emulatorFeature<FeatureKind extends EmulatorFeatureKind>(
   kind: FeatureKind,
-  providers: Provider[],
+  providers: EnvironmentProviders[],
 ): EmulatorFeature<FeatureKind> {
   return { ɵkind: kind, ɵproviders: providers };
 }
