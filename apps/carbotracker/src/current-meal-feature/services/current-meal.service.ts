@@ -27,6 +27,11 @@ export class CurrentMealService {
     return from(setDoc(document, { mealEntries }));
   }
 
+  public cleanAllMealEntries(params: { uid: string }) {
+    const document = this.getCurrentMealDocument(params);
+    return from(setDoc(document, { mealEntries: [] }));
+  }
+
   public subscribeToOwnCurrentMeal(params: { uid: string }) {
     if (this.unsubscribe === null) {
       this.unsubscribe = onSnapshot(

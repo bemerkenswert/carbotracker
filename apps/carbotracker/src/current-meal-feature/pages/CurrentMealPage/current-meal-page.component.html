@@ -1,4 +1,8 @@
-<ctui-toolbar title="Current meal"></ctui-toolbar>
+<ctui-toolbar title="Current meal">
+  <button (click)="onClearCurrentMealClick()" mat-icon-button>
+    <mat-icon>delete_sweep</mat-icon>
+  </button>
+</ctui-toolbar>
 <div class="summary-container">
   <div class="injection-summary-container">
     <div class="injection-breakfast"><mat-icon>wb_twilight</mat-icon>10.3</div>

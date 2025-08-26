@@ -51,6 +51,10 @@ export default class CurrentMealPageComponent implements OnInit, OnDestroy {
     this.store.dispatch(ComponentActions.addClicked());
   }
 
+  protected onClearCurrentMealClick() {
+    this.store.dispatch(ComponentActions.clearCurrentMealClicked());
+  }
+
   protected onMealEntryClick(mealEntry: MealEntry): void {
     this.store.dispatch(ComponentActions.mealEntryClicked({ mealEntry }));
   }
