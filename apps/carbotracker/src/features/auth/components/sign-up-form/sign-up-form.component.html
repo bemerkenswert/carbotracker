@@ -6,26 +6,15 @@
   </mat-form-field>
   <mat-form-field>
     <mat-label>Password</mat-label>
-    <input
-      type="password"
-      formControlName="password"
-      matInput
-      placeholder="********"
-    />
+    <input type="password" formControlName="password" matInput placeholder="********" />
     @if (signUpFormGroup.controls.password.hasError('minlength')) {
-      <mat-error>Password is too short.</mat-error>
+    <mat-error>Password is too short.</mat-error>
     }
   </mat-form-field>
-  <button
-    class="sign-up-button"
-    color="primary"
-    mat-raised-button
-    [disabled]="signUpFormGroup.invalid"
-    type="submit"
-  >
+  <button class="sign-up-button" color="primary" mat-raised-button [disabled]="signUpFormGroup.invalid" type="submit">
     Sign Up
   </button>
-  <button color="primary" mat-raised-button (click)="onGoBack()">
+  <button class="go-back-button" color="secondary" mat-raised-button (click)="onGoBack()">
     Go Back
   </button>
 </form>
