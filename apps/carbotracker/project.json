@@ -36,7 +36,9 @@
           "apps/carbotracker/src/assets"
         ],
         "styles": ["apps/carbotracker/src/styles.scss"],
-        "scripts": []
+        "scripts": [],
+        "serviceWorker": true,
+        "ngswConfigPath": "apps/carbotracker/ngsw-config.json"
       },
       "configurations": {
         "production": {
