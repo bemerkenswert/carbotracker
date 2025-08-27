@@ -71,6 +71,20 @@
               "with": "apps/carbotracker/src/environments/environment.development.ts"
             }
           ]
+        },
+        "pr-preview": {
+          "buildOptimizer": false,
+          "optimization": false,
+          "vendorChunk": true,
+          "extractLicenses": false,
+          "sourceMap": true,
+          "namedChunks": true,
+          "fileReplacements": [
+            {
+              "replace": "apps/carbotracker/src/environments/environment.ts",
+              "with": "apps/carbotracker/src/environments/environment.pr-preview.ts"
+            }
+          ]
         }
       },
       "defaultConfiguration": "production"
