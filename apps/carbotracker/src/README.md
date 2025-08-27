@@ -7,6 +7,7 @@ inkscape icon.svg --export-filename=output.png --export-width=512 --export-heigh
 ```
 
 ## SVG to favicon
+
 ```bash
 inkscape logo.svg --export-filename=icon-16.png --export-width=16 --export-height=16
 inkscape logo.svg --export-filename=icon-32.png --export-width=32 --export-height=32
