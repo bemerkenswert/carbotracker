@@ -9,32 +9,24 @@
     <div class="injection-lunch"><mat-icon>wb_sunny</mat-icon>2.1</div>
     <div class="injection-dinner"><mat-icon>nights_stay</mat-icon>8.9</div>
   </div>
-  <span class="carbs-summary"
-    >{{ sumOfCurrentMealCarbs() | number: '1.0-0' }}g</span
-  >
+  <span class="carbs-summary">{{ sumOfCurrentMealCarbs() | number: '1.0-0' }}g</span>
 </div>
 @if (mealEntries().length > 0) {
-  <mat-nav-list>
-    @for (mealEntry of mealEntries(); track mealEntry.productId) {
-      <mat-list-item (click)="onMealEntryClick(mealEntry)">
-        <h4 matListItemTitle>{{ mealEntry.name }}</h4>
-        <p matListItemLine>
-          <span>{{ mealEntry.amount }}g</span>
-        </p>
-      </mat-list-item>
-    }
-  </mat-nav-list>
+<mat-nav-list>
+  @for (mealEntry of mealEntries(); track mealEntry.productId) {
+  <mat-list-item (click)="onMealEntryClick(mealEntry)">
+    <h4 matListItemTitle>{{ mealEntry.name }}</h4>
+    <p matListItemLine>
+      <span>{{ mealEntry.amount }}g</span>
+    </p>
+  </mat-list-item>
+  }
+</mat-nav-list>
 } @else {
-  No current meal created yet. Add some products to fill your list!
+No current meal created yet. Add some products to fill your list!
 }
 
-<button
-  (click)="onAddClick()"
-  mat-fab
-  color="primary"
-  ctuiFixedPosition
-  type="button"
-  [disabled]="!productsAvailable()"
->
+<button (click)="onAddClick()" mat-fab color="primary" ctuiFixedPosition type="button"
+  [disabled]="!productsAvailable()">
   <mat-icon>add</mat-icon>
 </button>

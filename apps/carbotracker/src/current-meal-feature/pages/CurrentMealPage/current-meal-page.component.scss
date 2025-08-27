@@ -13,18 +13,14 @@
 
 .injection-summary-container {
   display: flex;
-  gap: 32px;
+  flex-direction: column;
 }
 
 .injection-breakfast,
-.injection-lunch {
-  display: flex;
-  gap: 8px;
-}
-
+.injection-lunch,
 .injection-dinner {
   display: flex;
-  gap: 4px;
+  gap: 8px;
 }
 
 .carbs-summary {
