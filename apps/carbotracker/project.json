@@ -32,11 +32,15 @@
         "polyfills": ["zone.js"],
         "tsConfig": "apps/carbotracker/tsconfig.app.json",
         "assets": [
-          "apps/carbotracker/src/favicon.ico",
-          "apps/carbotracker/src/assets"
+          {
+            "glob": "**/*",
+            "input": "apps/carbotracker/public"
+          }
         ],
         "styles": ["apps/carbotracker/src/styles.scss"],
-        "scripts": []
+        "scripts": [],
+        "serviceWorker": true,
+        "ngswConfigPath": "apps/carbotracker/ngsw-config.json"
       },
       "configurations": {
         "production": {
@@ -65,6 +69,20 @@
             {
               "replace": "apps/carbotracker/src/environments/environment.ts",
               "with": "apps/carbotracker/src/environments/environment.development.ts"
+            }
+          ]
+        },
+        "pr-preview": {
+          "buildOptimizer": false,
+          "optimization": false,
+          "vendorChunk": true,
+          "extractLicenses": false,
+          "sourceMap": true,
+          "namedChunks": true,
+          "fileReplacements": [
+            {
+              "replace": "apps/carbotracker/src/environments/environment.ts",
+              "with": "apps/carbotracker/src/environments/environment.pr-preview.ts"
             }
           ]
         }
