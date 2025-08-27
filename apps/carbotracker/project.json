@@ -32,8 +32,10 @@
         "polyfills": ["zone.js"],
         "tsConfig": "apps/carbotracker/tsconfig.app.json",
         "assets": [
-          "apps/carbotracker/src/favicon.ico",
-          "apps/carbotracker/src/assets"
+          {
+            "glob": "**/*",
+            "input": "apps/carbotracker/public"
+          }
         ],
         "styles": ["apps/carbotracker/src/styles.scss"],
         "scripts": [],
