@@ -35,7 +35,6 @@ const createLoginFormGroup = () =>
 
 @Component({
   selector: 'carbotracker-login-form',
-  standalone: true,
   imports: [
     MatButtonModule,
     MatFormFieldModule,

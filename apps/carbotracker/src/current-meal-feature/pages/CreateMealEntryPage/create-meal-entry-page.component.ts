@@ -23,7 +23,6 @@ type FormModel = {
 
 @Component({
   selector: 'carbotracker-create-meal-entry-page',
-  standalone: true,
   imports: [
     CtuiFixedPositionDirective,
     FormsModule,

@@ -53,7 +53,6 @@ const getNavItems = () => {
 
 @Component({
   selector: 'carbotracker-shell',
-  standalone: true,
   imports: [
     MatButtonModule,
     MatIconModule,

@@ -24,7 +24,6 @@ const SameValueValidator = <T>(
 
 @Component({
   selector: 'carbotracker-change-password-page',
-  standalone: true,
   imports: [
     MatButtonModule,
     MatFormFieldModule,

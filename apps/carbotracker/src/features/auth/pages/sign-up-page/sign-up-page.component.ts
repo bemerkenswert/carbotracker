@@ -5,7 +5,6 @@ import { SignUpFormComponent } from '../../components/sign-up-form/sign-up-form.
 
 @Component({
   selector: 'carbotracker-sign-up-page',
-  standalone: true,
   imports: [MatSidenavModule, ReactiveFormsModule, SignUpFormComponent],
   templateUrl: './sign-up-page.component.html',
   styleUrls: ['./sign-up-page.component.scss'],

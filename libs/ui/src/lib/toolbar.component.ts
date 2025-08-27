@@ -3,7 +3,6 @@ import { MatIconModule } from '@angular/material/icon';
 
 @Component({
   selector: 'ctui-toolbar',
-  standalone: true,
   imports: [MatIconModule],
   template: `<div>
       @if (showBackwardNavigation) {

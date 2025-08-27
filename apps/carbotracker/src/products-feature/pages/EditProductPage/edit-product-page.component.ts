@@ -23,7 +23,6 @@ type FormModel = Pick<Product, 'name' | 'carbs'>;
 
 @Component({
   selector: 'carbotracker-edit-product-page',
-  standalone: true,
   imports: [
     CtuiFixedPositionDirective,
     FormsModule,

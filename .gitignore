@@ -43,5 +43,8 @@ Thumbs.db
 .firebase
 
 .nx/cache
+.nx/workspace-data
 firestore-debug.log
 ui-debug.log
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md

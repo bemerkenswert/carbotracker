@@ -5,7 +5,6 @@ import { ConfirmationDialogData } from './confirmation-dialog.model';
 
 @Component({
   selector: 'ctui-confirmation-dialog',
-  standalone: true,
   imports: [MatDialogModule, MatButtonModule],
   templateUrl: './confirmation-dialog.component.html',
   styleUrls: ['./confirmation-dialog.component.scss'],

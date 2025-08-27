@@ -1,2 +1,3 @@
-@import './dosis-variable/fonts.scss';
-@import './yeseva-one/fonts.scss';
+@use './dosis-variable/fonts' as docsis-variable-fonts;
+@use './yeseva-one/fonts' as yeseva-one-fonts;
+@use './roboto-material/fonts' as roboto-material-fonts;

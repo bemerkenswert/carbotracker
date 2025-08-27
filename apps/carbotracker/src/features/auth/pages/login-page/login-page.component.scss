@@ -1,12 +1,11 @@
-@import '../../../../styles/fonts//yeseva-one/mixins.scss';
+@use '../../../../styles/fonts/yeseva-one/mixins.scss';
 
 mat-sidenav-container {
   height: 100%;
 }
 
 h1 {
-  @include font-family-yeseva-one;
-  margin-top: 3rem;
+  @include mixins.font-family-yeseva-one;
 }
 
 h1,

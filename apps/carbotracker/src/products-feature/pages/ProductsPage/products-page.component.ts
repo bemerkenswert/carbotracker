@@ -18,7 +18,6 @@ import { productsFeature } from '../../+state/products.reducer';
 import { Product } from '../../product.model';
 @Component({
   selector: 'carbotracker-products-page',
-  standalone: true,
   imports: [
     MatButtonModule,
     MatIconModule,

@@ -1,9 +1,19 @@
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { Actions, concatLatestFrom, createEffect, ofType } from '@ngrx/effects';
+import { Actions, createEffect, ofType } from '@ngrx/effects';
+import { concatLatestFrom } from '@ngrx/operators';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
-import { concatMap, exhaustMap, filter, from, of, switchMap, tap } from 'rxjs';
+import {
+  concatMap,
+  EMPTY,
+  exhaustMap,
+  filter,
+  from,
+  of,
+  switchMap,
+  tap,
+} from 'rxjs';
 import { authFeature } from '../../features/auth/+state/auth.store';
 import { CurrentMealService } from '../services/current-meal.service';
 import { ProductsService } from '../services/products.service';
@@ -31,6 +41,28 @@ export const navigateToCurrentMeal$ = createEffect(
       exhaustMap(() => from(router.navigate(['app', 'current-meal']))),
     ),
   { dispatch: false, functional: true },
+);
+
+export const removeAllMealEntriesOfCurrentMeal$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    currentMealService = inject(CurrentMealService),
+    store = inject(Store),
+  ) =>
+    actions$.pipe(
+      ofType(CurrentMealPageComponentActions.clearCurrentMealClicked),
+      concatLatestFrom(() => [store.select(authFeature.selectUserId)]),
+      concatMap(([, uid]) => {
+        if (uid) {
+          return currentMealService.cleanAllMealEntries({
+            uid,
+          });
+        } else {
+          return EMPTY;
+        }
+      }),
+    ),
+  { functional: true, dispatch: false },
 );
 
 export const addMealEntryToCurrentMeal = createEffect(

@@ -3,3 +3,31 @@
   padding-left: 16px;
   padding-right: 16px;
 }
+
+.summary-container {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  align-items: center;
+}
+
+.injection-summary-container {
+  display: flex;
+  gap: 32px;
+}
+
+.injection-breakfast,
+.injection-lunch {
+  display: flex;
+  gap: 8px;
+}
+
+.injection-dinner {
+  display: flex;
+  gap: 4px;
+}
+
+.carbs-summary {
+  font-size: xxx-large;
+  font-weight: bold;
+}
