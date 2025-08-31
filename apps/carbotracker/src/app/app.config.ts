@@ -1,4 +1,4 @@
-import { ApplicationConfig, inject } from '@angular/core';
+import { ApplicationConfig, inject, isDevMode } from '@angular/core';
 import { MAT_SNACK_BAR_DEFAULT_OPTIONS } from '@angular/material/snack-bar';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
@@ -12,6 +12,7 @@ import { environment } from '../environments/environment';
 import { authFeature } from '../features/auth/+state/auth.store';
 import { getAuthProviders } from '../features/auth/auth.providers';
 import * as appEffects from './app.effects';
+import { provideServiceWorker } from '@angular/service-worker';
 
 const isLoggedIn = () => {
   const store = inject(Store);
@@ -50,5 +51,9 @@ export const appConfig: ApplicationConfig = {
       withComponentInputBinding(),
     ),
     { provide: MAT_SNACK_BAR_DEFAULT_OPTIONS, useValue: { duration: 5000 } },
+    provideServiceWorker('ngsw-worker.js', {
+      enabled: !isDevMode(),
+      registrationStrategy: 'registerWhenStable:30000',
+    }),
   ],
 };
