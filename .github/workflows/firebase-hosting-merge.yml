@@ -1,4 +1,6 @@
 name: Deploy to Firebase Hosting on merge
+permissions:
+  contents: read
 on:
   push:
     branches:

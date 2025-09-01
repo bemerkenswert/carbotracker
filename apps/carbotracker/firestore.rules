@@ -15,8 +15,13 @@ service cloud.firestore {
       allow create: if documentCreatorIsRequester(request)
     }
 
+    function isCurrentMealOwner(request, currentMealId) {
+      return request.auth != null && request.auth.uid == currentMealId;
+    }
+
     match /current-meals/{currentMealId}  {   
-      allow read, write: if true
+      allow read: if isCurrentMealOwner(request, currentMealId);
+      allow write: if isCurrentMealOwner(request, currentMealId);
     } 
   }
 }
