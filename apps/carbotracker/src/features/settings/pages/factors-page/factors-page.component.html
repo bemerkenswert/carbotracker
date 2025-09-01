@@ -1,0 +1,20 @@
+<ctui-toolbar title="Factors" [showBackwardNavigation]="true" (backwardNavigation)="onGoBack()"></ctui-toolbar>
+<form [formGroup]="factorsFormGroup" (submit)="onSaveChanges()">
+    <mat-slide-toggle class="unit-toggle" [formControl]="factorsFormGroup.controls.showInjectionUnits">
+        <div class="unit-toggle-description">Show
+            injection units for breakfast, lunch
+            and
+            dinner</div>
+    </mat-slide-toggle>
+    @if (factorsFormGroup.controls.showInjectionUnits.getRawValue()) {
+    @for (injectionFactor of injectionFactors; track injectionFactor.type) {
+    <div class="injection-factors">
+        <mat-form-field>
+            <mat-label>{{ injectionFactor.type }}</mat-label>
+            <input matInput [formControl]="injectionFactor.control" type="number" />
+        </mat-form-field>
+    </div>
+    }
+    }
+    <button color="primary" mat-raised-button type="submit">Save changes</button>
+</form>

@@ -21,6 +21,11 @@ const getSettingsItems = (): SettingsItem[] => {
       name: 'Account',
     },
     {
+      onClick: () => store.dispatch(SettingsPageActions.factorsClicked()),
+      icon: 'edit_attributes',
+      name: 'Factors',
+    },
+    {
       onClick: () => store.dispatch(SettingsPageActions.logoutClicked()),
       icon: 'logout',
       name: 'Logout',

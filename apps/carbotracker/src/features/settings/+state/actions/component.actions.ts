@@ -5,6 +5,7 @@ export const SettingsPageActions = createActionGroup({
   events: {
     'Logout Clicked': emptyProps(),
     'Account Clicked': emptyProps(),
+    'Factors Clicked': emptyProps(),
   },
 });
 
@@ -24,6 +25,14 @@ export const AccountPageActions = createActionGroup({
   events: {
     'Save Changes Clicked': props<{ email: string }>(),
     'Password Input Focused': emptyProps(),
+    'Go Back Icon Clicked': emptyProps(),
+  },
+});
+
+export const FactorsPageActions = createActionGroup({
+  source: 'Settings | Factors Page',
+  events: {
+    'Save Changes Clicked': props<{ showInjectionUnits: boolean | null, breakfastFactor: number | null, lunchFactor: number | null, dinnerFactor: number | null }>(),
     'Go Back Icon Clicked': emptyProps(),
   },
 });

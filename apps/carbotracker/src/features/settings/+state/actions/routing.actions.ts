@@ -7,5 +7,7 @@ export const SettingsRouterEffectsActions = createActionGroup({
     'Navigation to Account Page Failed': emptyProps(),
     'Navigation to Change Password Page Successful': emptyProps(),
     'Navigation to Change Password Page Failed': emptyProps(),
+    'Navigation to Factors Page Successful': emptyProps(),
+    'Navigation to Factors Page Failed': emptyProps(),
   },
 });

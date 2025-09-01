@@ -1,0 +1,25 @@
+:host {
+    display: block;
+    padding-left: 16px;
+    padding-right: 16px;
+}
+
+button {
+    width: 100%;
+}
+
+.unit-toggle {
+    margin: 16px;
+}
+
+.unit-toggle-description {
+    padding-left: 16px;
+}
+
+.injection-factors {
+    padding: 0 16px;
+
+    mat-form-field {
+        width: 100%;
+    }
+}

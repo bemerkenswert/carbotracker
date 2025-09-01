@@ -5,7 +5,7 @@ import { catchError, from, map, of, switchMap } from 'rxjs';
 import {
   AccountPageActions,
   ChangePasswordPageActions,
-  SettingsPageActions,
+  SettingsPageActions
 } from '../actions/component.actions';
 import { SettingsRouterEffectsActions } from '../actions/routing.actions';
 
@@ -43,6 +43,26 @@ export const navigateToChangePasswordPage$ = createEffect(
             of(
               SettingsRouterEffectsActions.navigationToChangePasswordPageFailed(),
             ),
+          ),
+        ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const navigateToFactorsPage$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(
+        SettingsPageActions.factorsClicked,
+      ),
+      switchMap(() =>
+        from(router.navigate(['app', 'settings', 'factors'])).pipe(
+          map(() =>
+            SettingsRouterEffectsActions.navigationToFactorsPageSuccessful(),
+          ),
+          catchError(() =>
+            of(SettingsRouterEffectsActions.navigationToFactorsPageFailed()),
           ),
         ),
       ),
