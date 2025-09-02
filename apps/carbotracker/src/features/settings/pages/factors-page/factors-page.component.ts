@@ -15,7 +15,7 @@ import { combineLatest, first } from 'rxjs';
 import { FactorsPageActions } from '../../+state';
 import { factorsFeature } from '../../+state/factors.reducer';
 
-interface InjectionFactor {
+interface InjectionType {
   type: 'Breakfast' | 'Lunch' | 'Dinner';
   control: FormControl;
 }
@@ -93,7 +93,7 @@ export class FactorsPageComponent implements OnInit {
     this.store.dispatch(FactorsPageActions.goBackIconClicked());
   }
 
-  private getInjectionFactors(): InjectionFactor[] {
+  private getInjectionFactors(): InjectionType[] {
     return [
       {
         type: 'Breakfast',

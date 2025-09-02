@@ -1,5 +1,5 @@
 import { createFeature, createReducer, createSelector, on } from '@ngrx/store';
-import { selectSumOfCurrentMealCarbs } from 'apps/carbotracker/src/current-meal-feature/pages/CurrentMealPage/current-meal-page.selector';
+import { selectSumOfCurrentMealCarbs } from '../../../current-meal-feature/pages/CurrentMealPage/current-meal-page.selector';
 import { FactorsPageActions } from './actions/component.actions';
 
 interface FactorsState {

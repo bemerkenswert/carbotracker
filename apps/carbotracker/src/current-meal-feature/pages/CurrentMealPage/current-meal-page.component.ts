@@ -8,9 +8,9 @@ import {
   CtuiToolbarComponent,
 } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
-import { factorsFeature } from 'apps/carbotracker/src/features/settings/+state/factors.reducer';
 import { CurrentMealPageComponentActions as ComponentActions } from '../../+state/current-meal.actions';
 import { currentMealFeature } from '../../+state/current-meal.feature';
+import { factorsFeature } from '../../../features/settings/+state/factors.reducer';
 import { MealEntry } from '../../current-meal.model';
 import { selectSumOfCurrentMealCarbs } from './current-meal-page.selector';
 
