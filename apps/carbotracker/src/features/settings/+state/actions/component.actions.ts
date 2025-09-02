@@ -1,4 +1,5 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
+import { Factors } from '../../factors.model';
 
 export const SettingsPageActions = createActionGroup({
   source: 'Settings | Settings Page',
@@ -32,12 +33,7 @@ export const AccountPageActions = createActionGroup({
 export const FactorsPageActions = createActionGroup({
   source: 'Settings | Factors Page',
   events: {
-    'Save Changes Clicked': props<{
-      showInjectionUnits: boolean;
-      breakfastFactor: number | null;
-      lunchFactor: number | null;
-      dinnerFactor: number | null;
-    }>(),
+    'Save Changes Clicked': props<{ factors: Omit<Factors, 'creator'> }>(),
     'Go Back Icon Clicked': emptyProps(),
   },
 });

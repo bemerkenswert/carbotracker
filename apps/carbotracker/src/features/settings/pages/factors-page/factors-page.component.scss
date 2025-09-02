@@ -5,11 +5,12 @@
 }
 
 button {
+  height: 3rem;
   width: 100%;
 }
 
 .unit-toggle {
-  margin: 16px;
+  margin-bottom: 16px;
 }
 
 .unit-toggle-description {
@@ -17,8 +18,6 @@ button {
 }
 
 .injection-factors {
-  padding: 0 16px;
-
   mat-form-field {
     width: 100%;
   }

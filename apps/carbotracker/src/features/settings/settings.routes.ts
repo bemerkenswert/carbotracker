@@ -1,7 +1,7 @@
 import { Routes } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
 import { provideState } from '@ngrx/store';
-import { routingEffects, snackbarEffects } from './+state';
+import { apiEffects, routingEffects, snackbarEffects } from './+state';
 import { factorsFeature } from './+state/factors.reducer';
 import { AccountPageComponent } from './pages/account-page/account-page.component';
 import { ChangePasswordPageComponent } from './pages/change-password-page/change-password-page.component';
@@ -12,7 +12,7 @@ const SETTINGS_ROUTES: Routes = [
   {
     path: '',
     providers: [
-      provideEffects(routingEffects, snackbarEffects),
+      provideEffects(apiEffects, routingEffects, snackbarEffects),
       provideState(factorsFeature),
     ],
     children: [

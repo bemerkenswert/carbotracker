@@ -7,7 +7,9 @@ import {
 } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatListItem, MatListModule } from '@angular/material/list';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
@@ -44,6 +46,9 @@ const createFactorsFormGroup = () =>
     MatButtonModule,
     MatFormFieldModule,
     MatInputModule,
+    MatIconModule,
+    MatListItem,
+    MatListModule,
   ],
   templateUrl: './factors-page.component.html',
   styleUrls: ['./factors-page.component.scss'],
@@ -80,10 +85,12 @@ export class FactorsPageComponent implements OnInit {
       const showUnits = !!showInjectionUnits;
       this.store.dispatch(
         FactorsPageActions.saveChangesClicked({
-          showInjectionUnits: showUnits,
-          breakfastFactor,
-          lunchFactor,
-          dinnerFactor,
+          factors: {
+            showInjectionUnits: showUnits,
+            breakfastFactor,
+            lunchFactor,
+            dinnerFactor,
+          },
         }),
       );
     }

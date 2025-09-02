@@ -22,16 +22,12 @@ export const factorsFeature = createFeature({
     getInitialState(),
     on(
       FactorsPageActions.saveChangesClicked,
-      (
-        state,
-        { showInjectionUnits, breakfastFactor, lunchFactor, dinnerFactor },
-      ): FactorsState => ({
-        ...state,
-        showInjectionUnits,
-        breakfastFactor,
-        lunchFactor,
-        dinnerFactor,
-      }),
+      (state, { factors }): FactorsState => {
+        return {
+          ...state,
+          ...factors,
+        };
+      },
     ),
   ),
   extraSelectors(baseSelectors) {
