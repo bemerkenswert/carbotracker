@@ -32,7 +32,12 @@ export const AccountPageActions = createActionGroup({
 export const FactorsPageActions = createActionGroup({
   source: 'Settings | Factors Page',
   events: {
-    'Save Changes Clicked': props<{ showInjectionUnits: boolean | null, breakfastFactor: number | null, lunchFactor: number | null, dinnerFactor: number | null }>(),
+    'Save Changes Clicked': props<{
+      showInjectionUnits: boolean;
+      breakfastFactor: number | null;
+      lunchFactor: number | null;
+      dinnerFactor: number | null;
+    }>(),
     'Go Back Icon Clicked': emptyProps(),
   },
 });

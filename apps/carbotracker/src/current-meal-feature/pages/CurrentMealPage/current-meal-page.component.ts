@@ -1,3 +1,4 @@
+import { AsyncPipe, DecimalPipe } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -7,11 +8,11 @@ import {
   CtuiToolbarComponent,
 } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
+import { factorsFeature } from 'apps/carbotracker/src/features/settings/+state/factors.reducer';
 import { CurrentMealPageComponentActions as ComponentActions } from '../../+state/current-meal.actions';
 import { currentMealFeature } from '../../+state/current-meal.feature';
 import { MealEntry } from '../../current-meal.model';
 import { selectSumOfCurrentMealCarbs } from './current-meal-page.selector';
-import { DecimalPipe } from '@angular/common';
 
 @Component({
   selector: 'carbotracker-current-meal-page',
@@ -22,6 +23,7 @@ import { DecimalPipe } from '@angular/common';
     MatIconModule,
     MatListModule,
     DecimalPipe,
+    AsyncPipe,
   ],
   templateUrl: './current-meal-page.component.html',
   styleUrls: ['./current-meal-page.component.scss'],
@@ -36,6 +38,12 @@ export default class CurrentMealPageComponent implements OnInit, OnDestroy {
   );
   protected readonly sumOfCurrentMealCarbs = this.store.selectSignal(
     selectSumOfCurrentMealCarbs,
+  );
+  protected readonly showInjectionUnits$ = this.store.select(
+    factorsFeature.selectShowInjectionUnits,
+  );
+  protected readonly injectionUnits$ = this.store.select(
+    factorsFeature.selectInjectionUnits,
   );
 
   public ngOnInit(): void {

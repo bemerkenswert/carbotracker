@@ -11,7 +11,10 @@ import { SettingsPageComponent } from './pages/settings-page/settings-page.compo
 const SETTINGS_ROUTES: Routes = [
   {
     path: '',
-    providers: [provideEffects(routingEffects, snackbarEffects), provideState(factorsFeature)],
+    providers: [
+      provideEffects(routingEffects, snackbarEffects),
+      provideState(factorsFeature),
+    ],
     children: [
       { path: '', pathMatch: 'full', component: SettingsPageComponent },
       { path: 'account', component: AccountPageComponent },
