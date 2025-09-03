@@ -10,7 +10,7 @@ import {
 import { Store } from '@ngrx/store';
 import { CurrentMealPageComponentActions as ComponentActions } from '../../+state/current-meal.actions';
 import { currentMealFeature } from '../../+state/current-meal.feature';
-import { factorsFeature } from '../../../features/settings/+state/factors.reducer';
+import { appSettingsFeature } from '../../../app/app.reducer';
 import { MealEntry } from '../../current-meal.model';
 import { selectSumOfCurrentMealCarbs } from './current-meal-page.selector';
 
@@ -40,10 +40,10 @@ export default class CurrentMealPageComponent implements OnInit, OnDestroy {
     selectSumOfCurrentMealCarbs,
   );
   protected readonly showInjectionUnits$ = this.store.select(
-    factorsFeature.selectShowInjectionUnits,
+    appSettingsFeature.selectShowInjectionUnits,
   );
   protected readonly injectionUnits$ = this.store.select(
-    factorsFeature.selectInjectionUnits,
+    appSettingsFeature.selectInjectionUnits,
   );
 
   public ngOnInit(): void {

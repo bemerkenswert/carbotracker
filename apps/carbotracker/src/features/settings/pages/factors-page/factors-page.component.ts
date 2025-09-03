@@ -9,13 +9,13 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatListItem, MatListModule } from '@angular/material/list';
+import { MatListModule } from '@angular/material/list';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
-import { combineLatest, first } from 'rxjs';
+import { first } from 'rxjs';
 import { FactorsPageActions } from '../../+state';
-import { factorsFeature } from '../../+state/factors.reducer';
+import { appSettingsFeature } from '../../../../app/app.reducer';
 
 interface InjectionType {
   type: 'Breakfast' | 'Lunch' | 'Dinner';
@@ -47,7 +47,6 @@ const createFactorsFormGroup = () =>
     MatFormFieldModule,
     MatInputModule,
     MatIconModule,
-    MatListItem,
     MatListModule,
   ],
   templateUrl: './factors-page.component.html',
@@ -57,17 +56,14 @@ export class FactorsPageComponent implements OnInit {
   protected readonly factorsFormGroup = createFactorsFormGroup();
   protected readonly injectionFactors = this.getInjectionFactors();
   private readonly store = inject(Store);
-  private factors$ = combineLatest([
-    this.store.select(factorsFeature.selectShowInjectionUnits),
-    this.store.select(factorsFeature.selectBreakfastFactor),
-    this.store.select(factorsFeature.selectLunchFactor),
-    this.store.select(factorsFeature.selectDinnerFactor),
-  ]).pipe(first());
+  private factors$ = this.store
+    .select(appSettingsFeature.selectFactors)
+    .pipe(first());
 
   ngOnInit(): void {
     this.factors$.subscribe(
-      ([showInjectionUnits, breakfastFactor, lunchFactor, dinnerFactor]) =>
-        this.factorsFormGroup.setValue({
+      ({ showInjectionUnits, breakfastFactor, lunchFactor, dinnerFactor }) =>
+        this.factorsFormGroup.patchValue({
           showInjectionUnits,
           breakfastFactor,
           lunchFactor,

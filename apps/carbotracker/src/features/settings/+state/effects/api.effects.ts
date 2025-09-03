@@ -27,12 +27,14 @@ export const createFactors$ = createEffect(
         creator: userId,
       })),
       mergeMap((newFactors) =>
-        factorsService.createFactors({ ...newFactors }).pipe(
-          map(() => SettingsApiActions.creatingFactorsSuccessful()),
-          catchError((error) =>
-            of(SettingsApiActions.creatingFactorsFailed(error)),
+        factorsService
+          .createFactors({ factors: newFactors, uid: newFactors.creator })
+          .pipe(
+            map(() => SettingsApiActions.creatingFactorsSuccessful()),
+            catchError((error) =>
+              of(SettingsApiActions.creatingFactorsFailed(error)),
+            ),
           ),
-        ),
       ),
     ),
   { dispatch: true, functional: true },
