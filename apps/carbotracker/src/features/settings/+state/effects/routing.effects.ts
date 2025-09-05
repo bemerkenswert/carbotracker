@@ -50,17 +50,21 @@ export const navigateToChangePasswordPage$ = createEffect(
   { functional: true },
 );
 
-export const navigateToFactorsPage$ = createEffect(
+export const navigateToInsulinToCarbRatiosPage$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(
-      ofType(SettingsPageActions.factorsClicked),
+      ofType(SettingsPageActions.insulinToCarbRatiosClicked),
       switchMap(() =>
-        from(router.navigate(['app', 'settings', 'factors'])).pipe(
+        from(
+          router.navigate(['app', 'settings', 'insulin-to-carb-ratios']),
+        ).pipe(
           map(() =>
-            SettingsRouterEffectsActions.navigationToFactorsPageSuccessful(),
+            SettingsRouterEffectsActions.navigationToInsulinToCarbRatiosPageSuccessful(),
           ),
           catchError(() =>
-            of(SettingsRouterEffectsActions.navigationToFactorsPageFailed()),
+            of(
+              SettingsRouterEffectsActions.navigationToInsulinToCarbRatiosPageFailed(),
+            ),
           ),
         ),
       ),

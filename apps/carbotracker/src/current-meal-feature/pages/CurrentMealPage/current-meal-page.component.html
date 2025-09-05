@@ -4,25 +4,25 @@
   </button>
 </ctui-toolbar>
 <div class="summary-container">
-  @if (showInjectionUnits$ | async) {
-    @if (injectionUnits$ | async; as injectionUnits) {
-      <div class="injection-summary-container">
-        @if (injectionUnits.breakfastInjectionUnit) {
-          <div class="injection-breakfast">
+  @if (showInsulinUnits$ | async) {
+    @if (insulinUnits$ | async; as insulinUnits) {
+      <div class="insulin-units-summary-container">
+        @if (insulinUnits.breakfastInsulinUnits) {
+          <div class="insulin-units-breakfast">
             <mat-icon>wb_twilight</mat-icon
-            >{{ injectionUnits.breakfastInjectionUnit | number: '1.0-1' }} I.U.
+            >{{ insulinUnits.breakfastInsulinUnits | number: '1.0-1' }} I.U.
           </div>
         }
-        @if (injectionUnits.lunchInjectionUnit) {
-          <div class="injection-lunch">
+        @if (insulinUnits.lunchInsulinUnits) {
+          <div class="insulin-units-lunch">
             <mat-icon>wb_sunny</mat-icon
-            >{{ injectionUnits.lunchInjectionUnit | number: '1.0-1' }} I.U.
+            >{{ insulinUnits.lunchInsulinUnits | number: '1.0-1' }} I.U.
           </div>
         }
-        @if (injectionUnits.dinnerInjectionUnit) {
-          <div class="injection-dinner">
+        @if (insulinUnits.dinnerInsulinUnits) {
+          <div class="insulin-units-dinner">
             <mat-icon>nights_stay</mat-icon
-            >{{ injectionUnits.dinnerInjectionUnit | number: '1.0-1' }} I.U.
+            >{{ insulinUnits.dinnerInsulinUnits | number: '1.0-1' }} I.U.
           </div>
         }
       </div>

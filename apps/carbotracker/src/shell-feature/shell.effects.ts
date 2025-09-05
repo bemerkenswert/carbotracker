@@ -5,7 +5,7 @@ import { catchError, from, map, of, switchMap } from 'rxjs';
 import { PasswordApiActions } from '../features/auth/+state';
 import {
   AccountPageActions,
-  FactorsPageActions,
+  InsulinToCarbRatioPageActions,
 } from '../features/settings/+state';
 import {
   ShellComponentActions,
@@ -55,7 +55,7 @@ export const navigateToSettingsPage$ = createEffect(
         ShellComponentActions.settingsClicked,
         AccountPageActions.goBackIconClicked,
         PasswordApiActions.updatePasswordSuccessful,
-        FactorsPageActions.goBackIconClicked,
+        InsulinToCarbRatioPageActions.goBackIconClicked,
       ),
       switchMap(() =>
         from(router.navigate(['app', 'settings'])).pipe(

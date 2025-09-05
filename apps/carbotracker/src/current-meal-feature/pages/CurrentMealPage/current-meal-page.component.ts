@@ -39,11 +39,11 @@ export default class CurrentMealPageComponent implements OnInit, OnDestroy {
   protected readonly sumOfCurrentMealCarbs = this.store.selectSignal(
     selectSumOfCurrentMealCarbs,
   );
-  protected readonly showInjectionUnits$ = this.store.select(
-    appSettingsFeature.selectShowInjectionUnits,
+  protected readonly showInsulinUnits$ = this.store.select(
+    appSettingsFeature.selectShowInsulinUnits,
   );
-  protected readonly injectionUnits$ = this.store.select(
-    appSettingsFeature.selectInjectionUnits,
+  protected readonly insulinUnits$ = this.store.select(
+    appSettingsFeature.selectInsulinUnits,
   );
 
   public ngOnInit(): void {

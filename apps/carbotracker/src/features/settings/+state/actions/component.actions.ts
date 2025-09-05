@@ -1,12 +1,12 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
-import { Factors } from '../../factors.model';
+import { InsulinToCarbRatio } from '../../insulin-to-carb-ratio.model';
 
 export const SettingsPageActions = createActionGroup({
   source: 'Settings | Settings Page',
   events: {
     'Logout Clicked': emptyProps(),
     'Account Clicked': emptyProps(),
-    'Factors Clicked': emptyProps(),
+    'Insulin To Carb Ratios Clicked': emptyProps(),
   },
 });
 
@@ -30,10 +30,12 @@ export const AccountPageActions = createActionGroup({
   },
 });
 
-export const FactorsPageActions = createActionGroup({
-  source: 'Settings | Factors Page',
+export const InsulinToCarbRatioPageActions = createActionGroup({
+  source: 'Settings | Insulin To Carb Ratio Page',
   events: {
-    'Save Changes Clicked': props<{ factors: Omit<Factors, 'creator'> }>(),
+    'Save Changes Clicked': props<{
+      insulinToCarbRatios: Omit<InsulinToCarbRatio, 'creator'>;
+    }>(),
     'Go Back Icon Clicked': emptyProps(),
   },
 });

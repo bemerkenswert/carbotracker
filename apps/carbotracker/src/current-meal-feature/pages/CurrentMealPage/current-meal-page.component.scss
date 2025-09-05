@@ -11,14 +11,14 @@
   align-items: center;
 }
 
-.injection-summary-container {
+.insulin-units-summary-container {
   display: flex;
   flex-direction: column;
 }
 
-.injection-breakfast,
-.injection-lunch,
-.injection-dinner {
+.insulin-units-breakfast,
+.insulin-units-lunch,
+.insulin-units-dinner {
   display: flex;
   gap: 8px;
 }

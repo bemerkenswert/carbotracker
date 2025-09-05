@@ -1,15 +1,17 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
-import { Factors } from '../../factors.model';
+import { InsulinToCarbRatio } from '../../insulin-to-carb-ratio.model';
 
 export const SettingsApiActions = createActionGroup({
-  source: 'Settings | Factors Api',
+  source: 'Settings | Insulin To Carb Ratio Api',
   events: {
-    'Updating Factors Successful': emptyProps(),
-    'Updating Factors Failed': props<{ error: unknown }>(),
-    'Creating Factors Successful': emptyProps(),
-    'Creating Factors Failed': props<{ error: unknown }>(),
-    'Factors Collection Changed': props<{ factors: Factors }>(),
+    'Updating Insulin To Carb Ratio Successful': emptyProps(),
+    'Updating Insulin To Carb Ratio Failed': props<{ error: unknown }>(),
+    'Creating Insulin To Carb Ratio Successful': emptyProps(),
+    'Creating Insulin To Carb Ratio Failed': props<{ error: unknown }>(),
+    'Insulin To Carb Ratio Collection Changed': props<{
+      insulinToCarbRatios: InsulinToCarbRatio;
+    }>(),
     'Unknown Error': props<{ error: unknown }>(),
-    'Unsubscribed From Factors Stream': emptyProps(),
+    'Unsubscribed From Insulin To Carb Ratio Stream': emptyProps(),
   },
 });

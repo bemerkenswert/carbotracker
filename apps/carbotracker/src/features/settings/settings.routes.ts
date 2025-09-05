@@ -3,7 +3,7 @@ import { provideEffects } from '@ngrx/effects';
 import { apiEffects, routingEffects, snackbarEffects } from './+state';
 import { AccountPageComponent } from './pages/account-page/account-page.component';
 import { ChangePasswordPageComponent } from './pages/change-password-page/change-password-page.component';
-import { FactorsPageComponent } from './pages/factors-page/factors-page.component';
+import { InsulinToCarbRatiosPageComponent } from './pages/insulin-to-carb-ratios-page/insulin-to-carb-ratios-page.component';
 import { SettingsPageComponent } from './pages/settings-page/settings-page.component';
 
 const SETTINGS_ROUTES: Routes = [
@@ -14,7 +14,10 @@ const SETTINGS_ROUTES: Routes = [
       { path: '', pathMatch: 'full', component: SettingsPageComponent },
       { path: 'account', component: AccountPageComponent },
       { path: 'change-password', component: ChangePasswordPageComponent },
-      { path: 'factors', component: FactorsPageComponent },
+      {
+        path: 'insulin-to-carb-ratios',
+        component: InsulinToCarbRatiosPageComponent,
+      },
     ],
   },
 ];

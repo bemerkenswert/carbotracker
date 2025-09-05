@@ -11,7 +11,7 @@ import {
   SignUpApiActions,
 } from '../features/auth/+state/actions/api.actions';
 import { SettingsApiActions } from '../features/settings/+state';
-import { FactorsService } from '../features/settings/services/factors.service';
+import { InsulinToCarbRatiosService } from '../features/settings/services/insulin-to-carb-ratios.service';
 import { AppRouterEffectsActions } from './app.actions';
 
 export const navigateToProducts$ = createEffect(
@@ -39,35 +39,38 @@ export const navigateToApp$ = createEffect(
   { functional: true },
 );
 
-export const startStreamingFactors$ = createEffect(
+export const startStreamingInsulinToCarbRatios$ = createEffect(
   (
     actions$ = inject(Actions),
-    factorsService = inject(FactorsService),
+    insulinToCarbRatiosService = inject(InsulinToCarbRatiosService),
     store = inject(Store),
   ) =>
     actions$.pipe(
       ofType(
         LoginApiActions.loginSuccessful,
         AuthApiActions.userIsLoggedIn,
-        SettingsApiActions.creatingFactorsSuccessful,
-        SettingsApiActions.updatingFactorsSuccessful,
+        SettingsApiActions.creatingInsulinToCarbRatioSuccessful,
+        SettingsApiActions.updatingInsulinToCarbRatioSuccessful,
       ),
       switchMap(() => store.select(authFeature.selectUserId)),
       tap((uid) => {
         if (uid) {
-          factorsService.subscribeToOwnFactors({ uid });
+          insulinToCarbRatiosService.subscribeToOwnInsulinToCarbRatios({ uid });
         }
       }),
     ),
   { dispatch: false, functional: true },
 );
 
-export const stopStreamingFactors$ = createEffect(
-  (actions$ = inject(Actions), factorsService = inject(FactorsService)) =>
+export const stopStreamingInsulinToCarbRatios$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    insulinToCarbRatiosService = inject(InsulinToCarbRatiosService),
+  ) =>
     actions$.pipe(
       ofType(LogoutApiActions.logoutSuccessful),
       tap(() => {
-        factorsService.unsubscribeFromOwnFactors();
+        insulinToCarbRatiosService.unsubscribeFromOwnInsulinToCarbRatios();
       }),
     ),
   { dispatch: false, functional: true },

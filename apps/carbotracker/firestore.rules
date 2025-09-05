@@ -24,13 +24,13 @@ service cloud.firestore {
       allow write: if isCurrentMealOwner(request, currentMealId);
     }
 
-    match /factors/{factorsId}  {
-      function isFactorsOwner(request, factorsId) {
-        return request.auth != null && request.auth.uid == factorsId;
+    match /insulin-to-carb-ratios/{insulinToCarbRatiosId}  {
+      function isInsulinToCarbRatiosOwner(request, insulinToCarbRatiosId) {
+        return request.auth != null && request.auth.uid == insulinToCarbRatiosId;
       }
 
-      allow read: if isFactorsOwner(request, factorsId);
-      allow write: if isFactorsOwner(request, factorsId);
+      allow read: if isInsulinToCarbRatiosOwner(request, insulinToCarbRatiosId);
+      allow write: if isInsulinToCarbRatiosOwner(request, insulinToCarbRatiosId);
     } 
   }
 }

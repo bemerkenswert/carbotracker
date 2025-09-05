@@ -1,25 +1,25 @@
 import { createFeature, createReducer, createSelector, on } from '@ngrx/store';
 import { selectSumOfCurrentMealCarbs } from '../current-meal-feature/pages/CurrentMealPage/current-meal-page.selector';
 import {
-  FactorsPageActions,
+  InsulinToCarbRatioPageActions,
   SettingsApiActions,
 } from '../features/settings/+state';
 
 interface AppSettingsState {
-  factors: {
-    showInjectionUnits: boolean;
-    breakfastFactor: number | null;
-    lunchFactor: number | null;
-    dinnerFactor: number | null;
+  insulinToCarbRatios: {
+    showInsulinUnits: boolean;
+    breakfastInsulinToCarbRatio: number | null;
+    lunchInsulinToCarbRatio: number | null;
+    dinnerInsulinToCarbRatio: number | null;
   };
 }
 
 export const getInitialState = (): AppSettingsState => ({
-  factors: {
-    showInjectionUnits: false,
-    breakfastFactor: null,
-    lunchFactor: null,
-    dinnerFactor: null,
+  insulinToCarbRatios: {
+    showInsulinUnits: false,
+    breakfastInsulinToCarbRatio: null,
+    lunchInsulinToCarbRatio: null,
+    dinnerInsulinToCarbRatio: null,
   },
 });
 
@@ -28,33 +28,39 @@ export const appSettingsFeature = createFeature({
   reducer: createReducer(
     getInitialState(),
     on(
-      FactorsPageActions.saveChangesClicked,
-      SettingsApiActions.factorsCollectionChanged,
-      (state, { factors }): AppSettingsState => {
-        console.warn(factors);
+      InsulinToCarbRatioPageActions.saveChangesClicked,
+      SettingsApiActions.insulinToCarbRatioCollectionChanged,
+      (state, { insulinToCarbRatios }): AppSettingsState => {
         return {
           ...state,
-          factors,
+          insulinToCarbRatios,
         };
       },
     ),
   ),
   extraSelectors(baseSelectors) {
-    const selectInjectionUnits = createSelector(
+    const selectInsulinUnits = createSelector(
       baseSelectors.selectAppSettingsState,
       selectSumOfCurrentMealCarbs,
-      ({ factors }, sumOfCurrentMealCarbs) => {
-        const { breakfastFactor, lunchFactor, dinnerFactor } = factors;
+      ({ insulinToCarbRatios }, sumOfCurrentMealCarbs) => {
+        const {
+          breakfastInsulinToCarbRatio,
+          lunchInsulinToCarbRatio,
+          dinnerInsulinToCarbRatio,
+        } = insulinToCarbRatios;
         if (sumOfCurrentMealCarbs > 0) {
           return {
-            breakfastInjectionUnit: breakfastFactor
-              ? getInjectionUnits(sumOfCurrentMealCarbs, breakfastFactor)
+            breakfastInsulinUnits: breakfastInsulinToCarbRatio
+              ? getInsulinUnits(
+                  sumOfCurrentMealCarbs,
+                  breakfastInsulinToCarbRatio,
+                )
               : null,
-            lunchInjectionUnit: lunchFactor
-              ? getInjectionUnits(sumOfCurrentMealCarbs, lunchFactor)
+            lunchInsulinUnits: lunchInsulinToCarbRatio
+              ? getInsulinUnits(sumOfCurrentMealCarbs, lunchInsulinToCarbRatio)
               : null,
-            dinnerInjectionUnit: dinnerFactor
-              ? getInjectionUnits(sumOfCurrentMealCarbs, dinnerFactor)
+            dinnerInsulinUnits: dinnerInsulinToCarbRatio
+              ? getInsulinUnits(sumOfCurrentMealCarbs, dinnerInsulinToCarbRatio)
               : null,
           };
         } else {
@@ -62,14 +68,21 @@ export const appSettingsFeature = createFeature({
         }
       },
     );
-    const selectShowInjectionUnits = createSelector(
-      baseSelectors.selectFactors,
-      ({ showInjectionUnits }) => showInjectionUnits,
+    const selectShowInsulinUnits = createSelector(
+      baseSelectors.selectInsulinToCarbRatios,
+      ({ showInsulinUnits }) => showInsulinUnits,
     );
-    return { ...baseSelectors, selectInjectionUnits, selectShowInjectionUnits };
+    return {
+      ...baseSelectors,
+      selectInsulinUnits,
+      selectShowInsulinUnits,
+    };
   },
 });
 
-const getInjectionUnits = (sumOfCarbs: number, factor: number): number => {
-  return (sumOfCarbs / 10) * factor;
+const getInsulinUnits = (
+  sumOfCarbs: number,
+  insulinToCarbRatio: number,
+): number => {
+  return (sumOfCarbs / 10) * insulinToCarbRatio;
 };

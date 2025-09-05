@@ -21,9 +21,10 @@ const getSettingsItems = (): SettingsItem[] => {
       name: 'Account',
     },
     {
-      onClick: () => store.dispatch(SettingsPageActions.factorsClicked()),
+      onClick: () =>
+        store.dispatch(SettingsPageActions.insulinToCarbRatiosClicked()),
       icon: 'edit_attributes',
-      name: 'Factors',
+      name: 'Insulin to carb ratios',
     },
     {
       onClick: () => store.dispatch(SettingsPageActions.logoutClicked()),
