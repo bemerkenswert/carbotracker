@@ -1,14 +1,12 @@
 import { inject, Injectable } from '@angular/core';
 import { Store } from '@ngrx/store';
 import {
-  collection,
   doc,
   DocumentSnapshot,
   getFirestore,
   onSnapshot,
   setDoc,
   Unsubscribe,
-  updateDoc,
 } from 'firebase/firestore';
 import { from } from 'rxjs';
 import { SettingsApiActions } from '../+state';
@@ -18,7 +16,6 @@ import { InsulinToCarbRatio } from '../insulin-to-carb-ratio.model';
 export class InsulinToCarbRatiosService {
   private readonly db = getFirestore();
   private readonly path = 'insulin-to-carb-ratios';
-  private readonly insulinToCarbRatios = collection(this.db, this.path);
   private readonly store = inject(Store);
   private unsubscribe: Unsubscribe | null = null;
 
@@ -54,7 +51,7 @@ export class InsulinToCarbRatiosService {
     }
   }
 
-  public createInsulinToCarbRatios(params: {
+  public setInsulinToCarbRatios(params: {
     insulinToCarbRatio: InsulinToCarbRatio;
     uid: string;
   }) {
@@ -74,22 +71,5 @@ export class InsulinToCarbRatiosService {
 
   private getInsulinToCarbRatiosDocument(params: { uid: string }) {
     return doc(this.db, this.path, params.uid);
-  }
-
-  public updateInsulinToCarbRatios({
-    showInsulinUnits,
-    breakfastInsulinToCarbRatio,
-    lunchInsulinToCarbRatio,
-    dinnerInsulinToCarbRatio,
-  }: InsulinToCarbRatio) {
-    const insulinToCarbRatiosRef = doc(this.db, this.path);
-    return from(
-      updateDoc(insulinToCarbRatiosRef, {
-        showInsulinUnits,
-        breakfastInsulinToCarbRatio,
-        lunchInsulinToCarbRatio,
-        dinnerInsulinToCarbRatio,
-      }),
-    );
   }
 }

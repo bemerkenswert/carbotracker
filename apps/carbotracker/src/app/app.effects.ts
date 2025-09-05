@@ -49,8 +49,7 @@ export const startStreamingInsulinToCarbRatios$ = createEffect(
       ofType(
         LoginApiActions.loginSuccessful,
         AuthApiActions.userIsLoggedIn,
-        SettingsApiActions.creatingInsulinToCarbRatioSuccessful,
-        SettingsApiActions.updatingInsulinToCarbRatioSuccessful,
+        SettingsApiActions.settingInsulinToCarbRatioSuccessful,
       ),
       switchMap(() => store.select(authFeature.selectUserId)),
       tap((uid) => {

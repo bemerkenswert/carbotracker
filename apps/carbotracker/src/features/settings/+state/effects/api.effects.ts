@@ -28,16 +28,14 @@ export const createInsulinToCarbRatios$ = createEffect(
       })),
       mergeMap((newInsulinToCarbRatios) =>
         insulinToCarbRatiosService
-          .createInsulinToCarbRatios({
+          .setInsulinToCarbRatios({
             insulinToCarbRatio: newInsulinToCarbRatios,
             uid: newInsulinToCarbRatios.creator,
           })
           .pipe(
-            map(() =>
-              SettingsApiActions.creatingInsulinToCarbRatioSuccessful(),
-            ),
+            map(() => SettingsApiActions.settingInsulinToCarbRatioSuccessful()),
             catchError((error) =>
-              of(SettingsApiActions.creatingInsulinToCarbRatioFailed(error)),
+              of(SettingsApiActions.settingInsulinToCarbRatioFailed(error)),
             ),
           ),
       ),
