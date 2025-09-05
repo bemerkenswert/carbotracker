@@ -1,7 +1,7 @@
 import { createFeature, createReducer, createSelector, on } from '@ngrx/store';
 import { selectSumOfCurrentMealCarbs } from '../current-meal-feature/pages/CurrentMealPage/current-meal-page.selector';
 import {
-  InsulinToCarbRatioPageActions,
+  InsulinToCarbRatiosPageActions,
   SettingsApiActions,
 } from '../features/settings/+state';
 
@@ -28,8 +28,8 @@ export const appSettingsFeature = createFeature({
   reducer: createReducer(
     getInitialState(),
     on(
-      InsulinToCarbRatioPageActions.saveChangesClicked,
-      SettingsApiActions.insulinToCarbRatioCollectionChanged,
+      InsulinToCarbRatiosPageActions.saveChangesClicked,
+      SettingsApiActions.insulinToCarbRatiosCollectionChanged,
       (state, { insulinToCarbRatios }): AppSettingsState => {
         return {
           ...state,

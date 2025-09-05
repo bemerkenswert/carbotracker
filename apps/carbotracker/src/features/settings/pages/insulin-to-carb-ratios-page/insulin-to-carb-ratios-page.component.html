@@ -16,11 +16,11 @@
   @if (insulinToCarbRatiosFormGroup.controls.showInsulinUnits.getRawValue()) {
     @for (
       insulinToCarbRatio of insulinToCarbRatios;
-      track insulinToCarbRatio.type
+      track insulinToCarbRatio.mealType
     ) {
       <div class="insulin-to-carb-ratios">
         <mat-form-field>
-          <mat-label>{{ insulinToCarbRatio.type }}</mat-label>
+          <mat-label>{{ insulinToCarbRatio.mealType }}</mat-label>
           <input
             matInput
             [formControl]="insulinToCarbRatio.control"

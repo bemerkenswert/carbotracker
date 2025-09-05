@@ -14,11 +14,11 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { first } from 'rxjs';
-import { InsulinToCarbRatioPageActions } from '../../+state';
+import { InsulinToCarbRatiosPageActions } from '../../+state';
 import { appSettingsFeature } from '../../../../app/app.reducer';
 
-interface InsulinToCarbRatioType {
-  type: 'Breakfast ratio' | 'Lunch ratio' | 'Dinner ratio';
+interface InsulinToCarbRatioPerMeal {
+  mealType: 'Breakfast ratio' | 'Lunch ratio' | 'Dinner ratio';
   control: FormControl;
 }
 
@@ -29,7 +29,7 @@ interface InsulinToCarbRatiosFormGroup {
   dinnerInsulinToCarbRatio: number | null;
 }
 
-const createInsulinToCarbRatioFormGroup = () =>
+const createInsulinToCarbRatiosFormGroup = () =>
   inject(FormBuilder).group<InsulinToCarbRatiosFormGroup>({
     showInsulinUnits: false,
     breakfastInsulinToCarbRatio: null,
@@ -54,7 +54,7 @@ const createInsulinToCarbRatioFormGroup = () =>
 })
 export class InsulinToCarbRatiosPageComponent implements OnInit {
   protected readonly insulinToCarbRatiosFormGroup =
-    createInsulinToCarbRatioFormGroup();
+    createInsulinToCarbRatiosFormGroup();
   protected readonly insulinToCarbRatios = this.getInsulinToCarbRatios();
   private readonly store = inject(Store);
   private insulinToCarbRatios$ = this.store
@@ -90,7 +90,7 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
       } = this.insulinToCarbRatiosFormGroup.getRawValue();
       const showUnits = !!showInsulinUnits;
       this.store.dispatch(
-        InsulinToCarbRatioPageActions.saveChangesClicked({
+        InsulinToCarbRatiosPageActions.saveChangesClicked({
           insulinToCarbRatios: {
             showInsulinUnits: showUnits,
             breakfastInsulinToCarbRatio,
@@ -103,24 +103,24 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
   }
 
   protected onGoBack() {
-    this.store.dispatch(InsulinToCarbRatioPageActions.goBackIconClicked());
+    this.store.dispatch(InsulinToCarbRatiosPageActions.goBackIconClicked());
   }
 
-  private getInsulinToCarbRatios(): InsulinToCarbRatioType[] {
+  private getInsulinToCarbRatios(): InsulinToCarbRatioPerMeal[] {
     return [
       {
-        type: 'Breakfast ratio',
+        mealType: 'Breakfast ratio',
         control:
           this.insulinToCarbRatiosFormGroup.controls
             .breakfastInsulinToCarbRatio,
       },
       {
-        type: 'Lunch ratio',
+        mealType: 'Lunch ratio',
         control:
           this.insulinToCarbRatiosFormGroup.controls.lunchInsulinToCarbRatio,
       },
       {
-        type: 'Dinner ratio',
+        mealType: 'Dinner ratio',
         control:
           this.insulinToCarbRatiosFormGroup.controls.dinnerInsulinToCarbRatio,
       },

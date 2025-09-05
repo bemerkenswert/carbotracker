@@ -28,7 +28,7 @@ export class InsulinToCarbRatiosService {
           if (data) {
             this.transform(data);
             this.store.dispatch(
-              SettingsApiActions.insulinToCarbRatioCollectionChanged({
+              SettingsApiActions.insulinToCarbRatiosCollectionChanged({
                 insulinToCarbRatios: this.transform(data),
               }),
             );
@@ -46,17 +46,17 @@ export class InsulinToCarbRatiosService {
       this.unsubscribe();
       this.unsubscribe = null;
       this.store.dispatch(
-        SettingsApiActions.unsubscribedFromInsulinToCarbRatioStream(),
+        SettingsApiActions.unsubscribedFromInsulinToCarbRatiosStream(),
       );
     }
   }
 
   public setInsulinToCarbRatios(params: {
-    insulinToCarbRatio: InsulinToCarbRatio;
+    insulinToCarbRatios: InsulinToCarbRatio;
     uid: string;
   }) {
     const document = this.getInsulinToCarbRatiosDocument(params);
-    return from(setDoc(document, params.insulinToCarbRatio));
+    return from(setDoc(document, params.insulinToCarbRatios));
   }
 
   private transform(data: Partial<InsulinToCarbRatio>): InsulinToCarbRatio {

@@ -30,8 +30,8 @@ export const AccountPageActions = createActionGroup({
   },
 });
 
-export const InsulinToCarbRatioPageActions = createActionGroup({
-  source: 'Settings | Insulin To Carb Ratio Page',
+export const InsulinToCarbRatiosPageActions = createActionGroup({
+  source: 'Settings | Insulin To Carb Ratios Page',
   events: {
     'Save Changes Clicked': props<{
       insulinToCarbRatios: Omit<InsulinToCarbRatio, 'creator'>;
