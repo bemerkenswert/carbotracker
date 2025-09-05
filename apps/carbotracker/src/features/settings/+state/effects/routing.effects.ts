@@ -49,3 +49,25 @@ export const navigateToChangePasswordPage$ = createEffect(
     ),
   { functional: true },
 );
+
+export const navigateToInsulinToCarbRatiosPage$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(SettingsPageActions.insulinToCarbRatiosClicked),
+      switchMap(() =>
+        from(
+          router.navigate(['app', 'settings', 'insulin-to-carb-ratios']),
+        ).pipe(
+          map(() =>
+            SettingsRouterEffectsActions.navigationToInsulinToCarbRatiosPageSuccessful(),
+          ),
+          catchError(() =>
+            of(
+              SettingsRouterEffectsActions.navigationToInsulinToCarbRatiosPageFailed(),
+            ),
+          ),
+        ),
+      ),
+    ),
+  { functional: true },
+);

@@ -1,0 +1,34 @@
+<ctui-toolbar
+  title="Insulin to carb ratios"
+  [showBackwardNavigation]="true"
+  (backwardNavigation)="onGoBack()"
+></ctui-toolbar>
+<form [formGroup]="insulinToCarbRatiosFormGroup" (submit)="onSaveChanges()">
+  <mat-slide-toggle
+    class="unit-toggle"
+    [formControl]="insulinToCarbRatiosFormGroup.controls.showInsulinUnits"
+  >
+    <div class="unit-toggle-description">
+      Display calculated insulin units based on breakfast, lunch and dinner
+      insulin to carb ratio for current meal
+    </div>
+  </mat-slide-toggle>
+  @if (insulinToCarbRatiosFormGroup.controls.showInsulinUnits.getRawValue()) {
+    @for (
+      insulinToCarbRatio of insulinToCarbRatios;
+      track insulinToCarbRatio.mealType
+    ) {
+      <div class="insulin-to-carb-ratios">
+        <mat-form-field>
+          <mat-label>{{ insulinToCarbRatio.mealType }}</mat-label>
+          <input
+            matInput
+            [formControl]="insulinToCarbRatio.control"
+            type="number"
+          />
+        </mat-form-field>
+      </div>
+    }
+  }
+  <button color="primary" mat-raised-button type="submit">Save changes</button>
+</form>

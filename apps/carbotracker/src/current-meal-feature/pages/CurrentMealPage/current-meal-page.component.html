@@ -4,11 +4,30 @@
   </button>
 </ctui-toolbar>
 <div class="summary-container">
-  <div class="injection-summary-container">
-    <div class="injection-breakfast"><mat-icon>wb_twilight</mat-icon>10.3</div>
-    <div class="injection-lunch"><mat-icon>wb_sunny</mat-icon>2.1</div>
-    <div class="injection-dinner"><mat-icon>nights_stay</mat-icon>8.9</div>
-  </div>
+  @if (showInsulinUnits$ | async) {
+    @if (insulinUnits$ | async; as insulinUnits) {
+      <div class="insulin-units-summary-container">
+        @if (insulinUnits.breakfastInsulinUnits) {
+          <div class="insulin-units-breakfast">
+            <mat-icon>wb_twilight</mat-icon
+            >{{ insulinUnits.breakfastInsulinUnits | number: '1.0-1' }} I.U.
+          </div>
+        }
+        @if (insulinUnits.lunchInsulinUnits) {
+          <div class="insulin-units-lunch">
+            <mat-icon>wb_sunny</mat-icon
+            >{{ insulinUnits.lunchInsulinUnits | number: '1.0-1' }} I.U.
+          </div>
+        }
+        @if (insulinUnits.dinnerInsulinUnits) {
+          <div class="insulin-units-dinner">
+            <mat-icon>nights_stay</mat-icon
+            >{{ insulinUnits.dinnerInsulinUnits | number: '1.0-1' }} I.U.
+          </div>
+        }
+      </div>
+    }
+  }
   <span class="carbs-summary"
     >{{ sumOfCurrentMealCarbs() | number: '1.0-0' }}g</span
   >
