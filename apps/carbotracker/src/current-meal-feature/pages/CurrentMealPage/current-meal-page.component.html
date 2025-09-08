@@ -1,59 +1,53 @@
-<ctui-toolbar title="Current meal">
-  <button (click)="onClearCurrentMealClick()" mat-icon-button>
-    <mat-icon>delete_sweep</mat-icon>
-  </button>
-</ctui-toolbar>
-<div class="summary-container">
-  @if (showInsulinUnits$ | async) {
-    @if (insulinUnits$ | async; as insulinUnits) {
+@if (viewModel(); as vm) {
+  <ctui-toolbar title="Current meal">
+    <button (click)="onClearCurrentMealClick()" mat-icon-button>
+      <mat-icon>delete_sweep</mat-icon>
+    </button>
+  </ctui-toolbar>
+  <div class="summary-container">
+    @if (vm.showInsulinUnits) {
       <div class="insulin-units-summary-container">
-        @if (insulinUnits.breakfastInsulinUnits) {
-          <div class="insulin-units-breakfast">
-            <mat-icon>wb_twilight</mat-icon
-            >{{ insulinUnits.breakfastInsulinUnits | number: '1.0-1' }} I.U.
-          </div>
-        }
-        @if (insulinUnits.lunchInsulinUnits) {
-          <div class="insulin-units-lunch">
-            <mat-icon>wb_sunny</mat-icon
-            >{{ insulinUnits.lunchInsulinUnits | number: '1.0-1' }} I.U.
-          </div>
-        }
-        @if (insulinUnits.dinnerInsulinUnits) {
-          <div class="insulin-units-dinner">
-            <mat-icon>nights_stay</mat-icon
-            >{{ insulinUnits.dinnerInsulinUnits | number: '1.0-1' }} I.U.
-          </div>
-        }
+        <div class="insulin-units-breakfast">
+          <mat-icon>wb_twilight</mat-icon
+          >{{ vm.insulinUnits.breakfast | number: '1.0-1' }} I.U.
+        </div>
+        <div class="insulin-units-lunch">
+          <mat-icon>wb_sunny</mat-icon
+          >{{ vm.insulinUnits.lunch | number: '1.0-1' }} I.U.
+        </div>
+        <div class="insulin-units-dinner">
+          <mat-icon>nights_stay</mat-icon
+          >{{ vm.insulinUnits.dinner | number: '1.0-1' }} I.U.
+        </div>
       </div>
     }
+    <span class="carbs-summary"
+      >{{ vm.sumOfCurrentMealCarbs | number: '1.0-0' }}g</span
+    >
+  </div>
+  @if (vm.mealEntries.length > 0) {
+    <mat-nav-list>
+      @for (mealEntry of vm.mealEntries; track mealEntry.productId) {
+        <mat-list-item (click)="onMealEntryClick(mealEntry)">
+          <h4 matListItemTitle>{{ mealEntry.name }}</h4>
+          <p matListItemLine>
+            <span>{{ mealEntry.amount }}g</span>
+          </p>
+        </mat-list-item>
+      }
+    </mat-nav-list>
+  } @else {
+    No current meal created yet. Add some products to fill your list!
   }
-  <span class="carbs-summary"
-    >{{ sumOfCurrentMealCarbs() | number: '1.0-0' }}g</span
-  >
-</div>
-@if (mealEntries().length > 0) {
-  <mat-nav-list>
-    @for (mealEntry of mealEntries(); track mealEntry.productId) {
-      <mat-list-item (click)="onMealEntryClick(mealEntry)">
-        <h4 matListItemTitle>{{ mealEntry.name }}</h4>
-        <p matListItemLine>
-          <span>{{ mealEntry.amount }}g</span>
-        </p>
-      </mat-list-item>
-    }
-  </mat-nav-list>
-} @else {
-  No current meal created yet. Add some products to fill your list!
-}
 
-<button
-  (click)="onAddClick()"
-  mat-fab
-  color="primary"
-  ctuiFixedPosition
-  type="button"
-  [disabled]="!productsAvailable()"
->
-  <mat-icon>add</mat-icon>
-</button>
+  <button
+    (click)="onAddClick()"
+    mat-fab
+    color="primary"
+    ctuiFixedPosition
+    type="button"
+    [disabled]="!vm.productsAvailable"
+  >
+    <mat-icon>add</mat-icon>
+  </button>
+}

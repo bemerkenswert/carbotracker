@@ -4,7 +4,7 @@ import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
 import { provideRouterStore, routerReducer } from '@ngrx/router-store';
-import { Store, provideState, provideStore } from '@ngrx/store';
+import { Store, provideStore } from '@ngrx/store';
 import { provideStoreDevtools } from '@ngrx/store-devtools';
 import { filter, switchMap } from 'rxjs';
 
@@ -13,7 +13,7 @@ import { environment } from '../environments/environment';
 import { authFeature } from '../features/auth/+state/auth.store';
 import { getAuthProviders } from '../features/auth/auth.providers';
 import * as appEffects from './app.effects';
-import { appSettingsFeature } from './app.reducer';
+import { settingsFeature } from './app.reducer';
 
 const isLoggedIn = () => {
   const store = inject(Store);
@@ -26,12 +26,14 @@ const isLoggedIn = () => {
 export const appConfig: ApplicationConfig = {
   providers: [
     provideAnimations(),
-    provideStore({ router: routerReducer }),
+    provideStore({
+      router: routerReducer,
+      [settingsFeature.name]: settingsFeature.reducer,
+    }),
     environment.fireBaseProvider(),
     provideRouterStore(),
     getAuthProviders(),
     provideEffects([appEffects]),
-    provideState(appSettingsFeature),
     provideStoreDevtools(),
     provideRouter(
       [

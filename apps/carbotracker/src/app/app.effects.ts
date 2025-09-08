@@ -10,7 +10,6 @@ import {
   LogoutApiActions,
   SignUpApiActions,
 } from '../features/auth/+state/actions/api.actions';
-import { SettingsApiActions } from '../features/settings/+state';
 import { InsulinToCarbRatiosService } from '../features/settings/services/insulin-to-carb-ratios.service';
 import { AppRouterEffectsActions } from './app.actions';
 
@@ -46,11 +45,7 @@ export const startStreamingInsulinToCarbRatios$ = createEffect(
     store = inject(Store),
   ) =>
     actions$.pipe(
-      ofType(
-        LoginApiActions.loginSuccessful,
-        AuthApiActions.userIsLoggedIn,
-        SettingsApiActions.settingInsulinToCarbRatiosSuccessful,
-      ),
+      ofType(AuthApiActions.userIsLoggedIn),
       switchMap(() => store.select(authFeature.selectUserId)),
       tap((uid) => {
         if (uid) {

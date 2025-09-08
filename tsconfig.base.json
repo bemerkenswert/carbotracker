@@ -15,7 +15,8 @@
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@carbotracker/ui": ["libs/ui/src/index.ts"]
+      "@carbotracker/ui": ["libs/ui/src/index.ts"],
+      "@carbotracker/utility": ["libs/utility/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

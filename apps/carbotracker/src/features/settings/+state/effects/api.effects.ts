@@ -1,15 +1,13 @@
 import { inject } from '@angular/core';
+import { filterNull } from '@carbotracker/utility';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
-import { concatLatestFrom } from '@ngrx/operators';
+import { concatLatestFrom, mapResponse } from '@ngrx/operators';
 import { Store } from '@ngrx/store';
-import { catchError, filter, map, of, pipe, switchMap } from 'rxjs';
+import { switchMap } from 'rxjs';
 import { authFeature } from '../../../auth/+state';
 import { InsulinToCarbRatiosService } from '../../services/insulin-to-carb-ratios.service';
 import { SettingsApiActions } from '../actions/api.actions';
 import { InsulinToCarbRatiosPageActions } from '../actions/component.actions';
-
-const filterNull = <T>() =>
-  pipe(filter((value: T | null): value is T => Boolean(value)));
 
 export const createInsulinToCarbRatios$ = createEffect(
   (
@@ -29,12 +27,12 @@ export const createInsulinToCarbRatios$ = createEffect(
             uid: userId,
           })
           .pipe(
-            map(() =>
-              SettingsApiActions.settingInsulinToCarbRatiosSuccessful(),
-            ),
-            catchError((error) =>
-              of(SettingsApiActions.settingInsulinToCarbRatiosFailed(error)),
-            ),
+            mapResponse({
+              next: () =>
+                SettingsApiActions.settingInsulinToCarbRatiosSuccessful(),
+              error: (error) =>
+                SettingsApiActions.settingInsulinToCarbRatiosFailed({ error }),
+            }),
           ),
       ),
     ),

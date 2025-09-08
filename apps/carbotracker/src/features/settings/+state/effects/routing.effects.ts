@@ -1,7 +1,8 @@
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
-import { catchError, from, map, of, switchMap } from 'rxjs';
+import { mapResponse } from '@ngrx/operators';
+import { from, switchMap } from 'rxjs';
 import {
   AccountPageActions,
   ChangePasswordPageActions,
@@ -18,12 +19,14 @@ export const navigateToAccountPage$ = createEffect(
       ),
       switchMap(() =>
         from(router.navigate(['app', 'settings', 'account'])).pipe(
-          map(() =>
-            SettingsRouterEffectsActions.navigationToAccountPageSuccessful(),
-          ),
-          catchError(() =>
-            of(SettingsRouterEffectsActions.navigationToAccountPageFailed()),
-          ),
+          mapResponse({
+            next: () =>
+              SettingsRouterEffectsActions.navigationToAccountPageSuccessful(),
+            error: (error) =>
+              SettingsRouterEffectsActions.navigationToAccountPageFailed({
+                error,
+              }),
+          }),
         ),
       ),
     ),
@@ -36,14 +39,14 @@ export const navigateToChangePasswordPage$ = createEffect(
       ofType(AccountPageActions.passwordInputFocused),
       switchMap(() =>
         from(router.navigate(['app', 'settings', 'change-password'])).pipe(
-          map(() =>
-            SettingsRouterEffectsActions.navigationToChangePasswordPageSuccessful(),
-          ),
-          catchError(() =>
-            of(
-              SettingsRouterEffectsActions.navigationToChangePasswordPageFailed(),
-            ),
-          ),
+          mapResponse({
+            next: () =>
+              SettingsRouterEffectsActions.navigationToChangePasswordPageSuccessful(),
+            error: (error) =>
+              SettingsRouterEffectsActions.navigationToChangePasswordPageFailed(
+                { error },
+              ),
+          }),
         ),
       ),
     ),
@@ -58,14 +61,14 @@ export const navigateToInsulinToCarbRatiosPage$ = createEffect(
         from(
           router.navigate(['app', 'settings', 'insulin-to-carb-ratios']),
         ).pipe(
-          map(() =>
-            SettingsRouterEffectsActions.navigationToInsulinToCarbRatiosPageSuccessful(),
-          ),
-          catchError(() =>
-            of(
-              SettingsRouterEffectsActions.navigationToInsulinToCarbRatiosPageFailed(),
-            ),
-          ),
+          mapResponse({
+            next: () =>
+              SettingsRouterEffectsActions.navigationToInsulinToCarbRatiosPageSuccessful(),
+            error: (error) =>
+              SettingsRouterEffectsActions.navigationToInsulinToCarbRatiosPageFailed(
+                { error },
+              ),
+          }),
         ),
       ),
     ),

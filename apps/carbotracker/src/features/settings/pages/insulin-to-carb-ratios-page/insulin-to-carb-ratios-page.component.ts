@@ -12,10 +12,10 @@ import { MatInputModule } from '@angular/material/input';
 import { MatListModule } from '@angular/material/list';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { CtuiToolbarComponent } from '@carbotracker/ui';
+import { filterNull } from '@carbotracker/utility';
 import { Store } from '@ngrx/store';
-import { first, skip } from 'rxjs';
 import { InsulinToCarbRatiosPageActions } from '../../+state';
-import { appSettingsFeature } from '../../../../app/app.reducer';
+import { settingsFeature } from '../../../../app/app.reducer';
 
 interface InsulinToCarbRatioPerMeal {
   mealType: 'Breakfast ratio' | 'Lunch ratio' | 'Dinner ratio';
@@ -58,22 +58,15 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
   protected readonly insulinToCarbRatios = this.getInsulinToCarbRatios();
   private readonly store = inject(Store);
   private insulinToCarbRatios$ = this.store
-    .select(appSettingsFeature.selectInsulinToCarbRatios)
-    .pipe(skip(1), first());
+    .select(settingsFeature.selectInsulinToCarbRatios)
+    .pipe(filterNull());
 
   ngOnInit(): void {
-    this.insulinToCarbRatios$.subscribe(
-      ({ showInsulinUnits, breakfast, lunch, dinner }) => {
-        return this.insulinToCarbRatiosFormGroup.patchValue({
-          showInsulinUnits,
-          breakfast,
-          lunch,
-          dinner,
-        });
-      },
+    this.insulinToCarbRatios$.subscribe((insulinToCarbRatios) =>
+      this.insulinToCarbRatiosFormGroup.reset(insulinToCarbRatios),
     );
 
-    this.setValidatorsOnFormControls();
+    this.reactToShowSettingChanges();
   }
 
   protected onSaveChanges() {
@@ -115,7 +108,7 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
     ];
   }
 
-  private setValidatorsOnFormControls(): void {
+  private reactToShowSettingChanges(): void {
     this.insulinToCarbRatiosFormGroup.controls.showInsulinUnits.valueChanges.subscribe(
       (showInsulinUnits) => {
         const form = this.insulinToCarbRatiosFormGroup.controls;

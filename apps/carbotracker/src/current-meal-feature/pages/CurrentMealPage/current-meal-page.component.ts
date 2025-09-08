@@ -1,4 +1,4 @@
-import { AsyncPipe, DecimalPipe } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -9,10 +9,8 @@ import {
 } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { CurrentMealPageComponentActions as ComponentActions } from '../../+state/current-meal.actions';
-import { currentMealFeature } from '../../+state/current-meal.feature';
-import { appSettingsFeature } from '../../../app/app.reducer';
 import { MealEntry } from '../../current-meal.model';
-import { selectSumOfCurrentMealCarbs } from './current-meal-page.selector';
+import { selectViewModel } from './current-meal-page.selectors';
 
 @Component({
   selector: 'carbotracker-current-meal-page',
@@ -23,28 +21,13 @@ import { selectSumOfCurrentMealCarbs } from './current-meal-page.selector';
     MatIconModule,
     MatListModule,
     DecimalPipe,
-    AsyncPipe,
   ],
   templateUrl: './current-meal-page.component.html',
   styleUrls: ['./current-meal-page.component.scss'],
 })
 export default class CurrentMealPageComponent implements OnInit, OnDestroy {
   private readonly store = inject(Store);
-  protected readonly mealEntries = this.store.selectSignal(
-    currentMealFeature.selectAllMealEntries,
-  );
-  protected readonly productsAvailable = this.store.selectSignal(
-    currentMealFeature.selectProductsAvailableToAdd,
-  );
-  protected readonly sumOfCurrentMealCarbs = this.store.selectSignal(
-    selectSumOfCurrentMealCarbs,
-  );
-  protected readonly showInsulinUnits$ = this.store.select(
-    appSettingsFeature.selectShowInsulinUnits,
-  );
-  protected readonly insulinUnits$ = this.store.select(
-    appSettingsFeature.selectInsulinUnits,
-  );
+  protected readonly viewModel = this.store.selectSignal(selectViewModel);
 
   public ngOnInit(): void {
     this.store.dispatch(ComponentActions.enteredCurrentMealPage());
