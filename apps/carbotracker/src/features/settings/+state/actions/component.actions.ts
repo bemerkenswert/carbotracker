@@ -34,7 +34,7 @@ export const InsulinToCarbRatiosPageActions = createActionGroup({
   source: 'Settings | Insulin To Carb Ratios Page',
   events: {
     'Save Changes Clicked': props<{
-      insulinToCarbRatios: Omit<InsulinToCarbRatio, 'creator'>;
+      insulinToCarbRatios: InsulinToCarbRatio;
     }>(),
     'Go Back Icon Clicked': emptyProps(),
   },

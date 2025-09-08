@@ -2,7 +2,7 @@ import { inject } from '@angular/core';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { concatLatestFrom } from '@ngrx/operators';
 import { Store } from '@ngrx/store';
-import { catchError, filter, map, mergeMap, of, pipe } from 'rxjs';
+import { catchError, filter, map, of, pipe, switchMap } from 'rxjs';
 import { authFeature } from '../../../auth/+state';
 import { InsulinToCarbRatiosService } from '../../services/insulin-to-carb-ratios.service';
 import { SettingsApiActions } from '../actions/api.actions';
@@ -22,15 +22,11 @@ export const createInsulinToCarbRatios$ = createEffect(
       concatLatestFrom(() =>
         store.select(authFeature.selectUserId).pipe(filterNull()),
       ),
-      map(([{ insulinToCarbRatios }, userId]) => ({
-        ...insulinToCarbRatios,
-        creator: userId,
-      })),
-      mergeMap((newInsulinToCarbRatios) =>
+      switchMap(([{ insulinToCarbRatios }, userId]) =>
         insulinToCarbRatiosService
           .setInsulinToCarbRatios({
-            insulinToCarbRatios: newInsulinToCarbRatios,
-            uid: newInsulinToCarbRatios.creator,
+            insulinToCarbRatios,
+            uid: userId,
           })
           .pipe(
             map(() =>

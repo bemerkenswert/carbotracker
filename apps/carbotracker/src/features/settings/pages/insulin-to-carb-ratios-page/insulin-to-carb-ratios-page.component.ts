@@ -13,7 +13,7 @@ import { MatListModule } from '@angular/material/list';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
-import { first } from 'rxjs';
+import { first, skip } from 'rxjs';
 import { InsulinToCarbRatiosPageActions } from '../../+state';
 import { appSettingsFeature } from '../../../../app/app.reducer';
 
@@ -24,17 +24,17 @@ interface InsulinToCarbRatioPerMeal {
 
 interface InsulinToCarbRatiosFormGroup {
   showInsulinUnits: boolean;
-  breakfastInsulinToCarbRatio: number | null;
-  lunchInsulinToCarbRatio: number | null;
-  dinnerInsulinToCarbRatio: number | null;
+  breakfast: number | null;
+  lunch: number | null;
+  dinner: number | null;
 }
 
 const createInsulinToCarbRatiosFormGroup = () =>
   inject(FormBuilder).group<InsulinToCarbRatiosFormGroup>({
     showInsulinUnits: false,
-    breakfastInsulinToCarbRatio: null,
-    lunchInsulinToCarbRatio: null,
-    dinnerInsulinToCarbRatio: null,
+    breakfast: null,
+    lunch: null,
+    dinner: null,
   });
 
 @Component({
@@ -59,22 +59,18 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
   private readonly store = inject(Store);
   private insulinToCarbRatios$ = this.store
     .select(appSettingsFeature.selectInsulinToCarbRatios)
-    .pipe(first());
+    .pipe(skip(1), first());
 
   ngOnInit(): void {
     this.insulinToCarbRatios$.subscribe(
-      ({
-        showInsulinUnits,
-        breakfastInsulinToCarbRatio,
-        lunchInsulinToCarbRatio,
-        dinnerInsulinToCarbRatio,
-      }) =>
-        this.insulinToCarbRatiosFormGroup.patchValue({
+      ({ showInsulinUnits, breakfast, lunch, dinner }) => {
+        return this.insulinToCarbRatiosFormGroup.patchValue({
           showInsulinUnits,
-          breakfastInsulinToCarbRatio,
-          lunchInsulinToCarbRatio,
-          dinnerInsulinToCarbRatio,
-        }),
+          breakfast,
+          lunch,
+          dinner,
+        });
+      },
     );
 
     this.setValidatorsOnFormControls();
@@ -82,20 +78,16 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
 
   protected onSaveChanges() {
     if (this.insulinToCarbRatiosFormGroup.valid) {
-      const {
-        showInsulinUnits,
-        breakfastInsulinToCarbRatio,
-        lunchInsulinToCarbRatio,
-        dinnerInsulinToCarbRatio,
-      } = this.insulinToCarbRatiosFormGroup.getRawValue();
+      const { showInsulinUnits, breakfast, lunch, dinner } =
+        this.insulinToCarbRatiosFormGroup.getRawValue();
       const showUnits = !!showInsulinUnits;
       this.store.dispatch(
         InsulinToCarbRatiosPageActions.saveChangesClicked({
           insulinToCarbRatios: {
             showInsulinUnits: showUnits,
-            breakfastInsulinToCarbRatio,
-            lunchInsulinToCarbRatio,
-            dinnerInsulinToCarbRatio,
+            breakfast,
+            lunch,
+            dinner,
           },
         }),
       );
@@ -110,19 +102,15 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
     return [
       {
         mealType: 'Breakfast ratio',
-        control:
-          this.insulinToCarbRatiosFormGroup.controls
-            .breakfastInsulinToCarbRatio,
+        control: this.insulinToCarbRatiosFormGroup.controls.breakfast,
       },
       {
         mealType: 'Lunch ratio',
-        control:
-          this.insulinToCarbRatiosFormGroup.controls.lunchInsulinToCarbRatio,
+        control: this.insulinToCarbRatiosFormGroup.controls.lunch,
       },
       {
         mealType: 'Dinner ratio',
-        control:
-          this.insulinToCarbRatiosFormGroup.controls.dinnerInsulinToCarbRatio,
+        control: this.insulinToCarbRatiosFormGroup.controls.dinner,
       },
     ];
   }
@@ -132,13 +120,13 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
       (showInsulinUnits) => {
         const form = this.insulinToCarbRatiosFormGroup.controls;
         if (showInsulinUnits) {
-          this.setRequiredValidator(form.breakfastInsulinToCarbRatio);
-          this.setRequiredValidator(form.lunchInsulinToCarbRatio);
-          this.setRequiredValidator(form.dinnerInsulinToCarbRatio);
+          this.setRequiredValidator(form.breakfast);
+          this.setRequiredValidator(form.lunch);
+          this.setRequiredValidator(form.dinner);
         } else {
-          this.removeRequiredValidator(form.breakfastInsulinToCarbRatio);
-          this.removeRequiredValidator(form.lunchInsulinToCarbRatio);
-          this.removeRequiredValidator(form.dinnerInsulinToCarbRatio);
+          this.removeRequiredValidator(form.breakfast);
+          this.removeRequiredValidator(form.lunch);
+          this.removeRequiredValidator(form.dinner);
         }
       },
     );

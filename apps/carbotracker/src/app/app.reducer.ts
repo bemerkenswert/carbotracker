@@ -8,18 +8,18 @@ import {
 interface AppSettingsState {
   insulinToCarbRatios: {
     showInsulinUnits: boolean;
-    breakfastInsulinToCarbRatio: number | null;
-    lunchInsulinToCarbRatio: number | null;
-    dinnerInsulinToCarbRatio: number | null;
+    breakfast: number | null;
+    lunch: number | null;
+    dinner: number | null;
   };
 }
 
 export const getInitialState = (): AppSettingsState => ({
   insulinToCarbRatios: {
     showInsulinUnits: false,
-    breakfastInsulinToCarbRatio: null,
-    lunchInsulinToCarbRatio: null,
-    dinnerInsulinToCarbRatio: null,
+    breakfast: null,
+    lunch: null,
+    dinner: null,
   },
 });
 
@@ -43,24 +43,17 @@ export const appSettingsFeature = createFeature({
       baseSelectors.selectAppSettingsState,
       selectSumOfCurrentMealCarbs,
       ({ insulinToCarbRatios }, sumOfCurrentMealCarbs) => {
-        const {
-          breakfastInsulinToCarbRatio,
-          lunchInsulinToCarbRatio,
-          dinnerInsulinToCarbRatio,
-        } = insulinToCarbRatios;
+        const { breakfast, lunch, dinner } = insulinToCarbRatios;
         if (sumOfCurrentMealCarbs > 0) {
           return {
-            breakfastInsulinUnits: breakfastInsulinToCarbRatio
-              ? getInsulinUnits(
-                  sumOfCurrentMealCarbs,
-                  breakfastInsulinToCarbRatio,
-                )
+            breakfastInsulinUnits: breakfast
+              ? getInsulinUnits(sumOfCurrentMealCarbs, breakfast)
               : null,
-            lunchInsulinUnits: lunchInsulinToCarbRatio
-              ? getInsulinUnits(sumOfCurrentMealCarbs, lunchInsulinToCarbRatio)
+            lunchInsulinUnits: lunch
+              ? getInsulinUnits(sumOfCurrentMealCarbs, lunch)
               : null,
-            dinnerInsulinUnits: dinnerInsulinToCarbRatio
-              ? getInsulinUnits(sumOfCurrentMealCarbs, dinnerInsulinToCarbRatio)
+            dinnerInsulinUnits: dinner
+              ? getInsulinUnits(sumOfCurrentMealCarbs, dinner)
               : null,
           };
         } else {

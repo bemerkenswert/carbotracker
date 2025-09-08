@@ -20,17 +20,15 @@ service cloud.firestore {
         return request.auth != null && request.auth.uid == currentMealId;
       }
 
-      allow read: if isCurrentMealOwner(request, currentMealId);
-      allow write: if isCurrentMealOwner(request, currentMealId);
+      allow read, write: if isCurrentMealOwner(request, currentMealId);
     }
 
-    match /insulin-to-carb-ratios/{insulinToCarbRatiosId}  {
+    match /settings/{insulinToCarbRatiosId}  {
       function isInsulinToCarbRatiosOwner(request, insulinToCarbRatiosId) {
         return request.auth != null && request.auth.uid == insulinToCarbRatiosId;
       }
 
-      allow read: if isInsulinToCarbRatiosOwner(request, insulinToCarbRatiosId);
-      allow write: if isInsulinToCarbRatiosOwner(request, insulinToCarbRatiosId);
+      allow read, write: if isInsulinToCarbRatiosOwner(request, insulinToCarbRatiosId);
     } 
   }
 }

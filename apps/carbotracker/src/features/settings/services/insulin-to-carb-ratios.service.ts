@@ -15,7 +15,7 @@ import { InsulinToCarbRatio } from '../insulin-to-carb-ratio.model';
 @Injectable({ providedIn: 'root' })
 export class InsulinToCarbRatiosService {
   private readonly db = getFirestore();
-  private readonly path = 'insulin-to-carb-ratios';
+  private readonly path = 'settings';
   private readonly store = inject(Store);
   private unsubscribe: Unsubscribe | null = null;
 
@@ -23,7 +23,11 @@ export class InsulinToCarbRatiosService {
     if (this.unsubscribe === null) {
       this.unsubscribe = onSnapshot(
         this.getInsulinToCarbRatiosDocument(params),
-        (doc: DocumentSnapshot<Partial<InsulinToCarbRatio>>) => {
+        (
+          doc: DocumentSnapshot<
+            Partial<{ insulinToCarbRatios: InsulinToCarbRatio }>
+          >,
+        ) => {
           const data = doc.data();
           if (data) {
             this.transform(data);
@@ -56,16 +60,19 @@ export class InsulinToCarbRatiosService {
     uid: string;
   }) {
     const document = this.getInsulinToCarbRatiosDocument(params);
-    return from(setDoc(document, params.insulinToCarbRatios));
+    return from(
+      setDoc(document, { insulinToCarbRatios: params.insulinToCarbRatios }),
+    );
   }
 
-  private transform(data: Partial<InsulinToCarbRatio>): InsulinToCarbRatio {
+  private transform(
+    data: Partial<{ insulinToCarbRatios: InsulinToCarbRatio }>,
+  ): InsulinToCarbRatio {
     return {
-      showInsulinUnits: data.showInsulinUnits ?? false,
-      breakfastInsulinToCarbRatio: data.breakfastInsulinToCarbRatio ?? null,
-      lunchInsulinToCarbRatio: data.lunchInsulinToCarbRatio ?? null,
-      dinnerInsulinToCarbRatio: data.dinnerInsulinToCarbRatio ?? null,
-      creator: data.creator ?? '',
+      showInsulinUnits: data.insulinToCarbRatios?.showInsulinUnits ?? false,
+      breakfast: data.insulinToCarbRatios?.breakfast ?? null,
+      lunch: data.insulinToCarbRatios?.lunch ?? null,
+      dinner: data.insulinToCarbRatios?.dinner ?? null,
     };
   }
 
