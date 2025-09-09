@@ -1,0 +1,24 @@
+:host {
+  display: block;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+button {
+  height: 3rem;
+  width: 100%;
+}
+
+.unit-toggle {
+  margin-bottom: 16px;
+}
+
+.unit-toggle-description {
+  padding-left: 16px;
+}
+
+.insulin-to-carb-ratios {
+  mat-form-field {
+    width: 100%;
+  }
+}

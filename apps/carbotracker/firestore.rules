@@ -6,22 +6,29 @@ service cloud.firestore {
       function isDocOwner(request, resource) {
         return request.auth.uid == resource.data.creator;
       }
-      
+
       function documentCreatorIsRequester(request) {
         return request.resource.data.creator == request.auth.uid;
       }
-      
+
       allow read, update, delete: if isDocOwner(request, resource)
       allow create: if documentCreatorIsRequester(request)
     }
 
-    function isCurrentMealOwner(request, currentMealId) {
-      return request.auth != null && request.auth.uid == currentMealId;
+    match /current-meals/{currentMealId}  {   
+      function isCurrentMealOwner(request, currentMealId) {
+        return request.auth != null && request.auth.uid == currentMealId;
+      }
+
+      allow read, write: if isCurrentMealOwner(request, currentMealId);
     }
 
-    match /current-meals/{currentMealId}  {   
-      allow read: if isCurrentMealOwner(request, currentMealId);
-      allow write: if isCurrentMealOwner(request, currentMealId);
+    match /settings/{insulinToCarbRatiosId}  {
+      function isInsulinToCarbRatiosOwner(request, insulinToCarbRatiosId) {
+        return request.auth != null && request.auth.uid == insulinToCarbRatiosId;
+      }
+
+      allow read, write: if isInsulinToCarbRatiosOwner(request, insulinToCarbRatiosId);
     } 
   }
 }

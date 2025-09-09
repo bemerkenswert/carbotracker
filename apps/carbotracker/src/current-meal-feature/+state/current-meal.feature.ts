@@ -89,6 +89,7 @@ export const currentMealFeature = createFeature({
     const mealEntrySelectors = getMealEntriesSelectors(
       baseSelectors.selectMealEntries,
     );
+
     const productsSelectors = getProductsEntriesSelectors(
       baseSelectors.selectProducts,
     );
@@ -97,6 +98,7 @@ export const currentMealFeature = createFeature({
       mealEntrySelectors.selectAllMealEntries,
       (mealEntries): CurrentMeal => ({ mealEntries }),
     );
+
     const selectNotAddedProducts = createSelector(
       productsSelectors.selectAllProductEntries,
       mealEntrySelectors.selectAllMealEntryIds,

@@ -21,6 +21,12 @@ const getSettingsItems = (): SettingsItem[] => {
       name: 'Account',
     },
     {
+      onClick: () =>
+        store.dispatch(SettingsPageActions.insulinToCarbRatiosClicked()),
+      icon: 'edit_attributes',
+      name: 'Insulin to carb ratios',
+    },
+    {
       onClick: () => store.dispatch(SettingsPageActions.logoutClicked()),
       icon: 'logout',
       name: 'Logout',

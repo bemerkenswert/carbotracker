@@ -1,11 +1,16 @@
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
-import { catchError, from, map, of, switchMap } from 'rxjs';
+import { Store } from '@ngrx/store';
+import { catchError, from, map, of, switchMap, tap } from 'rxjs';
+import { authFeature } from '../features/auth/+state';
 import {
+  AuthApiActions,
   LoginApiActions,
+  LogoutApiActions,
   SignUpApiActions,
 } from '../features/auth/+state/actions/api.actions';
+import { InsulinToCarbRatiosService } from '../features/settings/services/insulin-to-carb-ratios.service';
 import { AppRouterEffectsActions } from './app.actions';
 
 export const navigateToProducts$ = createEffect(
@@ -31,4 +36,36 @@ export const navigateToApp$ = createEffect(
       ),
     ),
   { functional: true },
+);
+
+export const startStreamingInsulinToCarbRatios$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    insulinToCarbRatiosService = inject(InsulinToCarbRatiosService),
+    store = inject(Store),
+  ) =>
+    actions$.pipe(
+      ofType(AuthApiActions.userIsLoggedIn),
+      switchMap(() => store.select(authFeature.selectUserId)),
+      tap((uid) => {
+        if (uid) {
+          insulinToCarbRatiosService.subscribeToOwnInsulinToCarbRatios({ uid });
+        }
+      }),
+    ),
+  { dispatch: false, functional: true },
+);
+
+export const stopStreamingInsulinToCarbRatios$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    insulinToCarbRatiosService = inject(InsulinToCarbRatiosService),
+  ) =>
+    actions$.pipe(
+      ofType(LogoutApiActions.logoutSuccessful),
+      tap(() => {
+        insulinToCarbRatiosService.unsubscribeFromOwnInsulinToCarbRatios();
+      }),
+    ),
+  { dispatch: false, functional: true },
 );

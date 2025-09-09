@@ -1,3 +1,4 @@
+import { DecimalPipe } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -8,10 +9,8 @@ import {
 } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { CurrentMealPageComponentActions as ComponentActions } from '../../+state/current-meal.actions';
-import { currentMealFeature } from '../../+state/current-meal.feature';
 import { MealEntry } from '../../current-meal.model';
-import { selectSumOfCurrentMealCarbs } from './current-meal-page.selector';
-import { DecimalPipe } from '@angular/common';
+import { selectViewModel } from './current-meal-page.selectors';
 
 @Component({
   selector: 'carbotracker-current-meal-page',
@@ -28,15 +27,7 @@ import { DecimalPipe } from '@angular/common';
 })
 export default class CurrentMealPageComponent implements OnInit, OnDestroy {
   private readonly store = inject(Store);
-  protected readonly mealEntries = this.store.selectSignal(
-    currentMealFeature.selectAllMealEntries,
-  );
-  protected readonly productsAvailable = this.store.selectSignal(
-    currentMealFeature.selectProductsAvailableToAdd,
-  );
-  protected readonly sumOfCurrentMealCarbs = this.store.selectSignal(
-    selectSumOfCurrentMealCarbs,
-  );
+  protected readonly viewModel = this.store.selectSignal(selectViewModel);
 
   public ngOnInit(): void {
     this.store.dispatch(ComponentActions.enteredCurrentMealPage());

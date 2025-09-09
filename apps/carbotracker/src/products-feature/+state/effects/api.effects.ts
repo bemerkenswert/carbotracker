@@ -1,4 +1,5 @@
 import { inject } from '@angular/core';
+import { filterNull } from '@carbotracker/utility';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { concatLatestFrom } from '@ngrx/operators';
 import { routerNavigatedAction } from '@ngrx/router-store';
@@ -10,7 +11,6 @@ import {
   map,
   mergeMap,
   of,
-  pipe,
   switchMap,
   tap,
 } from 'rxjs';
@@ -24,9 +24,6 @@ import {
 } from '../actions/component.actions';
 import { DeleteProductConfirmationDialogActions } from '../actions/dialog.actions';
 import { ProductsRouterActions } from '../actions/routing.actions';
-
-const filterNull = <T>() =>
-  pipe(filter((value: T | null): value is T => Boolean(value)));
 
 export const startStreamingProducts$ = createEffect(
   (
