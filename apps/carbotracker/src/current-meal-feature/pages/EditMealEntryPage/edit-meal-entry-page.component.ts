@@ -72,6 +72,10 @@ export default class EditMealEntryPageComponent {
     }
   }
 
+  protected onGoBack() {
+    this.store.dispatch(ComponentActions.goBackIconClicked());
+  }
+
   private reactToProductChanges() {
     effect(() => {
       const currentMealEntry = this.currentMealEntry();

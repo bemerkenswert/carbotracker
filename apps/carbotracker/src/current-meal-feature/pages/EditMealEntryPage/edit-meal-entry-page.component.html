@@ -1,4 +1,8 @@
-<ctui-toolbar title="Edit meal entry">
+<ctui-toolbar
+  title="Edit meal entry"
+  [showBackwardNavigation]="true"
+  (backwardNavigation)="onGoBack()"
+>
   <button (click)="onClearCurrentMealClick()" mat-icon-button>
     <mat-icon>delete_sweep</mat-icon>
   </button>

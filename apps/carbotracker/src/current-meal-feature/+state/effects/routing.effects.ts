@@ -26,6 +26,7 @@ export const navigateToCurrentMeal$ = createEffect(
         CreateMealEntryPageComponentActions.saveClicked,
         EditMealEntryPageComponentActions.saveClicked,
         EditMealEntryPageComponentActions.deleteMealEntryClicked,
+        EditMealEntryPageComponentActions.goBackIconClicked,
       ),
       exhaustMap(() => from(router.navigate(['app', 'current-meal']))),
     ),

@@ -27,5 +27,6 @@ export const EditMealEntryPageComponentActions = createActionGroup({
   events: {
     'Save Clicked': props<{ mealEntry: MealEntry }>(),
     'Delete Meal Entry Clicked': props<{ mealEntry: MealEntry }>(),
+    'Go Back Icon Clicked': emptyProps(),
   },
 });
