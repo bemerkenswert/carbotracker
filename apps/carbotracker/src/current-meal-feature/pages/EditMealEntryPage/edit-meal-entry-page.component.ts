@@ -1,10 +1,13 @@
-import { Component, effect, inject, OnInit } from '@angular/core';
+import { Component, effect, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { MatFabButton } from '@angular/material/button';
+import { MatFabButton, MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 import { MatFormField, MatInput, MatLabel } from '@angular/material/input';
 import { ActivatedRoute } from '@angular/router';
-import { CtuiFixedPositionDirective } from '@carbotracker/ui';
+import {
+  CtuiFixedPositionDirective,
+  CtuiToolbarComponent,
+} from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { EditMealEntryPageComponentActions as ComponentActions } from '../../+state/actions/component.actions';
 import { currentMealFeature } from '../../+state/current-meal.feature';
@@ -25,13 +28,15 @@ type FormModel = {
     MatInput,
     CtuiFixedPositionDirective,
     MatFabButton,
+    CtuiToolbarComponent,
+    MatIconButton,
   ],
 })
 export default class EditMealEntryPageComponent {
   private readonly store = inject(Store);
   private readonly productId: string =
     inject(ActivatedRoute).snapshot.params['id'];
-  protected readonly currentMealEntry = this.store.selectSignal(
+  private readonly currentMealEntry = this.store.selectSignal(
     currentMealFeature.selectCurrentMealEntry(this.productId),
   );
   private readonly currentProduct = this.store.selectSignal(
@@ -54,6 +59,15 @@ export default class EditMealEntryPageComponent {
         ComponentActions.saveClicked({
           mealEntry: { amount, carbs, productId: id, name },
         }),
+      );
+    }
+  }
+
+  protected onClearCurrentMealClick() {
+    const mealEntry = this.currentMealEntry();
+    if (mealEntry) {
+      this.store.dispatch(
+        ComponentActions.deleteMealEntryClicked({ mealEntry }),
       );
     }
   }

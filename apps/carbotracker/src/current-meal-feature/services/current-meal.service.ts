@@ -1,9 +1,9 @@
-import { Injectable, inject } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { Store } from '@ngrx/store';
 import { Unsubscribe } from 'firebase/auth';
 import {
-  DocumentSnapshot,
   doc,
+  DocumentSnapshot,
   getFirestore,
   onSnapshot,
   setDoc,
@@ -38,6 +38,18 @@ export class CurrentMealService {
       mealEntry.productId === params.mealEntry.productId
         ? params.mealEntry
         : mealEntry,
+    );
+    return from(updateDoc(document, { mealEntries }));
+  }
+
+  public deleteMealEntry(params: {
+    currentMeal: CurrentMeal;
+    mealEntry: MealEntry;
+    uid: string;
+  }) {
+    const document = this.getCurrentMealDocument(params);
+    const mealEntries = params.currentMeal.mealEntries.filter(
+      (mealEntry) => mealEntry.productId !== params.mealEntry.productId,
     );
     return from(updateDoc(document, { mealEntries }));
   }

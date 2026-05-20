@@ -1,5 +1,9 @@
+<ctui-toolbar title="Edit meal entry">
+  <button (click)="onClearCurrentMealClick()" mat-icon-button>
+    <mat-icon>delete_sweep</mat-icon>
+  </button>
+</ctui-toolbar>
 <form #productForm="ngForm" (ngSubmit)="onSubmit()">
-  <h3>Edit amount of "{{ this.currentMealEntry()?.name }}"</h3>
   <mat-form-field>
     <mat-label>Amount</mat-label>
     <input

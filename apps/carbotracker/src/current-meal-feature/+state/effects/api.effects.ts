@@ -153,6 +153,33 @@ export const updateMealEntryOfCurrentMeal = createEffect(
   { functional: true, dispatch: false },
 );
 
+export const deleteMealEntryOfCurrentMeal = createEffect(
+  (
+    actions$ = inject(Actions),
+    currentMealService = inject(CurrentMealService),
+    store = inject(Store),
+  ) =>
+    actions$.pipe(
+      ofType(EditMealEntryPageComponentActions.deleteMealEntryClicked),
+      concatLatestFrom(() => [
+        store.select(authFeature.selectUserId),
+        store.select(currentMealFeature.selectCurrentMeal),
+      ]),
+      concatMap(([{ mealEntry }, uid, currentMeal]) => {
+        if (uid) {
+          return currentMealService.deleteMealEntry({
+            currentMeal,
+            mealEntry,
+            uid,
+          });
+        } else {
+          return of();
+        }
+      }),
+    ),
+  { functional: true, dispatch: false },
+);
+
 export const startStreamingProducts$ = createEffect(
   (
     actions$ = inject(Actions),
