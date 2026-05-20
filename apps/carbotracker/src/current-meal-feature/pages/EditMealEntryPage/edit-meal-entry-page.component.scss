@@ -1,0 +1,12 @@
+form {
+  display: flex;
+  flex-direction: column;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.form-buttons {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+}

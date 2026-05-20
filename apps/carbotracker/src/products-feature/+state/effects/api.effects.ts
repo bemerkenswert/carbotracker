@@ -14,7 +14,7 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { authFeature } from '../../../features/auth/+state/auth.store';
+import { authFeature } from '../../../features/auth/+state';
 import { SettingsPageActions } from '../../../features/settings/+state';
 import { ProductsService } from '../../services/products.service';
 import { ProductsApiActions } from '../actions/api.actions';

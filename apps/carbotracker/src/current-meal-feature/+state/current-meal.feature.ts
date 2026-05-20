@@ -1,18 +1,18 @@
-import { EntityState, createEntityAdapter } from '@ngrx/entity';
+import { createEntityAdapter, EntityState } from '@ngrx/entity';
 import {
-  MemoizedSelector,
   createFeature,
   createReducer,
   createSelector,
+  MemoizedSelector,
   on,
 } from '@ngrx/store';
 import { Product } from '../../products-feature/product.model';
 import { CurrentMeal, MealEntry } from '../current-meal.model';
 import {
-  CreateMealEntryPageComponentActions,
   CurrentMealApiActions,
   ProductsApiActions,
-} from './current-meal.actions';
+} from './actions/api.actions';
+import { CreateMealEntryPageComponentActions } from './actions/component.actions';
 
 interface CurrentMealState {
   products: EntityState<Product>;
@@ -103,6 +103,20 @@ export const currentMealFeature = createFeature({
       mealEntrySelectors.selectAllMealEntries,
       (mealEntries): boolean => mealEntries.length === 0,
     );
+    const selectCurrentMealEntry = (productId: string) =>
+      createSelector(
+        mealEntrySelectors.selectAllMealEntries,
+        (mealEntries): MealEntry | undefined =>
+          mealEntries.find((mealEntry) => mealEntry.productId === productId),
+      );
+
+    const selectProductById = (productId: string | null) =>
+      createSelector(
+        productsSelectors.selectAllProductEntries,
+        (products): Product | null => {
+          return products.find((product) => product.id === productId) ?? null;
+        },
+      );
 
     const selectNotAddedProducts = createSelector(
       productsSelectors.selectAllProductEntries,
@@ -124,6 +138,8 @@ export const currentMealFeature = createFeature({
       ...productsSelectors,
       selectCurrentMeal,
       selectCurrentMealIsEmpty,
+      selectCurrentMealEntry,
+      selectProductById,
       selectNotAddedProducts,
       selectProductsAvailableToAdd,
     };

@@ -23,6 +23,14 @@ service cloud.firestore {
       allow read, write: if isCurrentMealOwner(request, currentMealId);
     }
 
+    match /current-meals/{currentMealId}/products/{productId}  {   
+      function isCurrentMealOwner(request, currentMealId) {
+        return request.auth != null && request.auth.uid == currentMealId;
+      }
+
+      allow read, write: if isCurrentMealOwner(request, currentMealId);
+    }
+
     match /settings/{insulinToCarbRatiosId}  {
       function isInsulinToCarbRatiosOwner(request, insulinToCarbRatiosId) {
         return request.auth != null && request.auth.uid == insulinToCarbRatiosId;

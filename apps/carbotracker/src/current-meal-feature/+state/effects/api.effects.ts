@@ -14,16 +14,17 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { authFeature } from '../../features/auth/+state/auth.store';
-import { SavedMealNameDialogService } from '../../saved-meals-feature/saved-meal-name-dialog/saved-meal-name-dialog.service';
-import { SavedMealsService } from '../../saved-meals-feature/services/saved-meals.service';
-import { CurrentMealService } from '../services/current-meal.service';
-import { ProductsService } from '../services/products.service';
+import { SavedMealsService } from '../../..//saved-meals-feature/services/saved-meals.service';
+import { authFeature } from '../../../features/auth/+state';
+import { SavedMealNameDialogService } from '../../../saved-meals-feature/saved-meal-name-dialog/saved-meal-name-dialog.service';
+import { CurrentMealService } from '../../services/current-meal.service';
+import { ProductsService } from '../../services/products.service';
 import {
   CreateMealEntryPageComponentActions,
   CurrentMealPageComponentActions,
-} from './current-meal.actions';
-import { currentMealFeature } from './current-meal.feature';
+  EditMealEntryPageComponentActions,
+} from '../actions/component.actions';
+import { currentMealFeature } from '../current-meal.feature';
 
 export const saveCurrentMealAsSavedMeal = createEffect(
   (
@@ -113,6 +114,33 @@ export const addMealEntryToCurrentMeal = createEffect(
       concatMap(([{ mealEntry }, uid, currentMeal]) => {
         if (uid) {
           return currentMealService.addMealEntry({
+            currentMeal,
+            mealEntry,
+            uid,
+          });
+        } else {
+          return of();
+        }
+      }),
+    ),
+  { functional: true, dispatch: false },
+);
+
+export const updateMealEntryOfCurrentMeal = createEffect(
+  (
+    actions$ = inject(Actions),
+    currentMealService = inject(CurrentMealService),
+    store = inject(Store),
+  ) =>
+    actions$.pipe(
+      ofType(EditMealEntryPageComponentActions.saveClicked),
+      concatLatestFrom(() => [
+        store.select(authFeature.selectUserId),
+        store.select(currentMealFeature.selectCurrentMeal),
+      ]),
+      concatMap(([{ mealEntry }, uid, currentMeal]) => {
+        if (uid) {
+          return currentMealService.updateMealEntry({
             currentMeal,
             mealEntry,
             uid,
