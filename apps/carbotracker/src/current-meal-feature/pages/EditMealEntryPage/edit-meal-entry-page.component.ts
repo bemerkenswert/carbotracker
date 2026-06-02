@@ -3,7 +3,6 @@ import { FormsModule } from '@angular/forms';
 import { MatFabButton, MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 import { MatFormField, MatInput, MatLabel } from '@angular/material/input';
-import { ActivatedRoute } from '@angular/router';
 import {
   CtuiFixedPositionDirective,
   CtuiToolbarComponent,
@@ -34,13 +33,14 @@ type FormModel = {
 })
 export default class EditMealEntryPageComponent {
   private readonly store = inject(Store);
-  private readonly productId: string =
-    inject(ActivatedRoute).snapshot.params['id'];
+  private readonly productId = this.store.selectSignal(
+    currentMealFeature.selectProductIdFromRoute,
+  );
   private readonly currentMealEntry = this.store.selectSignal(
-    currentMealFeature.selectCurrentMealEntry(this.productId),
+    currentMealFeature.selectCurrentMealEntry(this.productId()),
   );
   private readonly currentProduct = this.store.selectSignal(
-    currentMealFeature.selectProductById(this.productId),
+    currentMealFeature.selectProductById(this.productId()),
   );
   protected readonly model: FormModel = {
     amount: this.currentMealEntry()?.amount || null,

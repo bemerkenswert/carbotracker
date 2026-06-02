@@ -13,6 +13,7 @@ import {
   ProductsApiActions,
 } from './actions/api.actions';
 import { CreateMealEntryPageComponentActions } from './actions/component.actions';
+import { getRouterSelectors } from '@ngrx/router-store';
 
 interface CurrentMealState {
   products: EntityState<Product>;
@@ -103,7 +104,7 @@ export const currentMealFeature = createFeature({
       mealEntrySelectors.selectAllMealEntries,
       (mealEntries): boolean => mealEntries.length === 0,
     );
-    const selectCurrentMealEntry = (productId: string) =>
+    const selectCurrentMealEntry = (productId: string | null) =>
       createSelector(
         mealEntrySelectors.selectAllMealEntries,
         (mealEntries): MealEntry | undefined =>
@@ -117,6 +118,11 @@ export const currentMealFeature = createFeature({
           return products.find((product) => product.id === productId) ?? null;
         },
       );
+
+    const selectProductIdFromRoute = createSelector(
+      getRouterSelectors().selectRouteParam('id'),
+      (id): string | null => id ?? null,
+    );
 
     const selectNotAddedProducts = createSelector(
       productsSelectors.selectAllProductEntries,
@@ -140,6 +146,7 @@ export const currentMealFeature = createFeature({
       selectCurrentMealIsEmpty,
       selectCurrentMealEntry,
       selectProductById,
+      selectProductIdFromRoute,
       selectNotAddedProducts,
       selectProductsAvailableToAdd,
     };
