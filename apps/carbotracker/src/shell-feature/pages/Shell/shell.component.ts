@@ -1,12 +1,12 @@
 import { NgClass } from '@angular/common';
-import { Component, Signal, inject } from '@angular/core';
+import { Component, inject, Signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { RouterOutlet } from '@angular/router';
 import { getRouterSelectors } from '@ngrx/router-store';
-import { Store, createSelector } from '@ngrx/store';
+import { createSelector, Store } from '@ngrx/store';
 import { ShellComponentActions } from '../../shell.actions';
 
 interface NavItem {
@@ -23,6 +23,11 @@ const selectIsProductsRoute = createSelector(
 const selectIsCurrentMealRoute = createSelector(
   getRouterSelectors().selectUrl,
   (url): boolean => url.startsWith('/app/current-meal'),
+);
+
+const selectIsSavedMealsRoute = createSelector(
+  getRouterSelectors().selectUrl,
+  (url): boolean => url.startsWith('/app/saved-meals'),
 );
 
 const selectIsSettingsRoute = createSelector(
@@ -42,6 +47,11 @@ const getNavItems = () => {
       onClick: () => store.dispatch(ShellComponentActions.currentMealClicked()),
       isActive: store.selectSignal(selectIsCurrentMealRoute),
       icon: 'restaurant',
+    },
+    {
+      onClick: () => store.dispatch(ShellComponentActions.savedMealsClicked()),
+      isActive: store.selectSignal(selectIsSavedMealsRoute),
+      icon: 'menu_book_2',
     },
     {
       onClick: () => store.dispatch(ShellComponentActions.settingsClicked()),

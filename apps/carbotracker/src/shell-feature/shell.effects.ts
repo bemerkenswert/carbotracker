@@ -48,6 +48,24 @@ export const navigateToCurrentMeal$ = createEffect(
   { functional: true },
 );
 
+export const navigateToSavedMeals$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(ShellComponentActions.savedMealsClicked),
+      switchMap(() =>
+        from(router.navigate(['app', 'saved-meals'])).pipe(
+          map(() =>
+            ShellRouterEffectsActions.navigationToSavedMealsPageSuccessful(),
+          ),
+          catchError(() =>
+            of(ShellRouterEffectsActions.navigationToSavedMealsPageFailed()),
+          ),
+        ),
+      ),
+    ),
+  { functional: true },
+);
+
 export const navigateToSettingsPage$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(
