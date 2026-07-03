@@ -88,10 +88,6 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
     }
   }
 
-  protected onInputInteracted() {
-    this.insulinToCarbRatiosFormGroup.markAsDirty();
-  }
-
   protected onGoBack() {
     this.store.dispatch(InsulinToCarbRatiosPageActions.goBackIconClicked());
   }
