@@ -47,12 +47,7 @@ export class AccountPageComponent implements OnInit {
     this.store.dispatch(AccountPageActions.saveChangesClicked({ email }));
   }
 
-  protected onInputInteracted() {
-    this.accountFormGroup.markAsDirty();
-  }
-
   protected onFocusPasswordInput() {
-    this.onInputInteracted();
     this.store.dispatch(AccountPageActions.passwordInputFocused());
   }
 
