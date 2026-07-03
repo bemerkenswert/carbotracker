@@ -1,4 +1,8 @@
-<ctui-toolbar title="Account" [showBackwardNavigation]="true" (backwardNavigation)="onGoBack()"></ctui-toolbar>
+<ctui-toolbar
+  title="Account"
+  [showBackwardNavigation]="true"
+  (backwardNavigation)="onGoBack()"
+></ctui-toolbar>
 <form [formGroup]="accountFormGroup" (submit)="onSaveChanges()">
   <mat-form-field>
     <mat-label>Email</mat-label>
@@ -6,9 +10,19 @@
   </mat-form-field>
   <mat-form-field>
     <mat-label>Password</mat-label>
-    <input type="password" matInput value="********" (focus)="onFocusPasswordInput()" />
+    <input
+      type="password"
+      matInput
+      value="********"
+      (focus)="onFocusPasswordInput()"
+    />
   </mat-form-field>
-  <button color="primary" mat-raised-button type="submit" [disabled]="accountFormGroup.pristine">
+  <button
+    color="primary"
+    mat-raised-button
+    type="submit"
+    [disabled]="accountFormGroup.pristine"
+  >
     Save changes
   </button>
 </form>
