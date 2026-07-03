@@ -53,7 +53,7 @@ export class AccountPageComponent implements OnInit {
   }
 
   protected onFocusPasswordInput() {
-    this.isSaveDisabled = false;
+    this.onInputInteracted();
     this.store.dispatch(AccountPageActions.passwordInputFocused());
   }
 
