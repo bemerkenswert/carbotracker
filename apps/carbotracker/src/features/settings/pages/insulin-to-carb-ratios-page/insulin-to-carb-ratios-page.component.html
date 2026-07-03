@@ -37,7 +37,10 @@
     color="primary"
     mat-raised-button
     type="submit"
-    [disabled]="isSaveDisabled || insulinToCarbRatiosFormGroup.invalid"
+    [disabled]="
+      insulinToCarbRatiosFormGroup.pristine ||
+      insulinToCarbRatiosFormGroup.invalid
+    "
   >
     Save changes
   </button>

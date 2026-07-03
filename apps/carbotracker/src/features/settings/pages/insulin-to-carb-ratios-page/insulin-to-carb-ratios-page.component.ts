@@ -56,7 +56,6 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
   protected readonly insulinToCarbRatiosFormGroup =
     createInsulinToCarbRatiosFormGroup();
   protected readonly insulinToCarbRatios = this.getInsulinToCarbRatios();
-  protected isSaveDisabled = false;
   private readonly store = inject(Store);
   private insulinToCarbRatios$ = this.store
     .select(settingsFeature.selectInsulinToCarbRatios)
@@ -72,7 +71,7 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
 
   protected onSaveChanges() {
     if (this.insulinToCarbRatiosFormGroup.valid) {
-      this.isSaveDisabled = true;
+      this.insulinToCarbRatiosFormGroup.markAsPristine();
       const { showInsulinUnits, breakfast, lunch, dinner } =
         this.insulinToCarbRatiosFormGroup.getRawValue();
       const showUnits = !!showInsulinUnits;
@@ -90,7 +89,7 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
   }
 
   protected onInputInteracted() {
-    this.isSaveDisabled = false;
+    this.insulinToCarbRatiosFormGroup.markAsDirty();
   }
 
   protected onGoBack() {

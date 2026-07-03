@@ -28,7 +28,6 @@ const createAccountFormGroup = () =>
 })
 export class AccountPageComponent implements OnInit {
   protected readonly accountFormGroup = createAccountFormGroup();
-  protected isSaveDisabled = false;
   private readonly store = inject(Store);
   private readonly email$ = this.store
     .select(authFeature.selectEmail)
@@ -43,13 +42,13 @@ export class AccountPageComponent implements OnInit {
   }
 
   protected onSaveChanges() {
-    this.isSaveDisabled = true;
+    this.accountFormGroup.markAsPristine();
     const { email } = this.accountFormGroup.getRawValue();
     this.store.dispatch(AccountPageActions.saveChangesClicked({ email }));
   }
 
   protected onInputInteracted() {
-    this.isSaveDisabled = false;
+    this.accountFormGroup.markAsDirty();
   }
 
   protected onFocusPasswordInput() {
