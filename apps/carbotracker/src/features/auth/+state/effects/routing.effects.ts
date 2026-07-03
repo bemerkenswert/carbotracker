@@ -2,9 +2,8 @@ import { DOCUMENT } from '@angular/common';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
-import { concatLatestFrom } from '@ngrx/operators';
 import { routerNavigatedAction } from '@ngrx/router-store';
-import { catchError, from, map, of, switchMap, tap } from 'rxjs';
+import { catchError, from, map, of, switchMap, take, tap } from 'rxjs';
 import { LoginApiActions, LogoutApiActions } from '../actions/api.actions';
 import {
   LoginFormComponentActions,
@@ -61,8 +60,13 @@ export const reloadApp$ = createEffect(
         LoginApiActions.loginSuccessful,
         LogoutApiActions.logoutSuccessful,
       ),
-      concatLatestFrom(() => actions$.pipe(ofType(routerNavigatedAction))),
-      tap(() => document.location.reload()),
+      switchMap(() =>
+        actions$.pipe(
+          ofType(routerNavigatedAction),
+          take(1),
+          tap(() => document.location.reload()),
+        ),
+      ),
     ),
   { functional: true, dispatch: false },
 );
