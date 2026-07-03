@@ -27,7 +27,7 @@
     color="primary"
     mat-raised-button
     type="submit"
-    [disabled]="accountFormGroup.pristine"
+    [disabled]="accountFormGroup.pristine || accountFormGroup.invalid"
   >
     Save changes
   </button>
