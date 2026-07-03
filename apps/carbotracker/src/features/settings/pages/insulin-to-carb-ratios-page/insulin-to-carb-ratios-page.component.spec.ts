@@ -39,7 +39,9 @@ describe(InsulinToCarbRatiosPageComponent.name, () => {
   });
 
   it('disables save immediately after submit', () => {
-    fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit'));
+    fixture.nativeElement
+      .querySelector('form')
+      .dispatchEvent(new Event('submit'));
     fixture.detectChanges();
 
     expect(component['isSaveDisabled']).toBe(true);

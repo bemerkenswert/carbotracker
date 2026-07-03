@@ -29,7 +29,9 @@ describe(AccountPageComponent.name, () => {
   });
 
   it('disables save immediately after submit', () => {
-    fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit'));
+    fixture.nativeElement
+      .querySelector('form')
+      .dispatchEvent(new Event('submit'));
     fixture.detectChanges();
 
     expect(component['isSaveDisabled']).toBe(true);
@@ -42,7 +44,9 @@ describe(AccountPageComponent.name, () => {
     component['onSaveChanges']();
     fixture.detectChanges();
 
-    fixture.nativeElement.querySelector('input').dispatchEvent(new Event('click'));
+    fixture.nativeElement
+      .querySelector('input')
+      .dispatchEvent(new Event('click'));
     fixture.detectChanges();
 
     expect(component['isSaveDisabled']).toBe(false);
