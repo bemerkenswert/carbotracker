@@ -6,7 +6,12 @@
 <form [formGroup]="accountFormGroup" (submit)="onSaveChanges()">
   <mat-form-field>
     <mat-label>Email</mat-label>
-    <input matInput formControlName="email" />
+    <input
+      matInput
+      formControlName="email"
+      (focus)="onInputInteracted()"
+      (click)="onInputInteracted()"
+    />
   </mat-form-field>
   <mat-form-field>
     <mat-label>Password</mat-label>
@@ -14,8 +19,16 @@
       type="password"
       matInput
       value="********"
+      (click)="onInputInteracted()"
       (focus)="onFocusPasswordInput()"
     />
   </mat-form-field>
-  <button color="primary" mat-raised-button type="submit">Save changes</button>
+  <button
+    color="primary"
+    mat-raised-button
+    type="submit"
+    [disabled]="isSaveDisabled"
+  >
+    Save changes
+  </button>
 </form>

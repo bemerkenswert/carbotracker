@@ -6,8 +6,8 @@ import { MatInputModule } from '@angular/material/input';
 import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { take } from 'rxjs';
-import { AccountPageActions } from '../../+state';
-import { authFeature } from '../../../auth/+state';
+import { AccountPageActions } from '../../+state/actions/component.actions';
+import { authFeature } from '../../../auth/+state/auth.store';
 
 const createAccountFormGroup = () =>
   inject(FormBuilder).nonNullable.group({
@@ -28,6 +28,7 @@ const createAccountFormGroup = () =>
 })
 export class AccountPageComponent implements OnInit {
   protected readonly accountFormGroup = createAccountFormGroup();
+  protected isSaveDisabled = false;
   private readonly store = inject(Store);
   private readonly email$ = this.store
     .select(authFeature.selectEmail)
@@ -42,11 +43,17 @@ export class AccountPageComponent implements OnInit {
   }
 
   protected onSaveChanges() {
+    this.isSaveDisabled = true;
     const { email } = this.accountFormGroup.getRawValue();
     this.store.dispatch(AccountPageActions.saveChangesClicked({ email }));
   }
 
+  protected onInputInteracted() {
+    this.isSaveDisabled = false;
+  }
+
   protected onFocusPasswordInput() {
+    this.isSaveDisabled = false;
     this.store.dispatch(AccountPageActions.passwordInputFocused());
   }
 

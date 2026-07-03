@@ -7,6 +7,7 @@
   <mat-slide-toggle
     class="unit-toggle"
     [formControl]="insulinToCarbRatiosFormGroup.controls.showInsulinUnits"
+    (click)="onInputInteracted()"
   >
     <div class="unit-toggle-description">
       Display calculated insulin units based on breakfast, lunch and dinner
@@ -25,10 +26,19 @@
             matInput
             [formControl]="insulinToCarbRatio.control"
             type="number"
+            (focus)="onInputInteracted()"
+            (click)="onInputInteracted()"
           />
         </mat-form-field>
       </div>
     }
   }
-  <button color="primary" mat-raised-button type="submit">Save changes</button>
+  <button
+    color="primary"
+    mat-raised-button
+    type="submit"
+    [disabled]="isSaveDisabled || insulinToCarbRatiosFormGroup.invalid"
+  >
+    Save changes
+  </button>
 </form>
