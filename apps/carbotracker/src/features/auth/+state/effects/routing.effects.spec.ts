@@ -20,7 +20,7 @@ describe('reloadApp$', () => {
       location: {
         reload,
       },
-    } as Document;
+    } as unknown as Document;
 
     reloadApp$(actions$ as never, document).subscribe();
 
@@ -40,7 +40,7 @@ describe('reloadApp$', () => {
       location: {
         reload,
       },
-    } as Document;
+    } as unknown as Document;
 
     reloadApp$(actions$ as never, document).subscribe();
 
