@@ -1,5 +1,4 @@
-import { DOCUMENT } from '@angular/common';
-import { inject } from '@angular/core';
+import { inject, DOCUMENT } from '@angular/core';
 import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { concatLatestFrom } from '@ngrx/operators';
