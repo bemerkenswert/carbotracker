@@ -4,6 +4,7 @@
   "license": "MIT",
   "scripts": {
     "start:carbotracker": "npx nx serve carbotracker",
+    "start:carbotracker:local": "npx nx serve:firebase-emulated carbotracker",
     "prettier:check": "npx nx format:check --all",
     "prettier:write": "npx nx format:write --all",
     "ci:check-formatting": "npm run prettier:check",
