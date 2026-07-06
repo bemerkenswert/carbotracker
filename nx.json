@@ -115,5 +115,13 @@
   },
   "useInferencePlugins": false,
   "analytics": false,
-  "neverConnectToCloud": true
+  "neverConnectToCloud": true,
+  "plugins": [
+    {
+      "plugin": "@nx/eslint/plugin",
+      "options": {
+        "targetName": "lint"
+      }
+    }
+  ]
 }
