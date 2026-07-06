@@ -53,3 +53,4 @@ ui-debug.log
 .claude/settings.local.json
 .nx/polygraph
 .nx/self-healing
+.nx/migrate-runs
