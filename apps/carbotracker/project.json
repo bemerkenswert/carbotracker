@@ -25,6 +25,7 @@
     "build": {
       "executor": "@angular-devkit/build-angular:browser",
       "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
       "options": {
         "outputPath": "apps/carbotracker/.dist",
         "index": "apps/carbotracker/src/index.html",
@@ -86,11 +87,12 @@
             }
           ]
         }
-      },
-      "defaultConfiguration": "production"
+      }
     },
     "serve": {
       "executor": "@angular-devkit/build-angular:dev-server",
+      "defaultConfiguration": "development",
+      "continuous": true,
       "configurations": {
         "production": {
           "buildTarget": "carbotracker:build:production"
@@ -98,9 +100,7 @@
         "development": {
           "buildTarget": "carbotracker:build:development"
         }
-      },
-      "defaultConfiguration": "development",
-      "continuous": true
+      }
     },
     "serve:firebase-emulated": {
       "executor": "nx:run-commands",
@@ -116,14 +116,23 @@
       }
     },
     "lint": {
-      "executor": "@nx/eslint:lint",
-      "outputs": ["{options.outputFile}"]
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/.eslintrc.json",
+        "{workspaceRoot}/.eslintignore",
+        "{workspaceRoot}/tools/eslint-rules/**/*",
+        {
+          "externalDependencies": ["eslint"]
+        }
+      ]
     },
     "test": {
       "executor": "@nx/jest:jest",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
-        "jestConfig": "apps/carbotracker/jest.config.ts"
+        "jestConfig": "apps/carbotracker/jest.config.ts",
+        "tsConfig": "apps/carbotracker/tsconfig.spec.json"
       }
     },
     "serve-static": {

@@ -77,6 +77,7 @@ export function withAuthEmulator(
               throw new Error();
             }
           } catch (error) {
+            console.error('Auth not Ready. Error: ', error);
             throw new Error('Auth not ready!');
           }
         };
@@ -109,6 +110,7 @@ export function withFirestoreEmulator(
               throw new Error();
             }
           } catch (error) {
+            console.error('Firestore not Ready. Error: ', error);
             throw new Error('Firestore not ready!');
           }
         };
