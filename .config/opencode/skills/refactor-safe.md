@@ -10,4 +10,4 @@ Constraints:
 - No unrelated edits
 
 Validation:
-- Run scoped tests
+- Run the smallest relevant existing validation command

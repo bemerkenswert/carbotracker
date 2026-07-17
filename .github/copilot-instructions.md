@@ -6,15 +6,14 @@
 - Do not perform unrelated refactors.
 
 ## Tooling contract (authoritative)
-- Package manager is **pnpm**.
-- Do **not** use npm, yarn, or bun.
+- Package manager is **npm**.
+- Do **not** use pnpm, yarn, or bun.
 - Install dependencies with:
-  - `corepack enable`
-  - `pnpm install --frozen-lockfile`
+  - `npm ci`
 
 ## Validation contract
 - Run only the minimum required validation for changed scope.
-- Prefer scoped workspace commands (`pnpm --filter ...`).
+- Prefer scoped Nx commands (`npx nx ...`) or existing npm scripts when available.
 - If formatting/lint/test command is unknown, read package scripts first.
 - Do not run repo-wide expensive checks unless explicitly requested.
 
