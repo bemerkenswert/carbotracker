@@ -14,7 +14,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { filterNull } from '@carbotracker/utility';
 import { Store } from '@ngrx/store';
-import { InsulinToCarbRatiosPageActions } from '../../+state';
+import { InsulinToCarbRatiosPageActions } from '../../+state/actions/component.actions';
 import { settingsFeature } from '../../../../app/app.reducer';
 
 interface InsulinToCarbRatioPerMeal {
@@ -71,6 +71,7 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
 
   protected onSaveChanges() {
     if (this.insulinToCarbRatiosFormGroup.valid) {
+      this.insulinToCarbRatiosFormGroup.markAsPristine();
       const { showInsulinUnits, breakfast, lunch, dinner } =
         this.insulinToCarbRatiosFormGroup.getRawValue();
       const showUnits = !!showInsulinUnits;

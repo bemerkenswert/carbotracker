@@ -30,5 +30,12 @@
       </div>
     }
   }
-  <button color="primary" mat-raised-button type="submit">Save changes</button>
+  <button
+    color="primary"
+    mat-raised-button
+    type="submit"
+    [disabled]="insulinToCarbRatiosFormGroup.pristine"
+  >
+    Save changes
+  </button>
 </form>

@@ -1,8 +1,6 @@
 import { createFeature, createReducer, on } from '@ngrx/store';
-import {
-  InsulinToCarbRatiosPageActions,
-  SettingsApiActions,
-} from '../features/settings/+state';
+import { SettingsApiActions } from '../features/settings/+state/actions/api.actions';
+import { InsulinToCarbRatiosPageActions } from '../features/settings/+state/actions/component.actions';
 
 interface SettingsState {
   insulinToCarbRatios: {

@@ -17,5 +17,12 @@
       (focus)="onFocusPasswordInput()"
     />
   </mat-form-field>
-  <button color="primary" mat-raised-button type="submit">Save changes</button>
+  <button
+    color="primary"
+    mat-raised-button
+    type="submit"
+    [disabled]="accountFormGroup.pristine"
+  >
+    Save changes
+  </button>
 </form>
