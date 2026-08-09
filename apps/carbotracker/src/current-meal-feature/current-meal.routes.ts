@@ -3,6 +3,7 @@ import { provideEffects } from '@ngrx/effects';
 import { provideState } from '@ngrx/store';
 import * as apiEffects from './+state/effects/api.effects';
 import * as routingEffects from './+state/effects/routing.effects';
+import * as snackbarEffects from './+state/effects/snackbar.effects';
 import { currentMealFeature } from './+state/current-meal.feature';
 
 const CURRENT_MEAL_ROUTES: Routes = [
@@ -12,7 +13,7 @@ const CURRENT_MEAL_ROUTES: Routes = [
       import('./pages/CurrentMealPage/current-meal-page.component'),
     providers: [
       provideState(currentMealFeature),
-      provideEffects(apiEffects, routingEffects),
+      provideEffects(apiEffects, routingEffects, snackbarEffects),
     ],
   },
   {

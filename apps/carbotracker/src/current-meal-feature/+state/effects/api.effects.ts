@@ -1,6 +1,6 @@
 import { inject } from '@angular/core';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
-import { concatLatestFrom } from '@ngrx/operators';
+import { concatLatestFrom, mapResponse } from '@ngrx/operators';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
 import { concatMap, EMPTY, exhaustMap, filter, of, switchMap, tap } from 'rxjs';
@@ -14,6 +14,7 @@ import {
   CurrentMealPageComponentActions,
   EditMealEntryPageComponentActions,
 } from '../actions/component.actions';
+import { CurrentMealApiActions } from '../actions/api.actions';
 import { currentMealFeature } from '../current-meal.feature';
 
 export const saveCurrentMealAsSavedMeal = createEffect(
@@ -58,15 +59,19 @@ export const removeAllMealEntriesOfCurrentMeal$ = createEffect(
       concatLatestFrom(() => [store.select(authFeature.selectUserId)]),
       concatMap(([, uid]) => {
         if (uid) {
-          return currentMealService.cleanAllMealEntries({
-            uid,
-          });
+          return currentMealService.cleanAllMealEntries({ uid }).pipe(
+            mapResponse({
+              next: () => CurrentMealApiActions.clearCurrentMealSuccessful(),
+              error: (error) =>
+                CurrentMealApiActions.clearCurrentMealFailed({ error }),
+            }),
+          );
         } else {
           return EMPTY;
         }
       }),
     ),
-  { functional: true, dispatch: false },
+  { functional: true },
 );
 
 export const addMealEntryToCurrentMeal = createEffect(
@@ -83,17 +88,25 @@ export const addMealEntryToCurrentMeal = createEffect(
       ]),
       concatMap(([{ mealEntry }, uid, currentMeal]) => {
         if (uid) {
-          return currentMealService.addMealEntry({
-            currentMeal,
-            mealEntry,
-            uid,
-          });
+          return currentMealService
+            .addMealEntry({
+              currentMeal,
+              mealEntry,
+              uid,
+            })
+            .pipe(
+              mapResponse({
+                next: () => CurrentMealApiActions.addMealEntrySuccessful(),
+                error: (error) =>
+                  CurrentMealApiActions.addMealEntryFailed({ error }),
+              }),
+            );
         } else {
           return of();
         }
       }),
     ),
-  { functional: true, dispatch: false },
+  { functional: true },
 );
 
 export const updateMealEntryOfCurrentMeal = createEffect(
