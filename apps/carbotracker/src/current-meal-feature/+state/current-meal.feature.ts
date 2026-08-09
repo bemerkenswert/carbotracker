@@ -99,6 +99,11 @@ export const currentMealFeature = createFeature({
       (mealEntries): CurrentMeal => ({ mealEntries }),
     );
 
+    const selectCurrentMealIsEmpty = createSelector(
+      mealEntrySelectors.selectAllMealEntries,
+      (mealEntries): boolean => mealEntries.length === 0,
+    );
+
     const selectNotAddedProducts = createSelector(
       productsSelectors.selectAllProductEntries,
       mealEntrySelectors.selectAllMealEntryIds,
@@ -118,6 +123,7 @@ export const currentMealFeature = createFeature({
       ...mealEntrySelectors,
       ...productsSelectors,
       selectCurrentMeal,
+      selectCurrentMealIsEmpty,
       selectNotAddedProducts,
       selectProductsAvailableToAdd,
     };

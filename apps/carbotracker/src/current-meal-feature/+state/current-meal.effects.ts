@@ -15,6 +15,8 @@ import {
   tap,
 } from 'rxjs';
 import { authFeature } from '../../features/auth/+state/auth.store';
+import { SavedMealNameDialogService } from '../../saved-meals-feature/saved-meal-name-dialog/saved-meal-name-dialog.service';
+import { SavedMealsService } from '../../saved-meals-feature/services/saved-meals.service';
 import { CurrentMealService } from '../services/current-meal.service';
 import { ProductsService } from '../services/products.service';
 import {
@@ -22,6 +24,37 @@ import {
   CurrentMealPageComponentActions,
 } from './current-meal.actions';
 import { currentMealFeature } from './current-meal.feature';
+
+export const saveCurrentMealAsSavedMeal = createEffect(
+  (
+    actions$ = inject(Actions),
+    store = inject(Store),
+    savedMealsService = inject(SavedMealsService),
+    savedMealNameDialogService = inject(SavedMealNameDialogService),
+  ) =>
+    actions$.pipe(
+      ofType(CurrentMealPageComponentActions.saveCurrentMealClicked),
+      concatLatestFrom(() => [
+        store.select(authFeature.selectUserId),
+        store.select(currentMealFeature.selectCurrentMeal),
+      ]),
+      exhaustMap(([, uid, currentMeal]) => {
+        if (!uid) {
+          return EMPTY;
+        }
+        return savedMealNameDialogService.open().pipe(
+          filter(
+            (result): result is { cancelled: false; name: string } =>
+              !result.cancelled,
+          ),
+          exhaustMap(({ name }) =>
+            savedMealsService.saveCurrentMeal({ uid, currentMeal, name }),
+          ),
+        );
+      }),
+    ),
+  { dispatch: false, functional: true },
+);
 
 export const navigateToCreateMealEntry$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>

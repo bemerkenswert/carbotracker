@@ -1,0 +1,21 @@
+<ctui-toolbar title="Saved meals"></ctui-toolbar>
+@if (viewModel().savedMeals.length > 0) {
+  <mat-nav-list>
+    @for (
+      savedMealItem of viewModel().savedMeals;
+      track savedMealItem.savedMeal.id
+    ) {
+      <mat-list-item (click)="onSavedMealClick(savedMealItem.savedMeal)">
+        <h4 matListItemTitle>
+          {{ savedMealItem.savedMeal.name }}
+          <span class="carbs-summary"
+            >{{ savedMealItem.totalCarbs | number: '1.0-0' }}g</span
+          >
+        </h4>
+        <p matListItemLine>{{ savedMealItem.ingredients }}</p>
+      </mat-list-item>
+    }
+  </mat-nav-list>
+} @else {
+  <p>No saved meals yet. Save a current meal to see it here.</p>
+}

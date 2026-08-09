@@ -10,6 +10,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { CtuiFixedPositionDirective } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { CreateMealEntryPageComponentActions as ComponentActions } from '../../+state/current-meal.actions';
@@ -31,6 +32,7 @@ type FormModel = {
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
+    MatTooltipModule,
   ],
   templateUrl: './create-meal-entry-page.component.html',
   styleUrls: ['./create-meal-entry-page.component.scss'],

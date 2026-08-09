@@ -1,6 +1,18 @@
 @if (viewModel(); as vm) {
   <ctui-toolbar title="Current meal">
-    <button (click)="onClearCurrentMealClick()" mat-icon-button>
+    <button
+      (click)="onSaveCurrentMealClick()"
+      [disabled]="viewModel().currentMealIsEmpty"
+      mat-icon-button
+      matTooltip="Save current meal"
+    >
+      <mat-icon>bookmark_add</mat-icon>
+    </button>
+    <button
+      (click)="onClearCurrentMealClick()"
+      mat-icon-button
+      matTooltip="Clear current meal"
+    >
       <mat-icon>delete_sweep</mat-icon>
     </button>
   </ctui-toolbar>
@@ -46,6 +58,7 @@
     color="primary"
     ctuiFixedPosition
     type="button"
+    matTooltip="Add meal entry"
     [disabled]="!vm.productsAvailable"
   >
     <mat-icon>add</mat-icon>
