@@ -3,7 +3,17 @@ import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { concatLatestFrom } from '@ngrx/operators';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
-import { concatMap, EMPTY, exhaustMap, filter, of, switchMap, tap } from 'rxjs';
+import {
+  catchError,
+  concatMap,
+  EMPTY,
+  exhaustMap,
+  filter,
+  map,
+  of,
+  switchMap,
+  tap,
+} from 'rxjs';
 import { SavedMealsService } from '../../../saved-meals-feature/services/saved-meals.service';
 import { authFeature } from '../../../features/auth/+state/auth.store';
 import { SavedMealNameDialogService } from '../../../saved-meals-feature/saved-meal-name-dialog/saved-meal-name-dialog.service';
@@ -14,6 +24,7 @@ import {
   CurrentMealPageComponentActions,
   EditMealEntryPageComponentActions,
 } from '../actions/component.actions';
+import { CurrentMealApiActions } from '../actions/api.actions';
 import { currentMealFeature } from '../current-meal.feature';
 
 export const saveCurrentMealAsSavedMeal = createEffect(
@@ -58,15 +69,18 @@ export const removeAllMealEntriesOfCurrentMeal$ = createEffect(
       concatLatestFrom(() => [store.select(authFeature.selectUserId)]),
       concatMap(([, uid]) => {
         if (uid) {
-          return currentMealService.cleanAllMealEntries({
-            uid,
-          });
+          return currentMealService.cleanAllMealEntries({ uid }).pipe(
+            map(() => CurrentMealApiActions.clearCurrentMealSuccessful()),
+            catchError((error) =>
+              of(CurrentMealApiActions.clearCurrentMealFailed({ error })),
+            ),
+          );
         } else {
           return EMPTY;
         }
       }),
     ),
-  { functional: true, dispatch: false },
+  { functional: true },
 );
 
 export const addMealEntryToCurrentMeal = createEffect(
@@ -83,17 +97,24 @@ export const addMealEntryToCurrentMeal = createEffect(
       ]),
       concatMap(([{ mealEntry }, uid, currentMeal]) => {
         if (uid) {
-          return currentMealService.addMealEntry({
-            currentMeal,
-            mealEntry,
-            uid,
-          });
+          return currentMealService
+            .addMealEntry({
+              currentMeal,
+              mealEntry,
+              uid,
+            })
+            .pipe(
+              map(() => CurrentMealApiActions.addMealEntrySuccessful()),
+              catchError((error) =>
+                of(CurrentMealApiActions.addMealEntryFailed({ error })),
+              ),
+            );
         } else {
           return of();
         }
       }),
     ),
-  { functional: true, dispatch: false },
+  { functional: true },
 );
 
 export const updateMealEntryOfCurrentMeal = createEffect(

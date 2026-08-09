@@ -17,5 +17,9 @@ export const CurrentMealApiActions = createActionGroup({
     'Current Meal Collection Changed': props<{ currentMeal: CurrentMeal }>(),
     'Unknown Error': props<{ error: unknown }>(),
     'Unsubscribed From Current Meal Stream': emptyProps(),
+    'Add Meal Entry Successful': emptyProps(),
+    'Add Meal Entry Failed': props<{ error: unknown }>(),
+    'Clear Current Meal Successful': emptyProps(),
+    'Clear Current Meal Failed': props<{ error: unknown }>(),
   },
 });
