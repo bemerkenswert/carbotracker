@@ -4,8 +4,8 @@ import { authFeature } from '../../features/auth/+state/auth.store';
 import { SavedMealNameDialogService } from '../../saved-meals-feature/saved-meal-name-dialog/saved-meal-name-dialog.service';
 import { SavedMealsService } from '../../saved-meals-feature/services/saved-meals.service';
 import { CurrentMeal } from '../current-meal.model';
-import { CurrentMealPageComponentActions } from './current-meal.actions';
-import { saveCurrentMealAsSavedMeal } from './current-meal.effects';
+import { CurrentMealPageComponentActions } from './actions/component.actions';
+import { saveCurrentMealAsSavedMeal } from './effects/api.effects';
 import { currentMealFeature } from './current-meal.feature';
 
 describe('saveCurrentMealAsSavedMeal', () => {

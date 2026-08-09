@@ -9,7 +9,7 @@ import {
   CtuiToolbarComponent,
 } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
-import { CurrentMealPageComponentActions as ComponentActions } from '../../+state/current-meal.actions';
+import { CurrentMealPageComponentActions as ComponentActions } from '../../+state/actions/component.actions';
 import { MealEntry } from '../../current-meal.model';
 import { selectViewModel } from './current-meal-page.selectors';
 

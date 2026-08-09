@@ -1,6 +1,5 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
-import { Product } from '../../products-feature/product.model';
-import { CurrentMeal, MealEntry } from '../current-meal.model';
+import { MealEntry } from '../../current-meal.model';
 
 export const CurrentMealPageComponentActions = createActionGroup({
   source: 'Current Meal | Current Meal Page Component',
@@ -23,20 +22,11 @@ export const CreateMealEntryPageComponentActions = createActionGroup({
   },
 });
 
-export const ProductsApiActions = createActionGroup({
-  source: 'Current Meal | Products Api',
+export const EditMealEntryPageComponentActions = createActionGroup({
+  source: 'Current Meal | Edit Meal Entry Page Component',
   events: {
-    'Products Collection Changed': props<{ products: Product[] }>(),
-    'Unknown Error': props<{ error: unknown }>(),
-    'Unsubscribed From Products Stream': emptyProps(),
-  },
-});
-
-export const CurrentMealApiActions = createActionGroup({
-  source: 'Current Meal | Current Meal Api',
-  events: {
-    'Current Meal Collection Changed': props<{ currentMeal: CurrentMeal }>(),
-    'Unknown Error': props<{ error: unknown }>(),
-    'Unsubscribed From Current Meal Stream': emptyProps(),
+    'Save Clicked': props<{ mealEntry: MealEntry }>(),
+    'Delete Meal Entry Clicked': props<{ mealEntry: MealEntry }>(),
+    'Go Back Icon Clicked': emptyProps(),
   },
 });

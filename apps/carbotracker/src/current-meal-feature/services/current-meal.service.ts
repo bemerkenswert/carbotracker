@@ -1,15 +1,16 @@
-import { Injectable, inject } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { Store } from '@ngrx/store';
 import { Unsubscribe } from 'firebase/auth';
 import {
-  DocumentSnapshot,
   doc,
+  DocumentSnapshot,
   getFirestore,
   onSnapshot,
   setDoc,
+  updateDoc,
 } from 'firebase/firestore';
 import { from } from 'rxjs';
-import { CurrentMealApiActions as ApiActions } from '../+state/current-meal.actions';
+import { CurrentMealApiActions as ApiActions } from '../+state/actions/api.actions';
 import { CurrentMeal, MealEntry } from '../current-meal.model';
 
 @Injectable({ providedIn: 'root' })
@@ -25,6 +26,32 @@ export class CurrentMealService {
     const mealEntries = [...params.currentMeal.mealEntries, params.mealEntry];
     const document = this.getCurrentMealDocument(params);
     return from(setDoc(document, { mealEntries }));
+  }
+
+  public updateMealEntry(params: {
+    currentMeal: CurrentMeal;
+    mealEntry: MealEntry;
+    uid: string;
+  }) {
+    const document = this.getCurrentMealDocument(params);
+    const mealEntries = params.currentMeal.mealEntries.map((mealEntry) =>
+      mealEntry.productId === params.mealEntry.productId
+        ? params.mealEntry
+        : mealEntry,
+    );
+    return from(updateDoc(document, { mealEntries }));
+  }
+
+  public deleteMealEntry(params: {
+    currentMeal: CurrentMeal;
+    mealEntry: MealEntry;
+    uid: string;
+  }) {
+    const document = this.getCurrentMealDocument(params);
+    const mealEntries = params.currentMeal.mealEntries.filter(
+      (mealEntry) => mealEntry.productId !== params.mealEntry.productId,
+    );
+    return from(updateDoc(document, { mealEntries }));
   }
 
   public cleanAllMealEntries(params: { uid: string }) {

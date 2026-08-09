@@ -1,0 +1,35 @@
+<ctui-toolbar
+  title="Edit meal entry"
+  [showBackwardNavigation]="true"
+  (backwardNavigation)="onGoBack()"
+>
+  <button
+    mat-icon-button
+    (click)="onClearCurrentMealClick()"
+    matTooltip="Delete meal entry"
+  >
+    <mat-icon>delete</mat-icon>
+  </button>
+</ctui-toolbar>
+<form #productForm="ngForm" (ngSubmit)="onSubmit()">
+  <mat-form-field>
+    <mat-label>Amount</mat-label>
+    <input
+      name="amount"
+      required
+      min="1"
+      type="number"
+      [(ngModel)]="model.amount"
+      matInput
+    />
+  </mat-form-field>
+  <button
+    color="primary"
+    type="submit"
+    [disabled]="productForm.invalid || productForm.pristine"
+    mat-fab
+    ctuiFixedPosition
+  >
+    <mat-icon>save</mat-icon>
+  </button>
+</form>

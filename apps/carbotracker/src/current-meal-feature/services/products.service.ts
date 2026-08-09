@@ -8,7 +8,7 @@ import {
   query,
   where,
 } from 'firebase/firestore';
-import { ProductsApiActions } from '../+state/current-meal.actions';
+import { ProductsApiActions } from '../+state/actions/api.actions';
 import { Product } from '../../products-feature/product.model';
 
 @Injectable({ providedIn: 'root' })

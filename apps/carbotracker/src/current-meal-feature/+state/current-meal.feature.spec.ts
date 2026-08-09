@@ -3,7 +3,7 @@ import { MealEntry } from '../current-meal.model';
 import {
   CurrentMealApiActions,
   ProductsApiActions,
-} from './current-meal.actions';
+} from './actions/api.actions';
 import { currentMealFeature, getInitialState } from './current-meal.feature';
 
 describe('currentMealFeature', () => {

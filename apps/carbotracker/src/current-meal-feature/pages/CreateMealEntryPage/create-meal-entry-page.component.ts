@@ -1,8 +1,8 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  OnInit,
   inject,
+  OnInit,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
@@ -13,7 +13,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { CtuiFixedPositionDirective } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
-import { CreateMealEntryPageComponentActions as ComponentActions } from '../../+state/current-meal.actions';
+import { CreateMealEntryPageComponentActions as ComponentActions } from '../../+state/actions/component.actions';
 import { Product } from '../../../products-feature/product.model';
 import { selectFilteredProducts } from './create-meal-entry-page.selectors';
 
