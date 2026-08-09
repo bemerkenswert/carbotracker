@@ -76,3 +76,39 @@ export const showClearCurrentMealFailedSnackbar$ = createEffect(
     ),
   { functional: true },
 );
+
+export const showSaveCurrentMealSuccessfulSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(CurrentMealApiActions.saveCurrentMealSuccessful),
+      switchMap(() =>
+        snackBar
+          .open('The meal was saved.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              CurrentMealSnackBarActions.showSaveCurrentMealSnackbarSuccessful(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const showSaveCurrentMealFailedSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(CurrentMealApiActions.saveCurrentMealFailed),
+      switchMap(() =>
+        snackBar
+          .open('The meal could not be saved.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              CurrentMealSnackBarActions.showSaveCurrentMealSnackbarFailed(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
