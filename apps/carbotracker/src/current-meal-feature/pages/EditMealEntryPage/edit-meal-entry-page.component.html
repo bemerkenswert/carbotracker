@@ -3,8 +3,12 @@
   [showBackwardNavigation]="true"
   (backwardNavigation)="onGoBack()"
 >
-  <button (click)="onClearCurrentMealClick()" mat-icon-button>
-    <mat-icon>delete_sweep</mat-icon>
+  <button
+    mat-icon-button
+    (click)="onClearCurrentMealClick()"
+    matTooltip="Delete meal entry"
+  >
+    <mat-icon>delete</mat-icon>
   </button>
 </ctui-toolbar>
 <form #productForm="ngForm" (ngSubmit)="onSubmit()">

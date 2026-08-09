@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { MatFabButton, MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 import { MatFormField, MatInput, MatLabel } from '@angular/material/input';
+import { MatTooltip } from '@angular/material/tooltip';
 import {
   CtuiFixedPositionDirective,
   CtuiToolbarComponent,
@@ -29,6 +30,7 @@ type FormModel = {
     MatFabButton,
     CtuiToolbarComponent,
     MatIconButton,
+    MatTooltip,
   ],
 })
 export default class EditMealEntryPageComponent {
