@@ -11,7 +11,11 @@
     "ci:lint": "npx nx affected --target=lint --base=origin/main",
     "ci:test": "npx nx affected --target=test --base=origin/main --codeCoverage=true --coverageReporters=text",
     "ci:build": "npx nx affected --target=build --base=origin/main",
-    "ci:build:pullrequest": "npx nx affected --target=build --configuration=pr-preview --base=origin/main"
+    "ci:build:pullrequest": "npx nx affected --target=build --configuration=pr-preview --base=origin/main",
+    "worktree:start": "bash tools/ct-worktree.sh start",
+    "worktree:list": "bash tools/ct-worktree.sh list",
+    "worktree:ls": "bash tools/ct-worktree.sh list",
+    "worktree:prune": "bash tools/ct-worktree.sh prune"
   },
   "private": true,
   "devDependencies": {
