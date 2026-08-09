@@ -2,6 +2,6 @@ export interface SavedMealNameDialogData {
   title: string;
 }
 
-export interface SavedMealNameDialogResult {
-  name: string;
-}
+export type SavedMealNameDialogResult =
+  | { cancelled: true }
+  | { cancelled: false; name: string };

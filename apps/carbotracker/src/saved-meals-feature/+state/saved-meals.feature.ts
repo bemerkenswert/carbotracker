@@ -13,7 +13,7 @@ interface SavedMealsState {
 }
 
 const savedMealsEntityAdapter = createEntityAdapter<SavedMeal>({
-  sortComparer: (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  sortComparer: (a, b) => a.name.localeCompare(b.name),
 });
 
 export const getInitialState = (): SavedMealsState => ({

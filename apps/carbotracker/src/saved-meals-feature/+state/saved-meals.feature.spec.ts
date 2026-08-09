@@ -15,7 +15,7 @@ describe('savedMealsFeature', () => {
   const older = createSavedMeal('a', 'older', new Date('2024-01-01'));
   const newer = createSavedMeal('b', 'newer', new Date('2024-06-01'));
 
-  it('exposes saved meals newest first when the collection changes', () => {
+  it('exposes saved meals sorted by name when the collection changes', () => {
     const state = savedMealsFeature.reducer(
       getInitialState(),
       SavedMealsApiActions.savedMealsCollectionChanged({

@@ -37,15 +37,17 @@ export const saveCurrentMealAsSavedMeal = createEffect(
       concatLatestFrom(() => [
         store.select(authFeature.selectUserId),
         store.select(currentMealFeature.selectCurrentMeal),
-        store.select(currentMealFeature.selectCurrentMealIsEmpty),
       ]),
-      exhaustMap(([, uid, currentMeal, isEmpty]) => {
-        if (!uid || isEmpty) {
+      exhaustMap(([, uid, currentMeal]) => {
+        if (!uid) {
           return EMPTY;
         }
         return savedMealNameDialogService.open().pipe(
-          filter((name): name is string => !!name),
-          exhaustMap((name) =>
+          filter(
+            (result): result is { cancelled: false; name: string } =>
+              !result.cancelled,
+          ),
+          exhaustMap(({ name }) =>
             savedMealsService.saveCurrentMeal({ uid, currentMeal, name }),
           ),
         );

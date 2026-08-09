@@ -15,7 +15,7 @@ describe('saveCurrentMealAsSavedMeal', () => {
     ],
   };
 
-  const buildStore = (isEmpty: boolean): Store =>
+  const buildStore = (): Store =>
     ({
       select: jest.fn((selector) => {
         if (selector === authFeature.selectUserId) {
@@ -23,9 +23,6 @@ describe('saveCurrentMealAsSavedMeal', () => {
         }
         if (selector === currentMealFeature.selectCurrentMeal) {
           return of(currentMeal);
-        }
-        if (selector === currentMealFeature.selectCurrentMealIsEmpty) {
-          return of(isEmpty);
         }
         return of(null);
       }),
@@ -43,10 +40,12 @@ describe('saveCurrentMealAsSavedMeal', () => {
 
   it('opens the name dialog and saves when the user confirms with a name', () => {
     const { savedMealsService, nameDialogService } = buildMocks();
-    nameDialogService.open.mockReturnValue(of('Steffens Pasta Dream'));
+    nameDialogService.open.mockReturnValue(
+      of({ cancelled: false, name: 'Steffens Pasta Dream' }),
+    );
 
     const actions$ = new Subject<Action>();
-    const store = buildStore(false);
+    const store = buildStore();
     const effect$ = saveCurrentMealAsSavedMeal(
       actions$.asObservable(),
       store,
@@ -65,12 +64,12 @@ describe('saveCurrentMealAsSavedMeal', () => {
     });
   });
 
-  it('does not open the dialog or save when the user aborts it', () => {
+  it('does not save when the user cancels the dialog', () => {
     const { savedMealsService, nameDialogService } = buildMocks();
-    nameDialogService.open.mockReturnValue(of(undefined));
+    nameDialogService.open.mockReturnValue(of({ cancelled: true }));
 
     const actions$ = new Subject<Action>();
-    const store = buildStore(false);
+    const store = buildStore();
     const effect$ = saveCurrentMealAsSavedMeal(
       actions$.asObservable(),
       store,
@@ -82,25 +81,6 @@ describe('saveCurrentMealAsSavedMeal', () => {
     actions$.next(CurrentMealPageComponentActions.saveCurrentMealClicked());
 
     expect(nameDialogService.open).toHaveBeenCalled();
-    expect(savedMealsService.saveCurrentMeal).not.toHaveBeenCalled();
-  });
-
-  it('does not save when the current meal is empty', () => {
-    const { savedMealsService, nameDialogService } = buildMocks();
-
-    const actions$ = new Subject<Action>();
-    const store = buildStore(true);
-    const effect$ = saveCurrentMealAsSavedMeal(
-      actions$.asObservable(),
-      store,
-      savedMealsService,
-      nameDialogService,
-    );
-    effect$.subscribe();
-
-    actions$.next(CurrentMealPageComponentActions.saveCurrentMealClicked());
-
-    expect(nameDialogService.open).not.toHaveBeenCalled();
     expect(savedMealsService.saveCurrentMeal).not.toHaveBeenCalled();
   });
 });
