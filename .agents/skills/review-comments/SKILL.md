@@ -16,7 +16,7 @@ The issue tracker should have been provided to you — run `/setup-matt-pocock-s
 A GitHub review splits across two surfaces — collect both:
 
 - **General comments** (the review's overall message): `gh pr view <n> --comments`.
-- **Inline threads**, which live on the diff, *not* the issue thread — `gh pr view <n> --comments` shows only the top of each thread:
+- **Inline threads**, which live on the diff, _not_ the issue thread — `gh pr view <n> --comments` shows only the top of each thread:
   - Diff comments: `gh api repos/<owner>/<repo>/pulls/<n>/comments` — one entry per comment, each with `path`, `line`, and `in_reply_to`, so threads string together via `in_reply_to`.
   - Review-level comments: `gh api repos/<owner>/<repo>/pulls/<n>/reviews` for the review bodies.
   - Resolution markers land on the comment resource as `resolved` / `dismissed` via `gh api repos/<owner>/<repo>/pulls/<n>/comments/<id>` if you need thread state.
@@ -29,7 +29,7 @@ A GitHub review splits across two surfaces — collect both:
 Sort every point into exactly one bucket, with a one-line reason each:
 
 - **agree** — the comment is right, or at least cheap to satisfy; do it.
-- **push-back** — reasoned disagreement: the change would hurt, or the comment misunderstands the code. You will *argue*, not silently change.
+- **push-back** — reasoned disagreement: the change would hurt, or the comment misunderstands the code. You will _argue_, not silently change.
 - **clarify** — the comment hinges on information you don't have, or its intent is genuinely ambiguous.
 
 Two pruning rules:
@@ -61,7 +61,7 @@ Respond to each thread on the PR with a pointer back at it:
 - **Push-back** → leave the thread **open**, reply with the argument, and invite the reviewer to close it once convinced.
 - **Clarify** → reply with the question; keep it open until answered.
 
-Reply *to the thread*, not to the PR. A threaded inline reply is created with `POST /repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies` (body only); `gh api repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies -f body="..."`. Resolve an inline thread via `PUT .../comments/{comment_id}` with `{ "resolved": true }`. A general comment is a plain issue reply: `gh issue comment <n> --body "..."`.
+Reply _to the thread_, not to the PR. A threaded inline reply is created with `POST /repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies` (body only); `gh api repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies -f body="..."`. Resolve an inline thread via `PUT .../comments/{comment_id}` with `{ "resolved": true }`. A general comment is a plain issue reply: `gh issue comment <n> --body "..."`.
 
 Before posting, ask the caller whether replies should carry the AI-source footer or be signed as them — a colleague-facing reply is different from a tracker event.
 
