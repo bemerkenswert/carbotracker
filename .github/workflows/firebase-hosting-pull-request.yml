@@ -36,6 +36,14 @@ jobs:
       - name: build affected code
         run: npm run ci:build:pullrequest
 
+      - name: deploy firestore rules
+        working-directory: apps/carbotracker
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_CARBOTRACKER }}' > "$GOOGLE_APPLICATION_CREDENTIALS"
+          npx firebase deploy --only firestore:rules --project carbotracker
+
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
