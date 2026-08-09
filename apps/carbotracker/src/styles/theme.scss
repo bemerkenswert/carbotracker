@@ -152,4 +152,14 @@ $dark-theme: mat.define-theme(
   )
 );
 
+@include mat.theme(
+  (
+    color: (
+      theme-type: light,
+      primary: $primary-palette,
+      tertiary: $tertiary-palette,
+    ),
+  )
+);
+
 @include mat.all-component-themes($light-theme);
