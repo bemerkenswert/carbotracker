@@ -53,7 +53,7 @@ cmd_start() {
   npm ci --prefer-offline --no-audit --no-fund
 
   echo "Starting opencode..."
-  exec opencode --agent build --model opencode-go/deepseek-v4-flash --variant high --prompt "/implement the issue is $issue_number"
+  exec opencode --agent build --model opencode-go/deepseek-v4-flash --prompt "/implement the issue is $issue_number"
 }
 
 cmd_list() {
