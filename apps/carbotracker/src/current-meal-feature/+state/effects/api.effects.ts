@@ -1,21 +1,11 @@
 import { inject } from '@angular/core';
-import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { concatLatestFrom } from '@ngrx/operators';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
-import {
-  concatMap,
-  EMPTY,
-  exhaustMap,
-  filter,
-  from,
-  of,
-  switchMap,
-  tap,
-} from 'rxjs';
-import { SavedMealsService } from '../../..//saved-meals-feature/services/saved-meals.service';
-import { authFeature } from '../../../features/auth/+state';
+import { concatMap, EMPTY, exhaustMap, filter, of, switchMap, tap } from 'rxjs';
+import { SavedMealsService } from '../../../saved-meals-feature/services/saved-meals.service';
+import { authFeature } from '../../../features/auth/+state/auth.store';
 import { SavedMealNameDialogService } from '../../../saved-meals-feature/saved-meal-name-dialog/saved-meal-name-dialog.service';
 import { CurrentMealService } from '../../services/current-meal.service';
 import { ProductsService } from '../../services/products.service';
@@ -53,26 +43,6 @@ export const saveCurrentMealAsSavedMeal = createEffect(
           ),
         );
       }),
-    ),
-  { dispatch: false, functional: true },
-);
-
-export const navigateToCreateMealEntry$ = createEffect(
-  (actions$ = inject(Actions), router = inject(Router)) =>
-    actions$.pipe(
-      ofType(CurrentMealPageComponentActions.addClicked),
-      exhaustMap(() =>
-        from(router.navigate(['app', 'current-meal', 'create'])),
-      ),
-    ),
-  { dispatch: false, functional: true },
-);
-
-export const navigateToCurrentMeal$ = createEffect(
-  (actions$ = inject(Actions), router = inject(Router)) =>
-    actions$.pipe(
-      ofType(CreateMealEntryPageComponentActions.saveClicked),
-      exhaustMap(() => from(router.navigate(['app', 'current-meal']))),
     ),
   { dispatch: false, functional: true },
 );

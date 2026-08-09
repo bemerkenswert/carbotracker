@@ -33,14 +33,11 @@ type FormModel = {
 })
 export default class EditMealEntryPageComponent {
   private readonly store = inject(Store);
-  private readonly productId = this.store.selectSignal(
-    currentMealFeature.selectProductIdFromRoute,
-  );
   private readonly currentMealEntry = this.store.selectSignal(
-    currentMealFeature.selectCurrentMealEntry(this.productId()),
+    currentMealFeature.selectCurrentMealEntry,
   );
   private readonly currentProduct = this.store.selectSignal(
-    currentMealFeature.selectProductById(this.productId()),
+    currentMealFeature.selectProductById,
   );
   protected readonly model: FormModel = {
     amount: this.currentMealEntry()?.amount || null,

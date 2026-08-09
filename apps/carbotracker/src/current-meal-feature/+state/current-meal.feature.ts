@@ -104,24 +104,22 @@ export const currentMealFeature = createFeature({
       mealEntrySelectors.selectAllMealEntries,
       (mealEntries): boolean => mealEntries.length === 0,
     );
-    const selectCurrentMealEntry = (productId: string | null) =>
-      createSelector(
-        mealEntrySelectors.selectAllMealEntries,
-        (mealEntries): MealEntry | undefined =>
-          mealEntries.find((mealEntry) => mealEntry.productId === productId),
-      );
-
-    const selectProductById = (productId: string | null) =>
-      createSelector(
-        productsSelectors.selectAllProductEntries,
-        (products): Product | null => {
-          return products.find((product) => product.id === productId) ?? null;
-        },
-      );
-
     const selectProductIdFromRoute = createSelector(
       getRouterSelectors().selectRouteParam('id'),
       (id): string | null => id ?? null,
+    );
+    const selectCurrentMealEntry = createSelector(
+      mealEntrySelectors.selectAllMealEntries,
+      selectProductIdFromRoute,
+      (mealEntries, productId): MealEntry | undefined =>
+        mealEntries.find((mealEntry) => mealEntry.productId === productId),
+    );
+
+    const selectProductById = createSelector(
+      productsSelectors.selectAllProductEntries,
+      selectProductIdFromRoute,
+      (products, productId): Product | null =>
+        products.find((product) => product.id === productId) ?? null,
     );
 
     const selectNotAddedProducts = createSelector(
