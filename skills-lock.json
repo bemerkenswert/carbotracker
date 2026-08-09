@@ -132,6 +132,11 @@
       "sourceType": "github",
       "skillPath": "skills/productivity/writing-great-skills/SKILL.md",
       "computedHash": "4deb21855fb4deeeb1b8217b041faff003fd0c915d24a22f636851c520bc9c5c"
+    },
+    "review-comments": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": ".agents/skills/review-comments/SKILL.md"
     }
   }
 }

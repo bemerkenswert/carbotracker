@@ -52,6 +52,10 @@ Not feature work — upkeep.
 
 - **`/improve-codebase-architecture`** — run whenever you have a spare moment to keep the codebase good for agents to operate in. It surfaces **deepening opportunities**; picking one _generates an idea_ you can take into the main flow at `/grill-with-docs`. It's the survey that finds the candidates; **`/codebase-design`** (below) is the bench you design the chosen one on.
 
+## Back to the world
+
+- **`/review-comments`** — a human reviewed a PR; your branch came back with threads. Fetch the review, classify each comment (agree / push-back / clarify), settle with the dev, implement the agreed ones via `/implement`, and reply on every thread. Runs after `/code-review`, when the reviewer is a person instead of this agent. If a thread resurrects a couple of the reviewer's points once merged, route the survivors through the main flow as a follow-up issue.
+
 ## Vocabulary underneath
 
 Two model-invoked references that run _beneath_ the other skills — each the single source of truth for its vocabulary. Reach for them directly when the **words**, not the process, are the problem; or let the skills above pull them in.
