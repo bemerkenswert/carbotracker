@@ -21,5 +21,7 @@ export const CurrentMealApiActions = createActionGroup({
     'Add Meal Entry Failed': props<{ error: unknown }>(),
     'Clear Current Meal Successful': emptyProps(),
     'Clear Current Meal Failed': props<{ error: unknown }>(),
+    'Save Current Meal Successful': emptyProps(),
+    'Save Current Meal Failed': props<{ error: unknown }>(),
   },
 });

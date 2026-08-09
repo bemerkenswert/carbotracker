@@ -40,12 +40,18 @@ export const saveCurrentMealAsSavedMeal = createEffect(
               !result.cancelled,
           ),
           exhaustMap(({ name }) =>
-            savedMealsService.saveCurrentMeal({ uid, currentMeal, name }),
+            savedMealsService.saveCurrentMeal({ uid, currentMeal, name }).pipe(
+              mapResponse({
+                next: () => CurrentMealApiActions.saveCurrentMealSuccessful(),
+                error: (error) =>
+                  CurrentMealApiActions.saveCurrentMealFailed({ error }),
+              }),
+            ),
           ),
         );
       }),
     ),
-  { dispatch: false, functional: true },
+  { functional: true },
 );
 
 export const removeAllMealEntriesOfCurrentMeal$ = createEffect(

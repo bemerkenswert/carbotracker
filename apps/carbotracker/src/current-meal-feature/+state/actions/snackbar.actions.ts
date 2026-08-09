@@ -7,5 +7,7 @@ export const CurrentMealSnackBarActions = createActionGroup({
     'Show Add Meal Entry Snackbar Failed': emptyProps(),
     'Show Clear Current Meal Snackbar Successful': emptyProps(),
     'Show Clear Current Meal Snackbar Failed': emptyProps(),
+    'Show Save Current Meal Snackbar Successful': emptyProps(),
+    'Show Save Current Meal Snackbar Failed': emptyProps(),
   },
 });

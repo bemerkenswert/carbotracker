@@ -1,9 +1,10 @@
 import { Action, Store } from '@ngrx/store';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { authFeature } from '../../features/auth/+state/auth.store';
 import { SavedMealNameDialogService } from '../../saved-meals-feature/saved-meal-name-dialog/saved-meal-name-dialog.service';
 import { SavedMealsService } from '../../saved-meals-feature/services/saved-meals.service';
 import { CurrentMeal } from '../current-meal.model';
+import { CurrentMealApiActions } from './actions/api.actions';
 import { CurrentMealPageComponentActions } from './actions/component.actions';
 import { saveCurrentMealAsSavedMeal } from './effects/api.effects';
 import { currentMealFeature } from './current-meal.feature';
@@ -31,7 +32,7 @@ describe('saveCurrentMealAsSavedMeal', () => {
   const buildMocks = () => {
     const savedMealsService = {
       saveCurrentMeal: jest.fn(() => of(undefined)),
-    } as unknown as SavedMealsService;
+    } as unknown as jest.Mocked<SavedMealsService>;
     const nameDialogService = {
       open: jest.fn(),
     } as unknown as jest.Mocked<SavedMealNameDialogService>;
@@ -46,13 +47,13 @@ describe('saveCurrentMealAsSavedMeal', () => {
 
     const actions$ = new Subject<Action>();
     const store = buildStore();
-    const effect$ = saveCurrentMealAsSavedMeal(
+    const results: Action[] = [];
+    saveCurrentMealAsSavedMeal(
       actions$.asObservable(),
       store,
       savedMealsService,
       nameDialogService,
-    );
-    effect$.subscribe();
+    ).subscribe((action) => results.push(action));
 
     actions$.next(CurrentMealPageComponentActions.saveCurrentMealClicked());
 
@@ -62,6 +63,9 @@ describe('saveCurrentMealAsSavedMeal', () => {
       currentMeal,
       name: 'Steffens Pasta Dream',
     });
+    expect(results).toEqual([
+      CurrentMealApiActions.saveCurrentMealSuccessful(),
+    ]);
   });
 
   it('does not save when the user cancels the dialog', () => {
@@ -70,17 +74,42 @@ describe('saveCurrentMealAsSavedMeal', () => {
 
     const actions$ = new Subject<Action>();
     const store = buildStore();
-    const effect$ = saveCurrentMealAsSavedMeal(
+    saveCurrentMealAsSavedMeal(
       actions$.asObservable(),
       store,
       savedMealsService,
       nameDialogService,
-    );
-    effect$.subscribe();
+    ).subscribe();
 
     actions$.next(CurrentMealPageComponentActions.saveCurrentMealClicked());
 
     expect(nameDialogService.open).toHaveBeenCalled();
     expect(savedMealsService.saveCurrentMeal).not.toHaveBeenCalled();
+  });
+
+  it('dispatches saveCurrentMealFailed when saving fails', () => {
+    const { savedMealsService, nameDialogService } = buildMocks();
+    nameDialogService.open.mockReturnValue(
+      of({ cancelled: false, name: 'Steffens Pasta Dream' }),
+    );
+    savedMealsService.saveCurrentMeal.mockReturnValue(
+      throwError(() => new Error('boom')),
+    );
+
+    const actions$ = new Subject<Action>();
+    const store = buildStore();
+    const results: Action[] = [];
+    saveCurrentMealAsSavedMeal(
+      actions$.asObservable(),
+      store,
+      savedMealsService,
+      nameDialogService,
+    ).subscribe((action) => results.push(action));
+
+    actions$.next(CurrentMealPageComponentActions.saveCurrentMealClicked());
+
+    expect(results).toEqual([
+      CurrentMealApiActions.saveCurrentMealFailed({ error: expect.any(Error) }),
+    ]);
   });
 });

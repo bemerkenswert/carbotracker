@@ -8,6 +8,8 @@ import {
   showAddMealEntrySuccessfulSnackbar$,
   showClearCurrentMealFailedSnackbar$,
   showClearCurrentMealSuccessfulSnackbar$,
+  showSaveCurrentMealFailedSnackbar$,
+  showSaveCurrentMealSuccessfulSnackbar$,
 } from './snackbar.effects';
 
 const buildSnackBar = (): MatSnackBar =>
@@ -99,5 +101,33 @@ describe('snackbar effects', () => {
     actions$.next(CurrentMealApiActions.clearCurrentMealSuccessful());
 
     expect(snackBar.open).not.toHaveBeenCalled();
+  });
+
+  it('shows the save current meal success snackbar', () => {
+    const { actions$, snackBar, results } = buildEffect(
+      showSaveCurrentMealSuccessfulSnackbar$,
+    );
+
+    actions$.next(CurrentMealApiActions.saveCurrentMealSuccessful());
+
+    expect(snackBar.open).toHaveBeenCalledWith('The meal was saved.');
+    expect(results).toEqual([
+      CurrentMealSnackBarActions.showSaveCurrentMealSnackbarSuccessful(),
+    ]);
+  });
+
+  it('shows the save current meal failure snackbar', () => {
+    const { actions$, snackBar, results } = buildEffect(
+      showSaveCurrentMealFailedSnackbar$,
+    );
+
+    actions$.next(
+      CurrentMealApiActions.saveCurrentMealFailed({ error: 'boom' }),
+    );
+
+    expect(snackBar.open).toHaveBeenCalledWith('The meal could not be saved.');
+    expect(results).toEqual([
+      CurrentMealSnackBarActions.showSaveCurrentMealSnackbarFailed(),
+    ]);
   });
 });
