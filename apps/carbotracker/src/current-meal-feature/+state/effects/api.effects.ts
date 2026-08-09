@@ -1,19 +1,9 @@
 import { inject } from '@angular/core';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
-import { concatLatestFrom } from '@ngrx/operators';
+import { concatLatestFrom, mapResponse } from '@ngrx/operators';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
-import {
-  catchError,
-  concatMap,
-  EMPTY,
-  exhaustMap,
-  filter,
-  map,
-  of,
-  switchMap,
-  tap,
-} from 'rxjs';
+import { concatMap, EMPTY, exhaustMap, filter, of, switchMap, tap } from 'rxjs';
 import { SavedMealsService } from '../../../saved-meals-feature/services/saved-meals.service';
 import { authFeature } from '../../../features/auth/+state/auth.store';
 import { SavedMealNameDialogService } from '../../../saved-meals-feature/saved-meal-name-dialog/saved-meal-name-dialog.service';
@@ -70,10 +60,11 @@ export const removeAllMealEntriesOfCurrentMeal$ = createEffect(
       concatMap(([, uid]) => {
         if (uid) {
           return currentMealService.cleanAllMealEntries({ uid }).pipe(
-            map(() => CurrentMealApiActions.clearCurrentMealSuccessful()),
-            catchError((error) =>
-              of(CurrentMealApiActions.clearCurrentMealFailed({ error })),
-            ),
+            mapResponse({
+              next: () => CurrentMealApiActions.clearCurrentMealSuccessful(),
+              error: (error) =>
+                CurrentMealApiActions.clearCurrentMealFailed({ error }),
+            }),
           );
         } else {
           return EMPTY;
@@ -104,10 +95,11 @@ export const addMealEntryToCurrentMeal = createEffect(
               uid,
             })
             .pipe(
-              map(() => CurrentMealApiActions.addMealEntrySuccessful()),
-              catchError((error) =>
-                of(CurrentMealApiActions.addMealEntryFailed({ error })),
-              ),
+              mapResponse({
+                next: () => CurrentMealApiActions.addMealEntrySuccessful(),
+                error: (error) =>
+                  CurrentMealApiActions.addMealEntryFailed({ error }),
+              }),
             );
         } else {
           return of();
