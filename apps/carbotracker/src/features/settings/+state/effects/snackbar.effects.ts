@@ -7,9 +7,11 @@ import {
   LoginApiActions,
   PasswordApiActions,
 } from '../../../auth/+state';
+import { SettingsApiActions } from '../actions/api.actions';
 import {
   AccountPageSnackBarActions,
   ChangePasswordPageSnackBarActions,
+  InsulinToCarbRatiosPageSnackBarActions,
 } from '../actions/snackbar.actions';
 
 export const showEmailAlreadyExistsSnackBar$ = createEffect(
@@ -60,6 +62,42 @@ export const showOldPasswordWasWrongSnackbar$ = createEffect(
           .pipe(
             map(() =>
               ChangePasswordPageSnackBarActions.showOldPasswordWasWrongSnackbarSuccessful(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const showInsulinToCarbRatiosWereUpdatedSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(SettingsApiActions.settingInsulinToCarbRatiosSuccessful),
+      switchMap(() =>
+        snackBar
+          .open('Your ratios were updated.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              InsulinToCarbRatiosPageSnackBarActions.showInsulinToCarbRatiosUpdatedSnackbarSuccessful(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const showInsulinToCarbRatiosUpdateFailedSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(SettingsApiActions.settingInsulinToCarbRatiosFailed),
+      switchMap(() =>
+        snackBar
+          .open('Your ratios could not be updated.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              InsulinToCarbRatiosPageSnackBarActions.showInsulinToCarbRatiosUpdateFailedSnackbarSuccessful(),
             ),
           ),
       ),

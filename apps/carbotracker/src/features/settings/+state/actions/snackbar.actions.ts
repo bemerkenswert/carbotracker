@@ -14,3 +14,12 @@ export const ChangePasswordPageSnackBarActions = createActionGroup({
     'Show Old Password Was Wrong Snackbar Successful': emptyProps(),
   },
 });
+
+export const InsulinToCarbRatiosPageSnackBarActions = createActionGroup({
+  source: 'Settings | Insulin To Carb Ratios Page Snack Bar',
+  events: {
+    'Show Insulin To Carb Ratios Updated Snackbar Successful': emptyProps(),
+    'Show Insulin To Carb Ratios Update Failed Snackbar Successful':
+      emptyProps(),
+  },
+});
