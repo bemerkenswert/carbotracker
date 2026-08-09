@@ -4,6 +4,7 @@
       @for (navItem of navItems; track navItem.icon) {
         <button
           mat-icon-button
+          [matTooltip]="navItem.label"
           (click)="navItem.onClick()"
           [ngClass]="navItem.icon + '-button'"
         >

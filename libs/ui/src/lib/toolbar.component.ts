@@ -1,13 +1,15 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 @Component({
   selector: 'ctui-toolbar',
-  imports: [MatIconModule],
+  imports: [MatIconModule, MatTooltipModule],
   template: `<div>
       @if (showBackwardNavigation) {
         <mat-icon
           (click)="backwardNavigation.emit()"
+          matTooltip="Back"
           style="margin-right: 0.5rem; cursor: pointer"
           >chevron_left</mat-icon
         >

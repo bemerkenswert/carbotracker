@@ -1,6 +1,6 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
-import { CurrentMeal, MealEntry } from '../current-meal.model';
 import { Product } from '../../products-feature/product.model';
+import { CurrentMeal, MealEntry } from '../current-meal.model';
 
 export const CurrentMealPageComponentActions = createActionGroup({
   source: 'Current Meal | Current Meal Page Component',
@@ -10,6 +10,7 @@ export const CurrentMealPageComponentActions = createActionGroup({
     'Meal Entry Clicked': props<{ mealEntry: MealEntry }>(),
     'Clear Current Meal Clicked': emptyProps(),
     'Add Clicked': emptyProps(),
+    'Save Current Meal Clicked': emptyProps(),
   },
 });
 

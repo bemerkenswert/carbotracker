@@ -5,7 +5,11 @@
       [showBackwardNavigation]="true"
       (backwardNavigation)="onGoBack()"
     >
-      <button mat-icon-button (click)="onDeleteClicked(product)">
+      <button
+        mat-icon-button
+        (click)="onDeleteClicked(product)"
+        matTooltip="Delete product"
+      >
         <mat-icon>delete</mat-icon>
       </button>
     </ctui-toolbar>
@@ -37,6 +41,7 @@
         [disabled]="productForm.invalid || productForm.pristine"
         mat-fab
         ctuiFixedPosition
+        matTooltip="Save product"
       >
         <mat-icon>save</mat-icon>
       </button>

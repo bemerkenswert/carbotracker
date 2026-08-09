@@ -41,18 +41,21 @@ const getInsulinUnits = (
 export const selectViewModel = createSelector(
   currentMealFeature.selectAllMealEntries,
   currentMealFeature.selectProductsAvailableToAdd,
+  currentMealFeature.selectCurrentMealIsEmpty,
   selectSumOfCurrentMealCarbs,
   selectShowInsulinUnits,
   selectInsulinUnits,
   (
     mealEntries,
     productsAvailable,
+    currentMealIsEmpty,
     sumOfCurrentMealCarbs,
     showInsulinUnits,
     insulinUnits,
   ) => ({
     mealEntries,
     productsAvailable,
+    currentMealIsEmpty,
     sumOfCurrentMealCarbs,
     showInsulinUnits,
     insulinUnits,

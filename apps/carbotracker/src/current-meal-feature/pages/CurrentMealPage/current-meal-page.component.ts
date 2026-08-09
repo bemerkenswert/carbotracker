@@ -3,6 +3,7 @@ import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
   CtuiFixedPositionDirective,
   CtuiToolbarComponent,
@@ -20,6 +21,7 @@ import { selectViewModel } from './current-meal-page.selectors';
     MatButtonModule,
     MatIconModule,
     MatListModule,
+    MatTooltipModule,
     DecimalPipe,
   ],
   templateUrl: './current-meal-page.component.html',
@@ -43,6 +45,10 @@ export default class CurrentMealPageComponent implements OnInit, OnDestroy {
 
   protected onClearCurrentMealClick() {
     this.store.dispatch(ComponentActions.clearCurrentMealClicked());
+  }
+
+  protected onSaveCurrentMealClick() {
+    this.store.dispatch(ComponentActions.saveCurrentMealClicked());
   }
 
   protected onMealEntryClick(mealEntry: MealEntry): void {

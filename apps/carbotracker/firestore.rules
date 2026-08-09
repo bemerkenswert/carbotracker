@@ -29,6 +29,19 @@ service cloud.firestore {
       }
 
       allow read, write: if isInsulinToCarbRatiosOwner(request, insulinToCarbRatiosId);
-    } 
+    }
+
+    match /saved-meals/{savedMealId} {
+      function isSavedMealOwner(request, resource) {
+        return request.auth.uid == resource.data.creator;
+      }
+
+      function savedMealCreatorIsRequester(request) {
+        return request.resource.data.creator == request.auth.uid;
+      }
+
+      allow read, update, delete: if isSavedMealOwner(request, resource)
+      allow create: if savedMealCreatorIsRequester(request)
+    }
   }
 }

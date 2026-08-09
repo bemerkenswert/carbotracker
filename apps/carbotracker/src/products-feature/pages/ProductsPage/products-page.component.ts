@@ -8,6 +8,7 @@ import {
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import {
   CtuiFixedPositionDirective,
   CtuiToolbarComponent,
@@ -22,6 +23,7 @@ import { Product } from '../../product.model';
     MatButtonModule,
     MatIconModule,
     MatListModule,
+    MatTooltipModule,
     CtuiFixedPositionDirective,
     CtuiToolbarComponent,
   ],

@@ -1,0 +1,24 @@
+@if (viewModel().savedMeal; as savedMeal) {
+  <ctui-toolbar title="{{ savedMeal.name }}">
+    <button
+      (click)="onDeleteClicked(savedMeal)"
+      mat-icon-button
+      matTooltip="Delete saved meal"
+    >
+      <mat-icon>delete</mat-icon>
+    </button>
+  </ctui-toolbar>
+  <mat-nav-list>
+    @for (mealEntry of savedMeal.mealEntries; track mealEntry.productId) {
+      <mat-list-item>
+        <h4 matListItemTitle>{{ mealEntry.name }}</h4>
+        <p matListItemLine>
+          <span>{{ mealEntry.amount }}g</span>
+        </p>
+      </mat-list-item>
+    }
+  </mat-nav-list>
+} @else {
+  <ctui-toolbar title="Saved meal"></ctui-toolbar>
+  <p>Saved meal not found.</p>
+}
