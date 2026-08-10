@@ -73,6 +73,7 @@ export class InsulinToCarbRatiosService {
       breakfast: data.insulinToCarbRatios?.breakfast ?? null,
       lunch: data.insulinToCarbRatios?.lunch ?? null,
       dinner: data.insulinToCarbRatios?.dinner ?? null,
+      night: data.insulinToCarbRatios?.night ?? null,
     };
   }
 

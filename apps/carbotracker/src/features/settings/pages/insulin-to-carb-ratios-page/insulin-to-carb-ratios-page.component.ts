@@ -18,7 +18,7 @@ import { InsulinToCarbRatiosPageActions } from '../../+state/actions/component.a
 import { settingsFeature } from '../../../../app/app.reducer';
 
 interface InsulinToCarbRatioPerMeal {
-  mealType: 'Breakfast ratio' | 'Lunch ratio' | 'Dinner ratio';
+  mealType: 'Breakfast ratio' | 'Lunch ratio' | 'Dinner ratio' | 'Night ratio';
   control: FormControl;
 }
 
@@ -27,6 +27,7 @@ interface InsulinToCarbRatiosFormGroup {
   breakfast: number | null;
   lunch: number | null;
   dinner: number | null;
+  night: number | null;
 }
 
 const createInsulinToCarbRatiosFormGroup = () =>
@@ -35,6 +36,7 @@ const createInsulinToCarbRatiosFormGroup = () =>
     breakfast: null,
     lunch: null,
     dinner: null,
+    night: null,
   });
 
 @Component({
@@ -72,7 +74,7 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
   protected onSaveChanges() {
     if (this.insulinToCarbRatiosFormGroup.valid) {
       this.insulinToCarbRatiosFormGroup.markAsPristine();
-      const { showInsulinUnits, breakfast, lunch, dinner } =
+      const { showInsulinUnits, breakfast, lunch, dinner, night } =
         this.insulinToCarbRatiosFormGroup.getRawValue();
       const showUnits = !!showInsulinUnits;
       this.store.dispatch(
@@ -82,6 +84,7 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
             breakfast,
             lunch,
             dinner,
+            night,
           },
         }),
       );
@@ -106,6 +109,10 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
         mealType: 'Dinner ratio',
         control: this.insulinToCarbRatiosFormGroup.controls.dinner,
       },
+      {
+        mealType: 'Night ratio',
+        control: this.insulinToCarbRatiosFormGroup.controls.night,
+      },
     ];
   }
 
@@ -117,10 +124,12 @@ export class InsulinToCarbRatiosPageComponent implements OnInit {
           this.setRequiredValidator(form.breakfast);
           this.setRequiredValidator(form.lunch);
           this.setRequiredValidator(form.dinner);
+          this.setRequiredValidator(form.night);
         } else {
           this.removeRequiredValidator(form.breakfast);
           this.removeRequiredValidator(form.lunch);
           this.removeRequiredValidator(form.dinner);
+          this.removeRequiredValidator(form.night);
         }
       },
     );

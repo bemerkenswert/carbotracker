@@ -21,7 +21,7 @@ The meal being assembled right now. A list of meal entries; one per user.
 _Avoid_: Active meal, working meal
 
 **Meal type**:
-One of the three daily eating slots — breakfast, lunch, dinner — used as the unit for insulin-to-carb ratios.
+One of the four daily eating slots — breakfast, lunch, dinner, night — used as the unit for insulin-to-carb ratios.
 _Avoid_: Meal (when meaning a slot, since "meal" already means CurrentMeal)
 
 **Insulin-to-carb ratio**:

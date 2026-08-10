@@ -2,12 +2,13 @@ import { createFeature, createReducer, on } from '@ngrx/store';
 import { SettingsApiActions } from '../features/settings/+state/actions/api.actions';
 import { InsulinToCarbRatiosPageActions } from '../features/settings/+state/actions/component.actions';
 
-interface SettingsState {
+export interface SettingsState {
   insulinToCarbRatios: {
     showInsulinUnits: boolean | null;
     breakfast: number | null;
     lunch: number | null;
     dinner: number | null;
+    night: number | null;
   };
 }
 
@@ -17,6 +18,7 @@ export const getInitialState = (): SettingsState => ({
     breakfast: null,
     lunch: null,
     dinner: null,
+    night: null,
   },
 });
 

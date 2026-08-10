@@ -15,13 +15,14 @@ export const selectInsulinUnits = createSelector(
   settingsFeature.selectSettingsState,
   selectSumOfCurrentMealCarbs,
   ({ insulinToCarbRatios }, sumOfCurrentMealCarbs) => {
-    const { breakfast, lunch, dinner } = insulinToCarbRatios;
+    const { breakfast, lunch, dinner, night } = insulinToCarbRatios;
     return {
       breakfast: breakfast
         ? getInsulinUnits(sumOfCurrentMealCarbs, breakfast)
         : 0,
       lunch: lunch ? getInsulinUnits(sumOfCurrentMealCarbs, lunch) : 0,
       dinner: dinner ? getInsulinUnits(sumOfCurrentMealCarbs, dinner) : 0,
+      night: night ? getInsulinUnits(sumOfCurrentMealCarbs, night) : 0,
     };
   },
 );

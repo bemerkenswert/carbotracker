@@ -3,4 +3,5 @@ export interface InsulinToCarbRatio {
   breakfast: number | null;
   lunch: number | null;
   dinner: number | null;
+  night: number | null;
 }
