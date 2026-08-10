@@ -8,13 +8,14 @@
       <mat-list-item (click)="onSavedMealClick(savedMealItem.savedMeal)">
         <h4 matListItemTitle>{{ savedMealItem.savedMeal.name }}</h4>
         <p matListItemLine>
-          <span class="carbs-summary"
-            >{{ savedMealItem.totalCarbs | number: '1.0-0' }}g</span>
+          <span>{{ savedMealItem.totalCarbs | number: '1.0-0' }}g</span>
         </p>
-        
       </mat-list-item>
     }
   </mat-nav-list>
 } @else {
-  <p>No saved meals yet. Save a current meal to see it here.</p>
+  <div class="empty-meal-state">
+    <p>No saved meals yet.</p>
+    <span>Save a current meal to see it here.</span>
+  </div>
 }
