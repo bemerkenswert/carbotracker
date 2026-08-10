@@ -8,6 +8,7 @@ interface SettingsState {
     breakfast: number | null;
     lunch: number | null;
     dinner: number | null;
+    night: number | null;
   };
 }
 
@@ -17,6 +18,7 @@ export const getInitialState = (): SettingsState => ({
     breakfast: null,
     lunch: null,
     dinner: null,
+    night: null,
   },
 });
 

@@ -63,7 +63,14 @@ Respond to each thread on the PR with a pointer back at it:
 
 Reply _to the thread_, not to the PR. A threaded inline reply is created with `POST /repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies` (body only); `gh api repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies -f body="..."`. Resolve an inline thread via `PUT .../comments/{comment_id}` with `{ "resolved": true }`. A general comment is a plain issue reply: `gh issue comment <n> --body "..."`.
 
-Before posting, ask the caller whether replies should carry the AI-source footer or be signed as them — a colleague-facing reply is different from a tracker event.
+**Agent-authored replies MUST carry the AI-source footer** — a colleague reading the thread must be able to tell your reply from the human's. Append this footer line to every reply body:
+
+```
+---
+_Created by carbotracker's agent skills._
+```
+
+If the caller (the dev you're implementing for) wants a reply signed as themselves instead, they must say so explicitly before you post — ask if you're unsure. Never post a reply without either the footer or an explicit sign-as-them instruction.
 
 **Done when** every thread has a response, resolved threads are resolved, and open threads are deliberately left for the reviewer.
 
