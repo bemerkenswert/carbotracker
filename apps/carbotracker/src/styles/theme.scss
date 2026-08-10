@@ -159,18 +159,39 @@ $dark-theme: mat.define-theme(
   )
 );
 
-@include mat.theme(
-  (
-    color: (
-      theme-type: light,
-      primary: $primary-palette,
-      tertiary: $tertiary-palette,
-    ),
-    typography: $typography,
-  )
-);
+html {
+  @include mat.theme(
+    (
+      color: (
+        theme-type: light,
+        primary: $primary-palette,
+        tertiary: $tertiary-palette,
+      ),
+      typography: $typography,
+    )
+  );
+  @include mat.all-component-themes($light-theme);
 
-@include mat.all-component-themes($light-theme);
+  color-scheme: light;
+  background: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+}
+
+html.dark-theme {
+  @include mat.theme(
+    (
+      color: (
+        theme-type: dark,
+        primary: $primary-palette,
+        tertiary: $tertiary-palette,
+      ),
+      typography: $typography,
+    )
+  );
+  @include mat.all-component-colors($dark-theme);
+
+  color-scheme: dark;
+}
 
 @include mat.form-field-overrides(
   (

@@ -1,13 +1,18 @@
 <ctui-toolbar title="Settings"></ctui-toolbar>
 <mat-list>
+  <mat-list-item>
+    <mat-icon matListItemIcon>dark_mode</mat-icon>
+    <span matListItemTitle>Dark mode</span>
+    <mat-slide-toggle
+      matListItemMeta
+      [checked]="isDarkMode()"
+      (change)="onDarkModeChanged($event.checked)"
+    ></mat-slide-toggle>
+  </mat-list-item>
   @for (settingsItem of settingsItems; track settingsItem.icon) {
-    <mat-list-item>
-      <span matListItemIcon
-        ><mat-icon (click)="settingsItem.onClick()">{{ settingsItem.icon }}</mat-icon></span
-      >
-      <span class="list-item" (click)="settingsItem.onClick()">{{
-        settingsItem.name
-      }}</span>
+    <mat-list-item (click)="settingsItem.onClick()">
+      <mat-icon matListItemIcon>{{ settingsItem.icon }}</mat-icon>
+      <span matListItemTitle class="list-item">{{ settingsItem.name }}</span>
     </mat-list-item>
   }
 </mat-list>

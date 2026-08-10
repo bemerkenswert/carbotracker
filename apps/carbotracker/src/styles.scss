@@ -8,6 +8,8 @@ body {
 }
 body {
   margin: 0;
+  background: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
   font-family: 'Atkinson Hyperlegible', Roboto, 'Helvetica Neue', sans-serif;
   font-size: 20px;
 }
