@@ -2,6 +2,11 @@ mat-dialog-actions {
   justify-content: flex-end;
 }
 
-mat-dialog-content {
+.saved-meal-name-dialog-content.mat-mdc-dialog-content {
   min-width: 18rem;
+  padding-top: 16px;
+}
+
+mat-form-field {
+  width: 100%;
 }

@@ -1,22 +1,23 @@
 <mat-sidenav-container class="sidenav-container">
   <mat-sidenav-content>
-    <mat-toolbar color="primary">
-      @for (navItem of navItems; track navItem.icon) {
-        <button
-          mat-icon-button
-          [matTooltip]="navItem.label"
-          (click)="navItem.onClick()"
-          [ngClass]="navItem.icon + '-button'"
-        >
-          <mat-icon
-            [ngClass]="{
-              'highlight-active-icon': navItem.isActive(),
-            }"
-            >{{ navItem.icon }}</mat-icon
-          >
-        </button>
-      }
-    </mat-toolbar>
-    <router-outlet></router-outlet>
+    <nav class="navigation-bar">
+      <mat-button-toggle-group
+        class="navigation-toggle-group"
+        [value]="activeNavItemValue()"
+        hideSingleSelectionIndicator
+      >
+        @for (navItem of navItems; track navItem.value) {
+          <mat-button-toggle [value]="navItem.value" (click)="navItem.onClick()">
+            <span class="navigation-toggle-content">
+              <mat-icon>{{ navItem.icon }}</mat-icon>
+              <span>{{ navItem.label }}</span>
+            </span>
+          </mat-button-toggle>
+        }
+      </mat-button-toggle-group>
+    </nav>
+    <main class="page-content">
+      <router-outlet></router-outlet>
+    </main>
   </mat-sidenav-content>
 </mat-sidenav-container>

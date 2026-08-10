@@ -15,6 +15,7 @@ export const SavedMealPageComponentActions = createActionGroup({
   events: {
     'Selected Saved Meal Changed': props<{ selectedSavedMealId: string }>(),
     'Delete Clicked': props<{ savedMeal: SavedMeal }>(),
+    'Go Back Icon Clicked': emptyProps(),
   },
 });
 

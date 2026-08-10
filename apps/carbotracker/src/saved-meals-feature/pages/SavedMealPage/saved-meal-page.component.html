@@ -1,24 +1,71 @@
-@if (viewModel().savedMeal; as savedMeal) {
-  <ctui-toolbar title="{{ savedMeal.name }}">
-    <button
-      (click)="onDeleteClicked(savedMeal)"
-      mat-icon-button
-      matTooltip="Delete saved meal"
+@if (viewModel(); as vm) {
+  @if (vm.savedMeal; as savedMeal) {
+    <ctui-toolbar
+      title="{{ savedMeal.name }}"
+      [showBackwardNavigation]="true"
+      (backwardNavigation)="onGoBack()"
     >
-      <mat-icon>delete</mat-icon>
-    </button>
-  </ctui-toolbar>
-  <mat-nav-list>
-    @for (mealEntry of savedMeal.mealEntries; track mealEntry.productId) {
-      <mat-list-item>
-        <h4 matListItemTitle>{{ mealEntry.name }}</h4>
-        <p matListItemLine>
-          <span>{{ mealEntry.amount }}g</span>
-        </p>
-      </mat-list-item>
-    }
-  </mat-nav-list>
-} @else {
-  <ctui-toolbar title="Saved meal"></ctui-toolbar>
-  <p>Saved meal not found.</p>
+      <button
+        (click)="onDeleteClicked(savedMeal)"
+        mat-icon-button
+        matTooltip="Delete saved meal"
+      >
+        <mat-icon>delete</mat-icon>
+      </button>
+    </ctui-toolbar>
+    <section class="meal-summary-card">
+      <div class="carbs-summary">
+        <span class="carbs-value">{{
+          vm.sumOfSavedMealCarbs | number: '1.0-0'
+        }}</span>
+        <span class="carbs-unit">g carbs</span>
+      </div>
+
+      @if (vm.showInsulinUnits) {
+        <div class="insulin-summary">
+          <div class="insulin-summary-item">
+            <mat-icon>wb_twilight</mat-icon>
+            <span class="insulin-label">Breakfast</span>
+            <span class="insulin-value"
+              >{{ vm.insulinUnits.breakfast | number: '1.0-1' }} I.U.</span
+            >
+          </div>
+          <div class="insulin-summary-item">
+            <mat-icon>wb_sunny</mat-icon>
+            <span class="insulin-label">Lunch</span>
+            <span class="insulin-value"
+              >{{ vm.insulinUnits.lunch | number: '1.0-1' }} I.U.</span
+            >
+          </div>
+          <div class="insulin-summary-item">
+            <mat-icon>nights_stay</mat-icon>
+            <span class="insulin-label">Dinner</span>
+            <span class="insulin-value"
+              >{{ vm.insulinUnits.dinner | number: '1.0-1' }} I.U.</span
+            >
+          </div>
+        </div>
+      }
+    </section>
+
+    <section class="meal-entries-section">
+      <mat-nav-list class="meal-entries-list">
+        @for (mealEntry of savedMeal.mealEntries; track mealEntry.productId) {
+          <mat-list-item>
+            <h4 matListItemTitle>{{ mealEntry.name }}</h4>
+            <p matListItemLine>
+              <span>{{ mealEntry.amount }}g</span>
+            </p>
+          </mat-list-item>
+        }
+      </mat-nav-list>
+    </section>
+  } @else {
+    <ctui-toolbar
+      title="Saved meal"
+      [showBackwardNavigation]="true"
+      (backwardNavigation)="onGoBack()"
+    ></ctui-toolbar>
+    <p>Saved meal not found.</p>
+  }
 }

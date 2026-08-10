@@ -1,4 +1,5 @@
 import { ApplicationConfig, inject, isDevMode } from '@angular/core';
+import { MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material/form-field';
 import { MAT_SNACK_BAR_DEFAULT_OPTIONS } from '@angular/material/snack-bar';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
@@ -54,6 +55,10 @@ export const appConfig: ApplicationConfig = {
       ],
       withComponentInputBinding(),
     ),
+    {
+      provide: MAT_FORM_FIELD_DEFAULT_OPTIONS,
+      useValue: { appearance: 'outline' },
+    },
     { provide: MAT_SNACK_BAR_DEFAULT_OPTIONS, useValue: { duration: 5000 } },
     provideServiceWorker('ngsw-worker.js', {
       enabled: !isDevMode(),

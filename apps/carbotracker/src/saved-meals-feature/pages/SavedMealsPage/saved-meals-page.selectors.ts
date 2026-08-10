@@ -11,9 +11,6 @@ export const selectSavedMealsViewModel = createSelector(
 
 const toSavedMealListItem = (savedMeal: SavedMeal) => ({
   savedMeal,
-  ingredients: savedMeal.mealEntries
-    .map((mealEntry) => mealEntry.name)
-    .join(', '),
   totalCarbs: savedMeal.mealEntries.reduce(
     (sum, mealEntry) => sum + mealEntry.amount * (mealEntry.carbs / 100),
     0,

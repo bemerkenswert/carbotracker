@@ -6,13 +6,12 @@
       track savedMealItem.savedMeal.id
     ) {
       <mat-list-item (click)="onSavedMealClick(savedMealItem.savedMeal)">
-        <h4 matListItemTitle>
-          {{ savedMealItem.savedMeal.name }}
+        <h4 matListItemTitle>{{ savedMealItem.savedMeal.name }}</h4>
+        <p matListItemLine>
           <span class="carbs-summary"
-            >{{ savedMealItem.totalCarbs | number: '1.0-0' }}g</span
-          >
-        </h4>
-        <p matListItemLine>{{ savedMealItem.ingredients }}</p>
+            >{{ savedMealItem.totalCarbs | number: '1.0-0' }}g</span>
+        </p>
+        
       </mat-list-item>
     }
   </mat-nav-list>

@@ -91,3 +91,12 @@ export const navigateToSavedMeal$ = createEffect(
     ),
   { dispatch: false, functional: true },
 );
+
+export const navigateBackToSavedMeals$ = createEffect(
+  (actions$ = inject<Actions>(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(SavedMealPageComponentActions.goBackIconClicked),
+      exhaustMap(() => from(router.navigate(['app', 'saved-meals']))),
+    ),
+  { dispatch: false, functional: true },
+);

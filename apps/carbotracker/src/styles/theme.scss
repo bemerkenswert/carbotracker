@@ -132,6 +132,11 @@ $tertiary-palette: (
   error: $_error-palette,
 );
 
+$typography: (
+  brand-family: 'Atkinson Hyperlegible',
+  plain-family: 'Atkinson Hyperlegible',
+);
+
 $light-theme: mat.define-theme(
   (
     color: (
@@ -139,6 +144,7 @@ $light-theme: mat.define-theme(
       primary: $primary-palette,
       tertiary: $tertiary-palette,
     ),
+    typography: $typography,
   )
 );
 
@@ -149,6 +155,7 @@ $dark-theme: mat.define-theme(
       primary: $primary-palette,
       tertiary: $tertiary-palette,
     ),
+    typography: $typography,
   )
 );
 
@@ -159,7 +166,14 @@ $dark-theme: mat.define-theme(
       primary: $primary-palette,
       tertiary: $tertiary-palette,
     ),
+    typography: $typography,
   )
 );
 
 @include mat.all-component-themes($light-theme);
+
+@include mat.form-field-overrides(
+  (
+    outlined-focus-outline-width: 1px,
+  )
+);

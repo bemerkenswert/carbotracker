@@ -6,29 +6,105 @@
   width: 200px;
 }
 
-.sidenav .mat-toolbar {
-  background: inherit;
-}
-
-.mat-toolbar.mat-primary {
+.navigation-bar {
   position: sticky;
   top: 0;
   z-index: 1;
-  --mat-toolbar-container-background-color: var(--mat-sys-primary);
-  --mat-toolbar-container-text-color: var(--mat-sys-on-primary);
+  display: flex;
+  justify-content: center;
+  padding: 20px 20px 12px;
+  background: var(--mat-sys-surface);
+}
 
-  .mat-mdc-icon-button {
-    --mat-icon-button-icon-color: var(--mat-sys-on-primary);
-    --mat-icon-button-state-layer-color: var(--mat-sys-on-primary);
-    --mat-icon-button-ripple-color: var(--mat-sys-on-primary);
+.navigation-toggle-group {
+  width: min(100%, 960px);
+  max-width: 100%;
+  --mat-button-toggle-divider-color: transparent;
+  border-radius: 999px;
+  border: 0;
+  background: color-mix(
+    in srgb,
+    var(--mat-sys-primary) 10%,
+    var(--mat-sys-surface)
+  );
+  box-shadow: 0 8px 20px
+    color-mix(in srgb, var(--mat-sys-shadow) 14%, transparent);
+  overflow: hidden;
+
+  mat-button-toggle {
+    flex: 1 1 0;
   }
 }
 
-.highlight-active-icon {
-  text-shadow: 0 0 3px #fff;
+.navigation-toggle-group.mat-button-toggle-group-appearance-standard {
+  border: 0;
 }
 
-.settings-button {
-  position: fixed;
-  right: 10px;
+mat-button-toggle {
+  border: 0;
+  color: var(--mat-sys-on-surface);
+  background: transparent;
+  min-height: 64px;
+  font-size: 1.05rem;
+  font-weight: 600;
+
+  &.mat-button-toggle-checked {
+    color: var(--mat-sys-primary);
+    background: transparent;
+  }
+
+  & + mat-button-toggle {
+    border-left: 0;
+  }
+}
+
+.navigation-toggle-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+
+  .mat-icon {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    margin-right: 8px;
+    font-size: 28px;
+  }
+}
+
+.page-content {
+  padding: 0 24px 24px;
+}
+
+@media (width >= 768px) {
+  .page-content {
+    padding-inline: 48px;
+  }
+}
+
+@media (width <= 600px) {
+  .navigation-bar {
+    padding: 12px 8px 8px;
+  }
+
+  .navigation-toggle-group {
+    border-radius: 28px;
+  }
+
+  mat-button-toggle {
+    min-height: 56px;
+  }
+
+  .navigation-toggle-content {
+    min-height: 56px;
+
+    .mat-icon {
+      margin-right: 0;
+    }
+
+    span {
+      display: none;
+    }
+  }
 }

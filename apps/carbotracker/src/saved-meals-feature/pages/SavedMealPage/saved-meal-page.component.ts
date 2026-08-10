@@ -1,3 +1,4 @@
+import { DecimalPipe } from '@angular/common';
 import { Component, Input, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -17,6 +18,7 @@ import { selectSavedMealPageViewModel } from './saved-meal-page.selectors';
     MatButtonModule,
     MatIconModule,
     MatTooltipModule,
+    DecimalPipe,
   ],
   templateUrl: './saved-meal-page.component.html',
   styleUrls: ['./saved-meal-page.component.scss'],
@@ -36,5 +38,9 @@ export default class SavedMealPageComponent {
 
   protected onDeleteClicked(savedMeal: SavedMeal) {
     this.store.dispatch(ComponentActions.deleteClicked({ savedMeal }));
+  }
+
+  protected onGoBack() {
+    this.store.dispatch(ComponentActions.goBackIconClicked());
   }
 }
