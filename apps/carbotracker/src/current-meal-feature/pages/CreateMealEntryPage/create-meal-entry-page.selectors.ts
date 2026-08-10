@@ -15,3 +15,14 @@ export const selectFilteredProducts = createSelector(
     }
   },
 );
+
+export interface CreateMealEntryPageViewModel {
+  availableProducts: Product[];
+}
+
+export const selectCreateMealEntryPageViewModel = createSelector(
+  selectFilteredProducts,
+  (availableProducts): CreateMealEntryPageViewModel => ({
+    availableProducts,
+  }),
+);

@@ -14,8 +14,8 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { authFeature } from '../../../features/auth/+state';
-import { SettingsPageActions } from '../../../features/settings/+state';
+import { authFeature } from '../../../features/auth/+state/auth.store';
+import { SettingsPageActions } from '../../../features/settings/+state/actions/component.actions';
 import { ProductsService } from '../../services/products.service';
 import { ProductsApiActions } from '../actions/api.actions';
 import {
@@ -24,6 +24,7 @@ import {
 } from '../actions/component.actions';
 import { DeleteProductConfirmationDialogActions } from '../actions/dialog.actions';
 import { ProductsRouterActions } from '../actions/routing.actions';
+import { productsFeature } from '../products.reducer';
 
 export const startStreamingProducts$ = createEffect(
   (
@@ -61,13 +62,20 @@ export const stopStreamingProducts$ = createEffect(
 );
 
 export const updateProduct$ = createEffect(
-  (actions$ = inject(Actions), productsService = inject(ProductsService)) =>
+  (
+    actions$ = inject(Actions),
+    productsService = inject(ProductsService),
+    store = inject(Store),
+  ) =>
     actions$.pipe(
       ofType(EditProductPageComponentActions.saveProductClicked),
-      exhaustMap(({ exisitingProduct, changedProduct }) =>
+      concatLatestFrom(() =>
+        store.select(productsFeature.selectCurrentProduct).pipe(filterNull()),
+      ),
+      exhaustMap(([{ changedProduct }, existingProduct]) =>
         productsService
           .updateProduct({
-            ...exisitingProduct,
+            ...existingProduct,
             ...changedProduct,
           })
           .pipe(

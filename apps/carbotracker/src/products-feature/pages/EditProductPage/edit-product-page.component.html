@@ -1,7 +1,7 @@
-@if (product(); as product) {
+@if (viewModel().product; as product) {
   <ng-container>
     <ctui-toolbar
-      title="Edit product"
+      [title]="viewModel().pageTitle"
       [showBackwardNavigation]="true"
       (backwardNavigation)="onGoBack()"
     >
@@ -13,32 +13,19 @@
         <mat-icon>delete</mat-icon>
       </button>
     </ctui-toolbar>
-    <form #productForm="ngForm" (ngSubmit)="onSubmit()">
+    <form [formGroup]="formGroup" (ngSubmit)="onSubmit()">
       <mat-form-field>
-        <mat-label formGroupBane>Product name</mat-label>
-        <input
-          name="name"
-          required
-          type="text"
-          [(ngModel)]="model.name"
-          matInput
-        />
+        <mat-label>Product name</mat-label>
+        <input formControlName="name" type="text" matInput />
       </mat-form-field>
       <mat-form-field>
         <mat-label>Carbohydrates per 100g</mat-label>
-        <input
-          name="carbs"
-          required
-          min="0.1"
-          type="number"
-          [(ngModel)]="model.carbs"
-          matInput
-        />
+        <input formControlName="carbs" type="number" matInput />
       </mat-form-field>
       <button
         color="primary"
         type="submit"
-        [disabled]="productForm.invalid || productForm.pristine"
+        [disabled]="formGroup.invalid || formGroup.pristine"
         mat-fab
         ctuiFixedPosition
         matTooltip="Save product"

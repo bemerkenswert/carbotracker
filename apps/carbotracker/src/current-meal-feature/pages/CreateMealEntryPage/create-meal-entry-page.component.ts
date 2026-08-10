@@ -4,7 +4,12 @@ import {
   inject,
   OnInit,
 } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import {
+  FormControl,
+  FormGroup,
+  ReactiveFormsModule,
+  Validators,
+} from '@angular/forms';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -15,18 +20,18 @@ import { CtuiFixedPositionDirective } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { CreateMealEntryPageComponentActions as ComponentActions } from '../../+state/actions/component.actions';
 import { Product } from '../../../products-feature/product.model';
-import { selectFilteredProducts } from './create-meal-entry-page.selectors';
+import { selectCreateMealEntryPageViewModel } from './create-meal-entry-page.selectors';
 
-type FormModel = {
-  amount: number | null;
-  product: Product | null;
-};
+interface CreateMealEntryFormControls {
+  amount: FormControl<number | null>;
+  product: FormControl<Product | null>;
+}
 
 @Component({
   selector: 'carbotracker-create-meal-entry-page',
   imports: [
     CtuiFixedPositionDirective,
-    FormsModule,
+    ReactiveFormsModule,
     MatAutocompleteModule,
     MatButtonModule,
     MatFormFieldModule,
@@ -40,13 +45,18 @@ type FormModel = {
 })
 export default class CreateMealEntryPageComponent implements OnInit {
   private readonly store = inject(Store);
-  protected readonly filteredProducts = this.store.selectSignal(
-    selectFilteredProducts,
+  protected readonly viewModel = this.store.selectSignal(
+    selectCreateMealEntryPageViewModel,
   );
-  public readonly model: FormModel = {
-    amount: null,
-    product: null,
-  };
+
+  protected readonly formGroup = new FormGroup<CreateMealEntryFormControls>({
+    amount: new FormControl(null, {
+      validators: [Validators.required, Validators.min(1)],
+    }),
+    product: new FormControl<Product | null>(null, {
+      validators: [Validators.required],
+    }),
+  });
 
   public ngOnInit(): void {
     this.store.dispatch(ComponentActions.enteredCreateMealEntryPage());
@@ -66,14 +76,12 @@ export default class CreateMealEntryPageComponent implements OnInit {
   }
 
   public onSubmit() {
-    if (this.model.product && this.model.amount && this.model.amount > 0) {
-      const { amount, product } = this.model;
-      const { name, id, carbs } = product;
-      this.store.dispatch(
-        ComponentActions.saveClicked({
-          mealEntry: { amount, carbs, productId: id, name },
-        }),
-      );
-    }
+    const { product, amount } = this.formGroup.getRawValue();
+    this.store.dispatch(
+      ComponentActions.saveClicked({
+        product: product as Product,
+        amount: amount as number,
+      }),
+    );
   }
 }

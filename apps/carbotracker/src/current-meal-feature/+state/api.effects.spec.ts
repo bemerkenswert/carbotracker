@@ -21,6 +21,13 @@ const mealEntry: MealEntry = {
   amount: 250,
 };
 
+const product = {
+  id: 'p1',
+  name: 'spaghetti',
+  creator: 'user-a',
+  carbs: 25,
+};
+
 const currentMeal: CurrentMeal = { mealEntries: [mealEntry] };
 
 const buildStore = (): Store =>
@@ -98,7 +105,10 @@ describe('addMealEntryToCurrentMeal', () => {
     ).subscribe((action) => results.push(action));
 
     actions$.next(
-      CreateMealEntryPageComponentActions.saveClicked({ mealEntry }),
+      CreateMealEntryPageComponentActions.saveClicked({
+        product,
+        amount: 250,
+      }),
     );
 
     expect(currentMealService.addMealEntry).toHaveBeenCalledWith({
@@ -123,7 +133,10 @@ describe('addMealEntryToCurrentMeal', () => {
     ).subscribe((action) => results.push(action));
 
     actions$.next(
-      CreateMealEntryPageComponentActions.saveClicked({ mealEntry }),
+      CreateMealEntryPageComponentActions.saveClicked({
+        product,
+        amount: 250,
+      }),
     );
 
     expect(results).toEqual([

@@ -2,8 +2,8 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { exhaustMap, from } from 'rxjs';
+import { CurrentMealApiActions } from '../actions/api.actions';
 import {
-  CreateMealEntryPageComponentActions,
   CurrentMealPageComponentActions,
   EditMealEntryPageComponentActions,
 } from '../actions/component.actions';
@@ -23,7 +23,7 @@ export const navigateToCurrentMeal$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(
       ofType(
-        CreateMealEntryPageComponentActions.saveClicked,
+        CurrentMealApiActions.addMealEntrySuccessful,
         EditMealEntryPageComponentActions.saveClicked,
         EditMealEntryPageComponentActions.deleteMealEntryClicked,
         EditMealEntryPageComponentActions.goBackIconClicked,

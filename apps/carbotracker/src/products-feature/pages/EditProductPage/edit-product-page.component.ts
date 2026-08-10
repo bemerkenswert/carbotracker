@@ -5,7 +5,12 @@ import {
   effect,
   inject,
 } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import {
+  FormControl,
+  FormGroup,
+  ReactiveFormsModule,
+  Validators,
+} from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -17,22 +22,25 @@ import {
 } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { EditProductPageComponentActions as ComponentActions } from '../../+state/actions/component.actions';
-import { productsFeature } from '../../+state/products.reducer';
 import { Product } from '../../product.model';
+import { selectEditProductPageViewModel } from './edit-product-page.selectors';
 
-type FormModel = Pick<Product, 'name' | 'carbs'>;
+interface EditProductFormControls {
+  name: FormControl<string>;
+  carbs: FormControl<number>;
+}
 
 @Component({
   selector: 'carbotracker-edit-product-page',
   imports: [
     CtuiFixedPositionDirective,
-    FormsModule,
+    CtuiToolbarComponent,
+    ReactiveFormsModule,
     MatButtonModule,
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
     MatTooltipModule,
-    CtuiToolbarComponent,
   ],
   templateUrl: './edit-product-page.component.html',
   styleUrls: ['./edit-product-page.component.scss'],
@@ -40,14 +48,20 @@ type FormModel = Pick<Product, 'name' | 'carbs'>;
 })
 export default class EditProductPageComponent {
   private readonly store = inject(Store);
-  public readonly product = this.store.selectSignal(
-    productsFeature.selectCurrentProduct,
+  protected readonly viewModel = this.store.selectSignal(
+    selectEditProductPageViewModel,
   );
 
-  public readonly model: FormModel = {
-    name: '',
-    carbs: 0,
-  };
+  protected readonly formGroup = new FormGroup<EditProductFormControls>({
+    name: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required],
+    }),
+    carbs: new FormControl(0, {
+      nonNullable: true,
+      validators: [Validators.required, Validators.min(0.1)],
+    }),
+  });
 
   constructor() {
     this.reactToProductChanges();
@@ -61,31 +75,26 @@ export default class EditProductPageComponent {
   }
 
   public onSubmit() {
-    const exisitingProduct = this.product();
-    if (exisitingProduct)
-      this.store.dispatch(
-        ComponentActions.saveProductClicked({
-          exisitingProduct,
-          changedProduct: { ...this.model },
-        }),
-      );
+    const { name, carbs } = this.formGroup.getRawValue();
+    this.store.dispatch(
+      ComponentActions.saveProductClicked({ changedProduct: { name, carbs } }),
+    );
   }
 
   public onDeleteClicked(selectedProduct: Product) {
     this.store.dispatch(ComponentActions.deleteClicked({ selectedProduct }));
   }
 
-  private reactToProductChanges() {
-    effect(() => {
-      const currentProduct = this.product();
-      if (currentProduct) {
-        this.model.name = currentProduct.name;
-        this.model.carbs = currentProduct.carbs;
-      }
-    });
-  }
-
   public onGoBack() {
     this.store.dispatch(ComponentActions.goBackIconClicked());
+  }
+
+  private reactToProductChanges() {
+    effect(() => {
+      const initialFormValues = this.viewModel().initialFormValues;
+      if (initialFormValues) {
+        this.formGroup.patchValue(initialFormValues, { emitEvent: false });
+      }
+    });
   }
 }

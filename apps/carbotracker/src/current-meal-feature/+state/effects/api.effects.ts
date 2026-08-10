@@ -86,8 +86,14 @@ export const addMealEntryToCurrentMeal = createEffect(
         store.select(authFeature.selectUserId),
         store.select(currentMealFeature.selectCurrentMeal),
       ]),
-      concatMap(([{ mealEntry }, uid, currentMeal]) => {
+      concatMap(([{ product, amount }, uid, currentMeal]) => {
         if (uid) {
+          const mealEntry = {
+            productId: product.id,
+            name: product.name,
+            carbs: product.carbs,
+            amount,
+          };
           return currentMealService
             .addMealEntry({
               currentMeal,
