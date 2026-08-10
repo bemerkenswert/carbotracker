@@ -2,7 +2,7 @@
   <mat-form-field>
     <mat-label>Amount</mat-label>
     <input
-      formControlName="amount"
+      [formControl]="formGroup.controls.amount"
       type="number"
       matInput
     />
@@ -11,7 +11,7 @@
     <mat-label>Product</mat-label>
     <input
       placeholder="Select Product"
-      formControlName="product"
+      [formControl]="formGroup.controls.product"
       type="text"
       matInput
       (input)="onFilterChange($event)"

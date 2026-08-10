@@ -26,7 +26,7 @@ Every page gets a page-level `*.selectors.ts` file with a `select<Page>ViewModel
 
 ### Form approach: reactive forms
 
-All form pages use `ReactiveFormsModule` with a `FormGroup`. Validators are declared on `FormControl` — not guarded imperatively in the component. The component never checks `formGroup.valid` before dispatching; the template uses `[disabled]="formGroup.invalid"` on the submit button (plus `pristine` where saving an unchanged edit form is meaningless).
+All form pages use `ReactiveFormsModule` with a `FormGroup`. Controls bind to the template via the **`[formControl]="formGroup.controls.x"` property binding** — not the `formControlName` string directive — so a typo in a control name is a compile error, not a silent runtime failure. Validators are declared on `FormControl` — not guarded imperatively in the component. The component never checks `formGroup.valid` before dispatching; the template uses `[disabled]="formGroup.invalid"` on the submit button (plus `pristine` where saving an unchanged edit form is meaningless).
 
 ### Event-driven action chain
 

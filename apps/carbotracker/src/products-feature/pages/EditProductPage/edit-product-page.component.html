@@ -16,11 +16,11 @@
     <form [formGroup]="formGroup" (ngSubmit)="onSubmit()">
       <mat-form-field>
         <mat-label>Product name</mat-label>
-        <input formControlName="name" type="text" matInput />
+        <input [formControl]="formGroup.controls.name" type="text" matInput />
       </mat-form-field>
       <mat-form-field>
         <mat-label>Carbohydrates per 100g</mat-label>
-        <input formControlName="carbs" type="number" matInput />
+        <input [formControl]="formGroup.controls.carbs" type="number" matInput />
       </mat-form-field>
       <button
         color="primary"
