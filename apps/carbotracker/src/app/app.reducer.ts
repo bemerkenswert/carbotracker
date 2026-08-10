@@ -2,7 +2,7 @@ import { createFeature, createReducer, on } from '@ngrx/store';
 import { SettingsApiActions } from '../features/settings/+state/actions/api.actions';
 import { InsulinToCarbRatiosPageActions } from '../features/settings/+state/actions/component.actions';
 
-export interface SettingsState {
+interface SettingsState {
   insulinToCarbRatios: {
     showInsulinUnits: boolean | null;
     breakfast: number | null;

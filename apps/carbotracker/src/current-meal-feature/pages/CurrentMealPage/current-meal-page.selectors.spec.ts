@@ -1,9 +1,20 @@
-import { SettingsState } from '../../../app/app.reducer';
 import { selectInsulinUnits } from './current-meal-page.selectors';
+
+interface InsulinToCarbRatios {
+  showInsulinUnits: boolean;
+  breakfast: number | null;
+  lunch: number | null;
+  dinner: number | null;
+  night: number | null;
+}
+
+interface SettingsState {
+  insulinToCarbRatios: InsulinToCarbRatios;
+}
 
 describe('selectInsulinUnits', () => {
   const createSettingsState = (
-    insulinToCarbRatios: SettingsState['insulinToCarbRatios'],
+    insulinToCarbRatios: InsulinToCarbRatios,
   ): SettingsState => ({ insulinToCarbRatios });
 
   it('computes night insulin units from the night ratio', () => {
