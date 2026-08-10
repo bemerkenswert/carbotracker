@@ -24,6 +24,10 @@ const SHELL_ROUTES: Routes = [
         loadChildren: () => import('../saved-meals-feature/saved-meals.routes'),
       },
       {
+        path: 'history',
+        loadChildren: () => import('../meal-logs-feature/meal-logs.routes'),
+      },
+      {
         path: 'settings',
         loadChildren: () => import('../features/settings/settings.routes'),
       },

@@ -1,0 +1,33 @@
+<h2 mat-dialog-title>Log insulin dose</h2>
+<mat-dialog-content>
+  <mat-form-field appearance="fill">
+    <mat-label>Date & time</mat-label>
+    <input matInput type="datetime-local" [(ngModel)]="dateTime" />
+  </mat-form-field>
+  <mat-form-field appearance="fill">
+    <mat-label>Insulin</mat-label>
+    <input
+      matInput
+      type="number"
+      min="0"
+      step="0.5"
+      [(ngModel)]="insulin"
+      cdkFocusInitial
+    />
+  </mat-form-field>
+  <mat-form-field appearance="fill">
+    <mat-label>Note</mat-label>
+    <input matInput [(ngModel)]="note" />
+  </mat-form-field>
+</mat-dialog-content>
+<mat-dialog-actions>
+  <button mat-button [matDialogClose]="{ cancelled: true }">Cancel</button>
+  <button
+    color="primary"
+    mat-raised-button
+    [disabled]="!canSave"
+    [matDialogClose]="getResult()"
+  >
+    Save
+  </button>
+</mat-dialog-actions>

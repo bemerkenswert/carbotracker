@@ -66,6 +66,24 @@ export const navigateToSavedMeals$ = createEffect(
   { functional: true },
 );
 
+export const navigateToHistory$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(ShellComponentActions.historyClicked),
+      switchMap(() =>
+        from(router.navigate(['app', 'history'])).pipe(
+          map(() =>
+            ShellRouterEffectsActions.navigationToHistoryPageSuccessful(),
+          ),
+          catchError(() =>
+            of(ShellRouterEffectsActions.navigationToHistoryPageFailed()),
+          ),
+        ),
+      ),
+    ),
+  { functional: true },
+);
+
 export const navigateToSettingsPage$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(

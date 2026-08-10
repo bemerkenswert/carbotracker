@@ -6,6 +6,7 @@ export const ShellComponentActions = createActionGroup({
     'Products Clicked': emptyProps(),
     'Current Meal Clicked': emptyProps(),
     'Saved Meals Clicked': emptyProps(),
+    'History Clicked': emptyProps(),
     'Settings Clicked': emptyProps(),
   },
 });
@@ -19,6 +20,8 @@ export const ShellRouterEffectsActions = createActionGroup({
     'Navigation to Current Meal Page Failed': emptyProps(),
     'Navigation to Saved Meals Page Successful': emptyProps(),
     'Navigation to Saved Meals Page Failed': emptyProps(),
+    'Navigation to History Page Successful': emptyProps(),
+    'Navigation to History Page Failed': emptyProps(),
     'Navigation to Settings Page Successful': emptyProps(),
     'Navigation to Settings Page Failed': emptyProps(),
   },

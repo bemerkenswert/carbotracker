@@ -1,0 +1,12 @@
+:host {
+  display: block;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+:host
+  ::ng-deep
+  .mat-calendar-body-cell.has-meal-log
+  .mat-calendar-body-cell-content {
+  font-weight: bold;
+}
