@@ -1,32 +1,23 @@
-<form #productForm="ngForm" (ngSubmit)="onSubmit()">
+<form [formGroup]="formGroup" (ngSubmit)="onSubmit()">
   <mat-form-field>
     <mat-label>Amount</mat-label>
-    <input
-      name="amount"
-      required
-      min="1"
-      type="number"
-      [(ngModel)]="model.amount"
-      matInput
-    />
+    <input [formControl]="formGroup.controls.amount" type="number" matInput />
   </mat-form-field>
   <mat-form-field>
     <mat-label>Product</mat-label>
     <input
       placeholder="Select Product"
-      name="product"
-      required
+      [formControl]="formGroup.controls.product"
       type="text"
       matInput
       (input)="onFilterChange($event)"
-      [(ngModel)]="model.product"
       [matAutocomplete]="productAutoComplete"
     />
     <mat-autocomplete
       #productAutoComplete="matAutocomplete"
       [displayWith]="displayProduct"
     >
-      @for (product of filteredProducts(); track product.id) {
+      @for (product of viewModel().availableProducts; track product.id) {
         <mat-option [value]="product">
           {{ product.name }} {{ product.carbs }}g
         </mat-option>
@@ -36,7 +27,7 @@
   <button
     color="primary"
     type="submit"
-    [disabled]="productForm.invalid || productForm.pristine"
+    [disabled]="formGroup.invalid || formGroup.pristine"
     mat-fab
     ctuiFixedPosition
     matTooltip="Save meal entry"

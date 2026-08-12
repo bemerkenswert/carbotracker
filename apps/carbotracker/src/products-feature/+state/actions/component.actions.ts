@@ -16,7 +16,6 @@ export const EditProductPageComponentActions = createActionGroup({
   events: {
     'Selected Product Changed': props<{ selectedProduct: string }>(),
     'Save Product Clicked': props<{
-      exisitingProduct: Product;
       changedProduct: Pick<Product, 'name' | 'carbs'>;
     }>(),
     'Delete Clicked': props<{ selectedProduct: Product }>(),
