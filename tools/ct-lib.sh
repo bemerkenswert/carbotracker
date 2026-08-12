@@ -10,6 +10,58 @@ ct_issue_title() {
   gh issue view "$1" --json title --jq .title 2>/dev/null || true
 }
 
+ct_issue_body() {
+  gh issue view "$1" --json body --jq .body 2>/dev/null || true
+}
+
+ct_body_blocker_numbers() {
+  local body="$1"
+  {
+    printf '%s' "$body" | sed -n '/^[#* -]*[Bb]locked [Bb]y:/p' | grep -oE '#[0-9]+' | tr -d '#' || true
+    printf '%s' "$body" | awk '
+      /^## *[Bb]locked [Bb]y:*/ { in_section = 1; next }
+      /^## / { in_section = 0 }
+      in_section { print }
+    ' | grep -oE '#[0-9]+' | tr -d '#' || true
+  } | sort -un
+}
+
+ct_issue_is_blocked() {
+  local number="$1" summary
+  if summary="$(gh api "repos/{owner}/{repo}/issues/$number/issue_dependencies_summary" --jq '.blocked_by | length' 2>/dev/null)"; then
+    if [[ "$summary" -gt 0 ]]; then
+      return 0
+    fi
+    return 1
+  fi
+  # Native dependencies unavailable: fall back to the "Blocked by" line/section
+  # in the body. Unresolvable blockers fail closed (treated as blocked) so a
+  # transient gh failure never causes blocked work to be claimed.
+  local body blocker state
+  body="$(ct_issue_body "$number")"
+  for blocker in $(ct_body_blocker_numbers "$body"); do
+    state="$(gh issue view "$blocker" --json state --jq .state 2>/dev/null)"
+    if [[ "$state" == "OPEN" ]]; then
+      return 0
+    fi
+    if [[ "$state" != "CLOSED" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+ct_candidate_issues() {
+  local labels="${ORCHESTRATOR_ISSUE_LABELS:-ready-for-agent,ticket}" label
+  local labels_array=() args=()
+  IFS=',' read -ra labels_array <<< "$labels"
+  for label in "${labels_array[@]}"; do
+    args+=(--label "$label")
+  done
+  gh issue list --state open --json number,title "${args[@]}" 2>/dev/null \
+    | jq '[.[] | {number, title}] | sort_by(.number)' 2>/dev/null || printf '[]'
+}
+
 ct_merged_pr_count() {
   gh pr list --head "$1" --state merged --json number --jq 'length' 2>/dev/null || echo 0
 }
