@@ -1,0 +1,24 @@
+# Carbotracker orchestrator systemd user service.
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp tools/carbotracker-orchestrator.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now carbotracker-orchestrator
+#
+# Follow the daemon:
+#   journalctl --user -u carbotracker-orchestrator -f
+
+[Unit]
+Description=Carbotracker orchestrator daemon (ticket-to-PR pipeline)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/git/carbotracker/tools/ct-orchestrator.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
