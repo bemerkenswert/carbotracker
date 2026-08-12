@@ -1,6 +1,10 @@
 import { createFeature, createReducer, on } from '@ngrx/store';
 import { SettingsApiActions } from '../features/settings/+state/actions/api.actions';
-import { InsulinToCarbRatiosPageActions } from '../features/settings/+state/actions/component.actions';
+import {
+  InsulinToCarbRatiosPageActions,
+  SettingsPageActions,
+} from '../features/settings/+state/actions/component.actions';
+import { ThemePreference } from '../features/settings/theme-preference.model';
 
 interface SettingsState {
   insulinToCarbRatios: {
@@ -10,6 +14,7 @@ interface SettingsState {
     dinner: number | null;
     night: number | null;
   };
+  themePreference: ThemePreference;
 }
 
 export const getInitialState = (): SettingsState => ({
@@ -20,6 +25,7 @@ export const getInitialState = (): SettingsState => ({
     dinner: null,
     night: null,
   },
+  themePreference: 'system',
 });
 
 export const settingsFeature = createFeature({
@@ -33,6 +39,16 @@ export const settingsFeature = createFeature({
         return {
           ...state,
           insulinToCarbRatios,
+        };
+      },
+    ),
+    on(
+      SettingsPageActions.themeChanged,
+      SettingsApiActions.themeCollectionChanged,
+      (state, { themePreference }): SettingsState => {
+        return {
+          ...state,
+          themePreference,
         };
       },
     ),
