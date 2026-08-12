@@ -31,9 +31,11 @@ describe('updateProduct$', () => {
 
     const actions$ = new Subject<Action>();
     const results: Action[] = [];
-    updateProduct$(actions$.asObservable(), productsService, buildStore()).subscribe(
-      (action) => results.push(action),
-    );
+    updateProduct$(
+      actions$.asObservable(),
+      productsService,
+      buildStore(),
+    ).subscribe((action) => results.push(action));
 
     actions$.next(
       EditProductPageComponentActions.saveProductClicked({
@@ -78,9 +80,11 @@ describe('updateProduct$', () => {
 
     const actions$ = new Subject<Action>();
     const results: Action[] = [];
-    updateProduct$(actions$.asObservable(), productsService, buildStore()).subscribe(
-      (action) => results.push(action),
-    );
+    updateProduct$(
+      actions$.asObservable(),
+      productsService,
+      buildStore(),
+    ).subscribe((action) => results.push(action));
 
     actions$.next(
       EditProductPageComponentActions.saveProductClicked({

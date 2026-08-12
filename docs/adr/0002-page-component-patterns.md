@@ -14,13 +14,13 @@ A second ambiguity: the codebase uses both template-driven forms (`FormsModule`)
 
 ### Two page archetypes
 
-| | Display page | Form page |
-|---|---|---|
-| **Reads** | `selectSignal(selectViewModel)` only | `selectSignal(selectViewModel)` + `FormGroup` |
-| **Writes** | `dispatch(action())` | `dispatch(action(formGroup.value))` |
-| **Sync** | None | `effect()` patches `formGroup` from `viewModel()` |
-| **Validation** | N/A | Declarative validators on `FormControl` |
-| **Example** | CurrentMealPage, SavedMealsPage | EditProductPage, login-page |
+|                | Display page                         | Form page                                         |
+| -------------- | ------------------------------------ | ------------------------------------------------- |
+| **Reads**      | `selectSignal(selectViewModel)` only | `selectSignal(selectViewModel)` + `FormGroup`     |
+| **Writes**     | `dispatch(action())`                 | `dispatch(action(formGroup.value))`               |
+| **Sync**       | None                                 | `effect()` patches `formGroup` from `viewModel()` |
+| **Validation** | N/A                                  | Declarative validators on `FormControl`           |
+| **Example**    | CurrentMealPage, SavedMealsPage      | EditProductPage, login-page                       |
 
 Every page gets a page-level `*.selectors.ts` file with a `select<Page>ViewModel` selector. Display-page viewModels compose derived display values. Form-page viewModels provide `initialFormValues` (to prime the form from store state), `pageTitle`, and any toolbar/chrome derived values. Create pages with nothing to prime from store expose their (static) initial values and page title through the viewModel so the component reads state only through the selector seam.
 
@@ -55,6 +55,7 @@ Reactive forms chosen because they (a) already have adoption in the codebase, (b
 ### Merge logic location (EditProductPage)
 
 For editing an existing entity, the save payload must merge the existing store entity with the form delta. Options:
+
 - **Component** merges before dispatching — requires the component to read store state.
 - **Selector** derives the merge — requires passing form values through the selector chain.
 - **Effect** reads the existing entity from store via `concatLatestFrom` and merges — component dispatches only the form delta.

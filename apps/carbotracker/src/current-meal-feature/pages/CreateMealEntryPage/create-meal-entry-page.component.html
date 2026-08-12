@@ -1,11 +1,7 @@
 <form [formGroup]="formGroup" (ngSubmit)="onSubmit()">
   <mat-form-field>
     <mat-label>Amount</mat-label>
-    <input
-      [formControl]="formGroup.controls.amount"
-      type="number"
-      matInput
-    />
+    <input [formControl]="formGroup.controls.amount" type="number" matInput />
   </mat-form-field>
   <mat-form-field>
     <mat-label>Product</mat-label>
