@@ -90,7 +90,9 @@ cmd_prune() {
     branch=$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
     if [[ -z "$branch" || "$branch" == "HEAD" ]]; then continue; fi
 
-    if git branch --merged origin/main 2>/dev/null | grep -q "[[:space:]]*$branch$"; then
+    local pr_count
+    pr_count=$(gh pr list --head "$branch" --state merged --json number --jq 'length' 2>/dev/null || echo 0)
+    if [[ "$pr_count" -gt 0 ]]; then
       echo "Removing: $dir ($branch)"
       git worktree remove "$dir" 2>/dev/null || git worktree remove --force "$dir"
       git branch -D "$branch" 2>/dev/null || true

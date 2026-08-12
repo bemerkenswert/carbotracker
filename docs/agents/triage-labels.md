@@ -12,4 +12,12 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
+## Category labels
+
+These labels classify an issue's type rather than its triage state:
+
+| Label    | Meaning                                         |
+| -------- | ----------------------------------------------- |
+| `ticket` | An implementable unit of work (picked up by the orchestrator). Specs and PRDs do not carry this label. |
+
 Edit the right-hand column to match whatever vocabulary you actually use.
