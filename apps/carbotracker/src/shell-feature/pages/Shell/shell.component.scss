@@ -14,6 +14,14 @@
   position: sticky;
   top: 0;
   z-index: 1;
+  --mat-toolbar-container-background-color: var(--mat-sys-primary);
+  --mat-toolbar-container-text-color: var(--mat-sys-on-primary);
+
+  .mat-mdc-icon-button {
+    --mat-icon-button-icon-color: var(--mat-sys-on-primary);
+    --mat-icon-button-state-layer-color: var(--mat-sys-on-primary);
+    --mat-icon-button-ripple-color: var(--mat-sys-on-primary);
+  }
 }
 
 .highlight-active-icon {
