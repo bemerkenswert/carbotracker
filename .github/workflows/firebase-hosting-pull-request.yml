@@ -33,6 +33,9 @@ jobs:
       - name: test affected code
         run: npm run ci:test
 
+      - name: test tools scripts
+        run: npm run test:tools
+
       - name: build affected code
         run: npm run ci:build:pullrequest
 

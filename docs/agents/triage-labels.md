@@ -16,8 +16,8 @@ When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the 
 
 These labels classify an issue's type rather than its triage state:
 
-| Label    | Meaning                                         |
-| -------- | ----------------------------------------------- |
+| Label    | Meaning                                                                                                |
+| -------- | ------------------------------------------------------------------------------------------------------ |
 | `ticket` | An implementable unit of work (picked up by the orchestrator). Specs and PRDs do not carry this label. |
 
 Edit the right-hand column to match whatever vocabulary you actually use.
