@@ -19,14 +19,14 @@ A GitHub review splits across two surfaces — collect both:
 - **Inline threads**, which live on the diff, _not_ the issue thread — `gh pr view <n> --comments` shows only the top of each thread:
   - Diff comments: `gh api repos/{owner}/{repo}/pulls/<n>/comments` — one entry per comment, each with `path`, `line`, and `in_reply_to`, so threads string together via `in_reply_to`.
   - Review-level comments: `gh api repos/{owner}/{repo}/pulls/<n>/reviews` for the review bodies.
-  - Resolution markers land on the comment resource as `resolved` / `dismissed` via `gh api repos/{owner}/{repo}/pulls/comments/<id>` if you need thread state — note the single-comment route carries **no** pull number.
+  - Thread state (`resolved`/`dismissed`) is **not** on the REST comment resource — read `PullRequestReviewThread.isResolved` via GraphQL (see _Resolving a thread_ below).
 - The repo and pull number: `gh pr view <n>` inside the clone infers the repo from the remote.
 
 **Done when** every thread and general comment for the PR is captured, each tagged with its `path` + `line` (inline) or its review (general). A thread with replies is one point to address, not several.
 
 ### GitHub review-comment endpoints
 
-`gh api` substitutes `{owner}` and `{repo}` from the current repo's remote, so every path below runs verbatim from the clone. The pull number appears in the list/reply paths but **not** in the single-comment get/resolve paths — that asymmetry is the #1 source of 404s:
+`gh api` substitutes `{owner}` and `{repo}` from the current repo's remote, so every path below runs verbatim from the clone. The pull number appears in the list/reply paths but **not** in the single-comment get path — that asymmetry is the #1 source of 404s:
 
 | Operation            | Command                                                                     |
 | -------------------- | --------------------------------------------------------------------------- |
@@ -34,9 +34,31 @@ A GitHub review splits across two surfaces — collect both:
 | Review bodies        | `gh api repos/{owner}/{repo}/pulls/<n>/reviews`                             |
 | Reply to a thread    | `gh api repos/{owner}/{repo}/pulls/<n>/comments/<id>/replies -f body="..."` |
 | Get a single comment | `gh api repos/{owner}/{repo}/pulls/comments/<id>`                           |
-| Resolve a thread     | `gh api repos/{owner}/{repo}/pulls/comments/<id> -X PUT -f resolved=true`   |
+| Resolve a thread     | GraphQL only — see _Resolving a thread_ below                               |
 
-Prefer native `gh` commands where they exist (`gh pr view`, `gh issue comment`); the inline-thread operations above have **no** CLI equivalent and must use `gh api`. After posting a reply or resolving a thread, verify by **re-listing** `pulls/<n>/comments` and checking `in_reply_to_id` (threading) / `resolved` — don't GET single comments just to confirm; it's an extra round-trip and one more URL to mistype.
+Prefer native `gh` commands where they exist (`gh pr view`, `gh issue comment`); the inline-thread operations above have **no** CLI equivalent and must use `gh api`. After posting a reply, verify by **re-listing** `pulls/<n>/comments` and checking `in_reply_to_id` (threading) — don't GET single comments just to confirm; it's an extra round-trip and one more URL to mistype.
+
+### Resolving a thread
+
+GitHub's REST API has **no** endpoint to resolve a review thread: the `resolved` field does not exist on the REST comment resource, and updating a single comment only edits `body`. Resolution is GraphQL-only, via `resolveReviewThread`, and it needs the **thread's** node id (a `PRRT_…` id) — not the comment id.
+
+A `PullRequestReviewComment` has no direct pointer to its thread, so match your comment's REST `id` against each thread's comments' `databaseId` (they are the same number):
+
+    gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+      repository(owner:$owner,name:$repo){
+        pullRequest(number:$pr){
+          reviewThreads(first:100){
+            nodes{ id isResolved comments(first:100){ nodes{ databaseId body } } }
+          }
+        }
+      }
+    }' -f owner=<owner> -f repo=<repo> -F pr=<n>
+
+Resolve (or reopen) the thread by its `id`:
+
+    gh api graphql -f query='mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ id isResolved } } }' -f id=<thread-id>
+
+Note the `-F pr` for the `Int!` argument and `-f` for the `ID!`/`String!` arguments.
 
 ### 2. Classify
 
@@ -75,7 +97,7 @@ Respond to each thread on the PR with a pointer back at it:
 - **Push-back** → leave the thread **open**, reply with the argument, and invite the reviewer to close it once convinced.
 - **Clarify** → reply with the question; keep it open until answered.
 
-Reply _to the thread_, not to the PR. A threaded inline reply is created with `POST /repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies` (body only); `gh api repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies -f body="..."`. Resolve an inline thread via `PUT /repos/{owner}/{repo}/pulls/comments/{comment_id}` with `{ "resolved": true }` (again, **no** pull number in this path). A general comment is a plain issue reply: `gh issue comment <n> --body "..."`.
+Reply _to the thread_, not to the PR. A threaded inline reply is created with `POST /repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies` (body only); `gh api repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies -f body="..."`. Resolve an inline thread via GraphQL `resolveReviewThread` (see _Resolving a thread_ above) — there is no REST route. A general comment is a plain issue reply: `gh issue comment <n> --body "..."`.
 
 **Agent-authored replies MUST carry the AI-source footer** — a colleague reading the thread must be able to tell your reply from the human's. Append this footer line to every reply body:
 
