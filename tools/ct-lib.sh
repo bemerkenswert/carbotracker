@@ -3,7 +3,9 @@
 WORKTREE_PARENT="$HOME/git/worktrees/carbotracker"
 
 slugify() {
-  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//'
+  # LC_ALL=C keeps character ranges ASCII-only so output is identical under
+  # any locale (UTF-8 would let non-ASCII through into branch names).
+  printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C sed 's/[^a-z0-9]/-/g' | LC_ALL=C sed 's/--*/-/g' | LC_ALL=C sed 's/^-//;s/-$//'
 }
 
 ct_issue_title() {
