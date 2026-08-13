@@ -28,13 +28,13 @@ A GitHub review splits across two surfaces — collect both:
 
 `gh api` substitutes `{owner}` and `{repo}` from the current repo's remote, so every path below runs verbatim from the clone. The pull number appears in the list/reply paths but **not** in the single-comment get/resolve paths — that asymmetry is the #1 source of 404s:
 
-| Operation | Command |
-| --- | --- |
-| List diff comments | `gh api repos/{owner}/{repo}/pulls/<n>/comments` |
-| Review bodies | `gh api repos/{owner}/{repo}/pulls/<n>/reviews` |
-| Reply to a thread | `gh api repos/{owner}/{repo}/pulls/<n>/comments/<id>/replies -f body="..."` |
-| Get a single comment | `gh api repos/{owner}/{repo}/pulls/comments/<id>` |
-| Resolve a thread | `gh api repos/{owner}/{repo}/pulls/comments/<id> -X PUT -f resolved=true` |
+| Operation            | Command                                                                     |
+| -------------------- | --------------------------------------------------------------------------- |
+| List diff comments   | `gh api repos/{owner}/{repo}/pulls/<n>/comments`                            |
+| Review bodies        | `gh api repos/{owner}/{repo}/pulls/<n>/reviews`                             |
+| Reply to a thread    | `gh api repos/{owner}/{repo}/pulls/<n>/comments/<id>/replies -f body="..."` |
+| Get a single comment | `gh api repos/{owner}/{repo}/pulls/comments/<id>`                           |
+| Resolve a thread     | `gh api repos/{owner}/{repo}/pulls/comments/<id> -X PUT -f resolved=true`   |
 
 Prefer native `gh` commands where they exist (`gh pr view`, `gh issue comment`); the inline-thread operations above have **no** CLI equivalent and must use `gh api`. After posting a reply or resolving a thread, verify by **re-listing** `pulls/<n>/comments` and checking `in_reply_to_id` (threading) / `resolved` — don't GET single comments just to confirm; it's an extra round-trip and one more URL to mistype.
 

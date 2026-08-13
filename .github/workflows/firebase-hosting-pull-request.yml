@@ -39,7 +39,17 @@ jobs:
       - name: build affected code
         run: npm run ci:build:pullrequest
 
-      - uses: FirebaseExtended/action-hosting-deploy@v0
+      - name: detect app changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            carbotracker:
+              - 'apps/carbotracker/**'
+
+      - name: deploy preview to firebase hosting
+        if: steps.changes.outputs.carbotracker == 'true'
+        uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_CARBOTRACKER }}'
