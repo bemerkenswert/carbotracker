@@ -54,7 +54,7 @@ orchestrator_state_write() {
 }
 
 orchestrator_state_active_count() {
-  orchestrator_state_load "$1" | jq 'length'
+  orchestrator_state_load "$1" | jq '[.[] | select(.phase == "implementing")] | length'
 }
 
 orchestrator_state_has_ticket() {
@@ -76,18 +76,89 @@ orchestrator_state_add() {
   orchestrator_state_write "$state_file" "$state"
 }
 
+orchestrator_state_complete() {
+  local state_file="$1" number="$2" session_id="$3" pr_number="$4"
+  local state
+  state="$(orchestrator_state_load "$state_file")"
+  state="$(printf '%s' "$state" | jq --argjson n "$number" --arg sid "$session_id" --arg prn "$pr_number" \
+    '(.[] | select(.ticket == $n)) |= (.sessionId = (if $sid == "" then null else $sid end) | .prNumber = (if $prn == "" then null else ($prn | tonumber) end) | .phase = "awaiting review")')"
+  orchestrator_state_write "$state_file" "$state"
+}
+
+orchestrator_state_remove() {
+  local state_file="$1" number="$2"
+  local state
+  state="$(orchestrator_state_load "$state_file")"
+  state="$(printf '%s' "$state" | jq --argjson n "$number" 'map(select(.ticket != $n))')"
+  orchestrator_state_write "$state_file" "$state"
+}
+
 orchestrator_claim() {
-  local number="$1" title="$2"
-  local slug branch worktree
-  slug="$(slugify "$title")"
-  branch="ticket/$number-$slug"
-  worktree="$ORCHESTRATOR_WORKTREE_PARENT/$number-$slug"
+  local number="$1" branch="$2" worktree="$3"
   orchestrator_state_add "$ORCHESTRATOR_STATE_FILE" "$number" "$branch" "$worktree"
-  orchestrator_log "claim #$number ($title): phase implementing (would create worktree $worktree on branch $branch)"
+  orchestrator_log "claim #$number: phase implementing, worktree $worktree on branch $branch"
+}
+
+orchestrator_opencode_session_id() {
+  local title="$1"
+  opencode session list --format json 2>/dev/null \
+    | jq -r --arg t "$title" \
+        '[.[] | select(.title == $t)] | sort_by(.created) | reverse | .[0].id // empty'
+}
+
+orchestrator_pr_number_for_branch() {
+  local branch="$1"
+  gh pr list --head "$branch" --json number 2>/dev/null \
+    | jq -r 'sort_by(.number) | reverse | .[0].number // empty' 2>/dev/null || true
+}
+
+orchestrator_cleanup_worktree() {
+  local worktree="$1" branch="$2"
+  git worktree remove --force "$worktree" 2>/dev/null || rm -rf "$worktree"
+  git branch -D "$branch" 2>/dev/null || true
+}
+
+orchestrator_implement() {
+  local number="$1" branch="$2" worktree="$3"
+  local session_title session_id pr_number
+
+  orchestrator_log "implementing #$number: creating worktree $worktree (branch $branch)"
+  if ! ct_worktree_add "$worktree" "$branch"; then
+    orchestrator_log "ERROR: worktree creation failed for #$number"
+    return 1
+  fi
+
+  orchestrator_log "installing dependencies in $worktree"
+  if ! (cd "$worktree" && npm ci --prefer-offline --no-audit --no-fund); then
+    orchestrator_log "ERROR: npm ci failed for #$number"
+    return 1
+  fi
+
+  session_title="carbotracker-ticket-$number"
+  orchestrator_log "launching opencode for #$number (title $session_title)"
+  if ! (cd "$worktree" && opencode run --auto --title "$session_title" "/implement the issue is $number"); then
+    orchestrator_log "ERROR: opencode run failed for #$number"
+    return 1
+  fi
+
+  session_id="$(orchestrator_opencode_session_id "$session_title")"
+  pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+  orchestrator_state_complete "$ORCHESTRATOR_STATE_FILE" "$number" "$session_id" "$pr_number"
+
+  orchestrator_log "completed #$number: session ${session_id:-<none>}, PR #${pr_number:-<none>}, phase awaiting review"
+  if [[ -n "$pr_number" ]]; then
+    if gh issue comment "$number" --body "Started implementation. PR #$pr_number created."; then
+      orchestrator_log "commented on #$number: Started implementation. PR #$pr_number created."
+    else
+      orchestrator_log "WARNING: failed to comment on #$number"
+    fi
+  else
+    orchestrator_log "WARNING: no PR found for branch $branch on #$number; skipping issue comment"
+  fi
 }
 
 orchestrator_poll_once() {
-  local candidates active_count count line number title
+  local candidates active_count count line number title slug branch worktree
   candidates="$(ct_candidate_issues)"
   active_count="$(orchestrator_state_active_count "$ORCHESTRATOR_STATE_FILE")"
   count="$(printf '%s' "$candidates" | jq 'length')"
@@ -113,8 +184,18 @@ orchestrator_poll_once() {
       continue
     fi
 
-    orchestrator_claim "$number" "$title"
+    slug="$(slugify "$title")"
+    branch="ticket/$number-$slug"
+    worktree="$ORCHESTRATOR_WORKTREE_PARENT/$number-$slug"
+    orchestrator_claim "$number" "$branch" "$worktree"
     active_count=$((active_count + 1))
+
+    if ! orchestrator_implement "$number" "$branch" "$worktree"; then
+      orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
+      orchestrator_log "removed #$number from state after failed implementation"
+      orchestrator_cleanup_worktree "$worktree" "$branch"
+      active_count=$((active_count - 1))
+    fi
   done < <(printf '%s' "$candidates" | jq -c '.[]')
 }
 

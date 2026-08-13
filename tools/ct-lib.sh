@@ -66,6 +66,20 @@ ct_merged_pr_count() {
   gh pr list --head "$1" --state merged --json number --jq 'length' 2>/dev/null || echo 0
 }
 
+ct_worktree_add() {
+  local dir="$1" branch="$2"
+
+  git fetch origin main || return 1
+
+  if [[ -d "$dir" ]]; then
+    echo "Error: Worktree already exists at $dir" >&2
+    return 1
+  fi
+
+  mkdir -p "$(dirname "$dir")" || return 1
+  git worktree add "$dir" -b "$branch" origin/main || return 1
+}
+
 ct_worktree_create() {
   local issue_number="$1"
   local title slug
@@ -85,15 +99,7 @@ ct_worktree_create() {
   echo "Path:   $CT_WORKTREE_DIR"
   echo ""
 
-  git fetch origin main || return 1
-
-  if [[ -d "$CT_WORKTREE_DIR" ]]; then
-    echo "Error: Worktree already exists at $CT_WORKTREE_DIR" >&2
-    return 1
-  fi
-
-  mkdir -p "$WORKTREE_PARENT" || return 1
-  git worktree add "$CT_WORKTREE_DIR" -b "$CT_WORKTREE_BRANCH" origin/main || return 1
+  ct_worktree_add "$CT_WORKTREE_DIR" "$CT_WORKTREE_BRANCH" || return 1
 }
 
 ct_worktree_list() {
