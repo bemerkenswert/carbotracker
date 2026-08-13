@@ -736,6 +736,53 @@ exit 0'
   state_teardown
 }
 
+test_claim_marks_issue_in_progress() {
+  state_setup
+  local args_file="$STATE_DIR/issue_edit_args"
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_EDIT_ARGS"
+  exit 0
+fi
+exit 1'
+  export FAKE_EDIT_ARGS="$args_file"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_claim 10 ticket/10-alpha "$WT_PARENT/10-alpha"
+  assert_contains "claim removes ready-for-agent" "--remove-label ready-for-agent" "$(cat "$args_file")"
+  assert_contains "claim adds in-progress" "--add-label in-progress" "$(cat "$args_file")"
+  assert_eq "claim records state entry" "1" "$(orchestrator_state_active_count "$TEST_STATE")"
+  assert_eq "state entry phase is implementing" "implementing" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  unset FAKE_EDIT_ARGS
+  state_teardown
+}
+
+test_claim_failure_leaves_no_state() {
+  state_setup
+  fake_command gh 'exit 1'
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_claim 10 ticket/10-alpha "$WT_PARENT/10-alpha" >/dev/null 2>&1; then
+    fail "claim fails when gh issue edit fails"
+  else
+    pass "claim fails when gh issue edit fails"
+  fi
+  assert_eq "failed claim leaves no state entry" "0" "$(orchestrator_state_active_count "$TEST_STATE")"
+  state_teardown
+}
+
+test_poll_once_does_not_cleanup_preexisting_worktree() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
+  printf "[{\"number\":10,\"title\":\"Alpha\"}]\n"
+elif [[ "$1" == "api" ]]; then
+  printf "0\n"
+fi
+exit 0'
+  fake_command git 'exit 0'
+  local worktree="$WT_PARENT/10-alpha"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once >/dev/null 2>&1
+  assert_eq "pre-existing worktree survives failed implementation" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_eq "failed claim leaves no state entry" "0" "$(jq 'length' "$TEST_STATE" 2>/dev/null || echo 0)"
+  state_teardown
+}
+
 test_poll_once_cleans_up_worktree_after_failed_implement() {
   state_setup
   fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
@@ -869,6 +916,9 @@ test_poll_once_respects_concurrency_cap
 test_poll_once_skips_when_cap_full
 test_poll_once_removes_entry_on_failed_implement
 test_poll_once_cleans_up_worktree_after_failed_implement
+test_poll_once_does_not_cleanup_preexisting_worktree
+test_claim_marks_issue_in_progress
+test_claim_failure_leaves_no_state
 test_cli_once
 fake_teardown
 

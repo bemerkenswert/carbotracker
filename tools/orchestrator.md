@@ -12,7 +12,7 @@ A ticket moves through phases as the orchestrator works it:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> implementing: poll finds eligible ticket, claim
+    [*] --> implementing: poll finds eligible ticket, claim flips GitHub labels
     implementing --> awaiting_review: opencode done, PR opened
     implementing --> [*]: failure, un-claim and clean up
     awaiting_review --> [*]: human merges the PR
@@ -21,6 +21,12 @@ stateDiagram-v2
 `implementing` means the orchestrator is actively running a session for the
 ticket; `awaiting review` means the PR exists and a human should look at it.
 Only `implementing` entries count against the concurrency cap.
+
+A claim is recorded **twice**: on the GitHub issue (remove `ready-for-agent`,
+add `in-progress`) and in the local state file. The label flip is what makes
+the claim visible to humans and atomic against parallel orchestrators — once
+an issue drops `ready-for-agent` it stops matching the candidate query, so a
+second daemon cannot claim it.
 
 ## State file
 
@@ -57,7 +63,7 @@ Active tickets live in a single JSON array, written atomically
 ```mermaid
 flowchart TD
     A[gh issue list ready-for-agent,ticket] --> B{unblocked? skip already-claimed / blocked / at cap}
-    B -- eligible --> C[claim: append state entry, phase implementing]
+    B -- eligible --> C[claim: remove ready-for-agent, add in-progress + append state entry]
     C --> D[ct_worktree_add: git fetch origin/main + worktree add -b ticket/N-slug]
     D --> E[npm ci --prefer-offline --no-audit --no-fund]
     E --> F[opencode run --auto --title carbotracker-ticket-N /implement the issue is N]
@@ -85,6 +91,7 @@ file, which wins over defaults):
 | `ORCHESTRATOR_POLL_INTERVAL_SECONDS` | `300`                                               |
 | `ORCHESTRATOR_CONCURRENCY_CAP`       | `3`                                                 |
 | `ORCHESTRATOR_ISSUE_LABELS`          | `ready-for-agent,ticket`                            |
+| `ORCHESTRATOR_IN_PROGRESS_LABEL`     | `in-progress`                                       |
 | `ORCHESTRATOR_STATE_FILE`            | `$HOME/.local/state/carbotracker/orchestrator.json` |
 | `ORCHESTRATOR_WORKTREE_PARENT`       | `$HOME/git/worktrees/carbotracker`                  |
 
@@ -103,6 +110,9 @@ Follow the daemon with `journalctl --user -u carbotracker-orchestrator -f`.
   never drift apart.
 - A failed step un-claims the ticket and removes the worktree and branch, so
   the next poll starts clean. This means push/PR failures retry the whole
-  `opencode` run, which is wasteful but simple and safe.
+  `opencode` run, which is wasteful but simple and safe. Cleanup is guarded:
+  only a worktree this run actually created (`CT_WORKTREE_CREATED`) is
+  removed, so a parallel orchestrator that loses the claim race never deletes
+  the winner's worktree.
 - `orchestrator_log` writes to stderr: several helpers return their value on
   stdout inside `$(...)`, so log lines must never land there.

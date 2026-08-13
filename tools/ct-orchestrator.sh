@@ -11,6 +11,7 @@ ENV_ORCHESTRATOR_CONCURRENCY_CAP="${ORCHESTRATOR_CONCURRENCY_CAP-}"
 ENV_ORCHESTRATOR_STATE_FILE="${ORCHESTRATOR_STATE_FILE-}"
 ENV_ORCHESTRATOR_WORKTREE_PARENT="${ORCHESTRATOR_WORKTREE_PARENT-}"
 ENV_ORCHESTRATOR_ISSUE_LABELS="${ORCHESTRATOR_ISSUE_LABELS-}"
+ENV_ORCHESTRATOR_IN_PROGRESS_LABEL="${ORCHESTRATOR_IN_PROGRESS_LABEL-}"
 
 CONF_FILE="${CT_ORCHESTRATOR_CONF:-$SCRIPT_DIR/ct-orchestrator.conf}"
 if [[ -f "$CONF_FILE" ]]; then
@@ -22,6 +23,7 @@ ORCHESTRATOR_CONCURRENCY_CAP="${ENV_ORCHESTRATOR_CONCURRENCY_CAP:-${ORCHESTRATOR
 ORCHESTRATOR_STATE_FILE="${ENV_ORCHESTRATOR_STATE_FILE:-${ORCHESTRATOR_STATE_FILE:-$HOME/.local/state/carbotracker/orchestrator.json}}"
 ORCHESTRATOR_WORKTREE_PARENT="${ENV_ORCHESTRATOR_WORKTREE_PARENT:-${ORCHESTRATOR_WORKTREE_PARENT:-$HOME/git/worktrees/carbotracker}}"
 ORCHESTRATOR_ISSUE_LABELS="${ENV_ORCHESTRATOR_ISSUE_LABELS:-${ORCHESTRATOR_ISSUE_LABELS:-ready-for-agent,ticket}}"
+ORCHESTRATOR_IN_PROGRESS_LABEL="${ENV_ORCHESTRATOR_IN_PROGRESS_LABEL:-${ORCHESTRATOR_IN_PROGRESS_LABEL:-in-progress}}"
 
 orchestrator_log() {
   # Logs go to stderr so functions that print a value on stdout (e.g. the
@@ -97,6 +99,13 @@ orchestrator_state_remove() {
 
 orchestrator_claim() {
   local number="$1" branch="$2" worktree="$3"
+  # The claim is the GitHub-side label flip: dropping ready-for-agent takes
+  # the issue out of every orchestrator's candidate query, so parallel
+  # daemons cannot double-claim it. The state file entry is the local record.
+  if ! gh issue edit "$number" --remove-label ready-for-agent --add-label "$ORCHESTRATOR_IN_PROGRESS_LABEL"; then
+    orchestrator_log "ERROR: failed to mark #$number as $ORCHESTRATOR_IN_PROGRESS_LABEL on GitHub"
+    return 1
+  fi
   orchestrator_state_add "$ORCHESTRATOR_STATE_FILE" "$number" "$branch" "$worktree"
   orchestrator_log "claim #$number: phase implementing, worktree $worktree on branch $branch"
 }
@@ -218,13 +227,21 @@ orchestrator_poll_once() {
     slug="$(slugify "$title")"
     branch="ticket/$number-$slug"
     worktree="$ORCHESTRATOR_WORKTREE_PARENT/$number-$slug"
-    orchestrator_claim "$number" "$branch" "$worktree"
+    if ! orchestrator_claim "$number" "$branch" "$worktree"; then
+      orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
+      orchestrator_log "claim failed for #$number; removed from state"
+      continue
+    fi
     active_count=$((active_count + 1))
 
     if ! orchestrator_implement "$number" "$title" "$branch" "$worktree"; then
       orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
       orchestrator_log "removed #$number from state after failed implementation"
-      orchestrator_cleanup_worktree "$worktree" "$branch"
+      if [[ "${CT_WORKTREE_CREATED:-0}" == "1" ]]; then
+        orchestrator_cleanup_worktree "$worktree" "$branch"
+      else
+        orchestrator_log "not cleaning up pre-existing worktree $worktree"
+      fi
       active_count=$((active_count - 1))
     fi
   done < <(printf '%s' "$candidates" | jq -c '.[]')

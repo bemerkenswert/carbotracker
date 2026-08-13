@@ -71,6 +71,7 @@ ct_merged_pr_count() {
 ct_worktree_add() {
   local dir="$1" branch="$2"
 
+  CT_WORKTREE_CREATED=0
   git fetch origin main || return 1
 
   if [[ -d "$dir" ]]; then
@@ -80,6 +81,7 @@ ct_worktree_add() {
 
   mkdir -p "$(dirname "$dir")" || return 1
   git worktree add "$dir" -b "$branch" origin/main || return 1
+  CT_WORKTREE_CREATED=1
 }
 
 ct_worktree_create() {
