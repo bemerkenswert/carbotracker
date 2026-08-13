@@ -11,3 +11,11 @@ mat-icon {
 .list-item {
   cursor: pointer;
 }
+
+.list-item-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: default;
+}
