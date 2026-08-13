@@ -62,9 +62,9 @@ describe('ThemeApplicationService', () => {
 
     getService(store);
 
-    expect(
-      document.documentElement.classList.contains(DARK_THEME_CLASS),
-    ).toBe(true);
+    expect(document.documentElement.classList.contains(DARK_THEME_CLASS)).toBe(
+      true,
+    );
   });
 
   it('does not apply the dark class when the system prefers light and the stored preference is system', () => {
@@ -73,9 +73,9 @@ describe('ThemeApplicationService', () => {
 
     getService(store);
 
-    expect(
-      document.documentElement.classList.contains(DARK_THEME_CLASS),
-    ).toBe(false);
+    expect(document.documentElement.classList.contains(DARK_THEME_CLASS)).toBe(
+      false,
+    );
   });
 
   it('applies the dark class when the stored preference is dark', () => {
@@ -85,9 +85,9 @@ describe('ThemeApplicationService', () => {
 
     getService(store);
 
-    expect(
-      document.documentElement.classList.contains(DARK_THEME_CLASS),
-    ).toBe(true);
+    expect(document.documentElement.classList.contains(DARK_THEME_CLASS)).toBe(
+      true,
+    );
   });
 
   it('does not apply the dark class when the stored preference is light', () => {
@@ -97,9 +97,9 @@ describe('ThemeApplicationService', () => {
 
     getService(store);
 
-    expect(
-      document.documentElement.classList.contains(DARK_THEME_CLASS),
-    ).toBe(false);
+    expect(document.documentElement.classList.contains(DARK_THEME_CLASS)).toBe(
+      false,
+    );
   });
 
   it('updates the class when the system preference changes while the stored preference is system', () => {
@@ -109,15 +109,15 @@ describe('ThemeApplicationService', () => {
 
     getService(store);
 
-    expect(
-      document.documentElement.classList.contains(DARK_THEME_CLASS),
-    ).toBe(false);
+    expect(document.documentElement.classList.contains(DARK_THEME_CLASS)).toBe(
+      false,
+    );
 
     matchMedia.setMatches(true);
 
-    expect(
-      document.documentElement.classList.contains(DARK_THEME_CLASS),
-    ).toBe(true);
+    expect(document.documentElement.classList.contains(DARK_THEME_CLASS)).toBe(
+      true,
+    );
   });
 
   it('keeps the dark class when the system preference changes while the stored preference is dark', () => {
@@ -128,15 +128,15 @@ describe('ThemeApplicationService', () => {
 
     getService(store);
 
-    expect(
-      document.documentElement.classList.contains(DARK_THEME_CLASS),
-    ).toBe(true);
+    expect(document.documentElement.classList.contains(DARK_THEME_CLASS)).toBe(
+      true,
+    );
 
     matchMedia.setMatches(true);
 
-    expect(
-      document.documentElement.classList.contains(DARK_THEME_CLASS),
-    ).toBe(true);
+    expect(document.documentElement.classList.contains(DARK_THEME_CLASS)).toBe(
+      true,
+    );
   });
 
   it('updates the class when the stored preference changes to dark', () => {
@@ -145,14 +145,14 @@ describe('ThemeApplicationService', () => {
 
     getService(store);
 
-    expect(
-      document.documentElement.classList.contains(DARK_THEME_CLASS),
-    ).toBe(false);
+    expect(document.documentElement.classList.contains(DARK_THEME_CLASS)).toBe(
+      false,
+    );
 
     themePreference$.next('dark');
 
-    expect(
-      document.documentElement.classList.contains(DARK_THEME_CLASS),
-    ).toBe(true);
+    expect(document.documentElement.classList.contains(DARK_THEME_CLASS)).toBe(
+      true,
+    );
   });
 });
