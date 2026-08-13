@@ -12,6 +12,7 @@ ENV_ORCHESTRATOR_STATE_FILE="${ORCHESTRATOR_STATE_FILE-}"
 ENV_ORCHESTRATOR_WORKTREE_PARENT="${ORCHESTRATOR_WORKTREE_PARENT-}"
 ENV_ORCHESTRATOR_ISSUE_LABELS="${ORCHESTRATOR_ISSUE_LABELS-}"
 ENV_ORCHESTRATOR_IN_PROGRESS_LABEL="${ORCHESTRATOR_IN_PROGRESS_LABEL-}"
+ENV_ORCHESTRATOR_REVIEW_RETRIES="${ORCHESTRATOR_REVIEW_RETRIES-}"
 
 CONF_FILE="${CT_ORCHESTRATOR_CONF:-$SCRIPT_DIR/ct-orchestrator.conf}"
 if [[ -f "$CONF_FILE" ]]; then
@@ -24,6 +25,7 @@ ORCHESTRATOR_STATE_FILE="${ENV_ORCHESTRATOR_STATE_FILE:-${ORCHESTRATOR_STATE_FIL
 ORCHESTRATOR_WORKTREE_PARENT="${ENV_ORCHESTRATOR_WORKTREE_PARENT:-${ORCHESTRATOR_WORKTREE_PARENT:-$HOME/git/worktrees/carbotracker}}"
 ORCHESTRATOR_ISSUE_LABELS="${ENV_ORCHESTRATOR_ISSUE_LABELS:-${ORCHESTRATOR_ISSUE_LABELS:-ready-for-agent,ticket}}"
 ORCHESTRATOR_IN_PROGRESS_LABEL="${ENV_ORCHESTRATOR_IN_PROGRESS_LABEL:-${ORCHESTRATOR_IN_PROGRESS_LABEL:-in-progress}}"
+ORCHESTRATOR_REVIEW_RETRIES="${ENV_ORCHESTRATOR_REVIEW_RETRIES:-${ORCHESTRATOR_REVIEW_RETRIES:-3}}"
 
 orchestrator_log() {
   # Logs go to stderr so functions that print a value on stdout (e.g. the
@@ -75,7 +77,7 @@ orchestrator_state_add() {
   state="$(orchestrator_state_load "$state_file")"
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   entry="$(jq -n --argjson ticket "$number" --arg branch "$branch" --arg worktree "$worktree" --arg started "$now" \
-    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, phase: "implementing", startedAt: $started}')"
+    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, lastCommentAt: null, reviewFailures: 0, phase: "implementing", startedAt: $started}')"
   state="$(printf '%s' "$state" | jq --argjson entry "$entry" '. + [$entry]')"
   orchestrator_state_write "$state_file" "$state"
 }
@@ -94,6 +96,30 @@ orchestrator_state_remove() {
   local state
   state="$(orchestrator_state_load "$state_file")"
   state="$(printf '%s' "$state" | jq --argjson n "$number" 'map(select(.ticket != $n))')"
+  orchestrator_state_write "$state_file" "$state"
+}
+
+orchestrator_state_mark_reviewed() {
+  local state_file="$1" number="$2" timestamp="$3"
+  local state
+  state="$(orchestrator_state_load "$state_file")"
+  state="$(printf '%s' "$state" | jq --argjson n "$number" --arg ts "$timestamp" \
+    '(.[] | select(.ticket == $n)) |= (.lastCommentAt = $ts)')"
+  orchestrator_state_write "$state_file" "$state"
+}
+
+orchestrator_state_review_failures() {
+  local state_file="$1" number="$2"
+  orchestrator_state_load "$state_file" \
+    | jq -r --argjson n "$number" '[.[] | select(.ticket == $n) | .reviewFailures][0] // 0'
+}
+
+orchestrator_state_set_review_failures() {
+  local state_file="$1" number="$2" count="$3"
+  local state
+  state="$(orchestrator_state_load "$state_file")"
+  state="$(printf '%s' "$state" | jq --argjson n "$number" --argjson c "$count" \
+    '(.[] | select(.ticket == $n)) |= (.reviewFailures = $c)')"
   orchestrator_state_write "$state_file" "$state"
 }
 
@@ -121,6 +147,102 @@ orchestrator_pr_number_for_branch() {
   local branch="$1"
   gh pr list --head "$branch" --json number 2>/dev/null \
     | jq -r 'sort_by(.number) | reverse | .[0].number // empty' 2>/dev/null || true
+}
+
+orchestrator_pr_latest_comment_at() {
+  local pr="$1" review general latest
+  # Inline diff threads live under pulls/<n>/comments, general comments on the
+  # PR conversation under issues/<n>/comments. Both are review surfaces; the
+  # newest timestamp across them is the last-known-comment watermark. ISO-8601
+  # timestamps sort lexically, so a plain > comparison works.
+  review="$(gh api "repos/{owner}/{repo}/pulls/$pr/comments" 2>/dev/null | jq -r '[.[].created_at] | max // empty' 2>/dev/null || true)"
+  general="$(gh api "repos/{owner}/{repo}/issues/$pr/comments" 2>/dev/null | jq -r '[.[].created_at] | max // empty' 2>/dev/null || true)"
+  latest="$review"
+  if [[ -n "$general" && ( -z "$latest" || "$general" > "$latest" ) ]]; then
+    latest="$general"
+  fi
+  printf '%s' "$latest"
+}
+
+orchestrator_pr_comment() {
+  local pr="$1" body="$2"
+  gh api "repos/{owner}/{repo}/issues/$pr/comments" -f body="$body" >/dev/null 2>&1
+}
+
+orchestrator_review_round() {
+  local number="$1" session_id="$2" pr_number="$3" worktree="$4"
+  local failures retries latest body
+  retries="${ORCHESTRATOR_REVIEW_RETRIES:-3}"
+  failures="$(orchestrator_state_review_failures "$ORCHESTRATOR_STATE_FILE" "$number")"
+  if [[ "$failures" -ge "$retries" ]]; then
+    # Resuming after a pause: a newer human comment starts a fresh budget.
+    failures=0
+    orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" 0
+  fi
+  orchestrator_log "review #$number: launching /review-comments on PR #$pr_number (session $session_id)"
+  if (cd "$worktree" && opencode run --auto --session "$session_id" "/review-comments on PR #$pr_number"); then
+    latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
+    if [[ -n "$latest" ]]; then
+      orchestrator_state_mark_reviewed "$ORCHESTRATOR_STATE_FILE" "$number" "$latest"
+    fi
+    orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" 0
+    orchestrator_log "review #$number: round succeeded; last comment timestamp ${latest:-<unknown>}"
+    return 0
+  fi
+  failures=$((failures + 1))
+  orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" "$failures"
+  body="Automated review round failed (attempt $failures/$retries) on PR #$pr_number. The orchestrator will retry.
+---
+_Created by carbotracker's agent skills._"
+  if orchestrator_pr_comment "$pr_number" "$body"; then
+    orchestrator_log "review #$number: posted failure notice (attempt $failures/$retries) on PR #$pr_number"
+  else
+    orchestrator_log "WARNING: failed to post failure notice on PR #$pr_number"
+  fi
+  if [[ "$failures" -ge "$retries" ]]; then
+    latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
+    if [[ -n "$latest" ]]; then
+      orchestrator_state_mark_reviewed "$ORCHESTRATOR_STATE_FILE" "$number" "$latest"
+    fi
+    orchestrator_log "ERROR: /review-comments failed $failures times for #$number on PR #$pr_number; pausing until a human intervenes"
+  else
+    orchestrator_log "ERROR: /review-comments failed for #$number on PR #$pr_number (attempt $failures/$retries)"
+  fi
+  return 1
+}
+
+orchestrator_review_poll() {
+  local line number pr_number session_id worktree last_comment_at latest
+  while IFS= read -r line; do
+    number="$(printf '%s' "$line" | jq -r '.ticket')"
+    pr_number="$(printf '%s' "$line" | jq -r '.prNumber')"
+    session_id="$(printf '%s' "$line" | jq -r '.sessionId')"
+    worktree="$(printf '%s' "$line" | jq -r '.worktree')"
+    last_comment_at="$(printf '%s' "$line" | jq -r '.lastCommentAt // ""')"
+
+    if [[ -z "$pr_number" || "$pr_number" == "null" ]]; then
+      orchestrator_log "skip review #$number: no PR recorded"
+      continue
+    fi
+    if [[ -z "$session_id" || "$session_id" == "null" ]]; then
+      orchestrator_log "skip review #$number: no session recorded"
+      continue
+    fi
+
+    latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
+    if [[ -z "$latest" ]]; then
+      orchestrator_log "review #$number: no comments on PR #$pr_number"
+      continue
+    fi
+    if [[ -n "$last_comment_at" ]]; then
+      if [[ "$latest" == "$last_comment_at" || "$latest" < "$last_comment_at" ]]; then
+        orchestrator_log "review #$number: no new comment on PR #$pr_number (last known $last_comment_at)"
+        continue
+      fi
+    fi
+    orchestrator_log "review #$number: new comment on PR #$pr_number (latest $latest, last known ${last_comment_at:-<none>})"
+    orchestrator_review_round "$number" "$session_id" "$pr_number" "$worktree" || true
+  done < <(orchestrator_state_load "$ORCHESTRATOR_STATE_FILE" | jq -c '.[] | select(.phase == "awaiting review")')
 }
 
 orchestrator_push_and_open_pr() {
@@ -245,6 +367,8 @@ orchestrator_poll_once() {
       active_count=$((active_count - 1))
     fi
   done < <(printf '%s' "$candidates" | jq -c '.[]')
+
+  orchestrator_review_poll
 }
 
 orchestrator_daemon() {
