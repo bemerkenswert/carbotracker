@@ -5,9 +5,19 @@
       <span matListItemIcon
         ><mat-icon>{{ settingsItem.icon }}</mat-icon></span
       >
-      <span class="list-item" (click)="settingsItem.onClick()">{{
-        settingsItem.name
-      }}</span>
+      @if (settingsItem.onToggle) {
+        <span class="list-item list-item-toggle">
+          <span class="list-item-name">{{ settingsItem.name }}</span>
+          <mat-slide-toggle
+            [checked]="settingsItem.checked$ | async"
+            (change)="settingsItem.onToggle($event.checked)"
+          ></mat-slide-toggle>
+        </span>
+      } @else {
+        <span class="list-item" (click)="settingsItem.onClick!()">{{
+          settingsItem.name
+        }}</span>
+      }
     </mat-list-item>
   }
 </mat-list>

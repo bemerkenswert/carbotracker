@@ -163,3 +163,16 @@ $dark-theme: mat.define-theme(
 );
 
 @include mat.all-component-themes($light-theme);
+
+html.dark-theme {
+  @include mat.theme(
+    (
+      color: (
+        theme-type: dark,
+        primary: $primary-palette,
+        tertiary: $tertiary-palette,
+      ),
+    )
+  );
+  @include mat.all-component-colors($dark-theme);
+}
