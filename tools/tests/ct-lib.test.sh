@@ -178,6 +178,51 @@ exit 0'
   fi
 }
 
+test_worktree_add() {
+  local parent dir
+  parent="/tmp/opencode/ct-add-parent"
+  dir="$parent/10-alpha"
+  rm -rf "$parent"
+  fake_command git 'if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  mkdir -p "$3"
+fi
+exit 0'
+  if ct_worktree_add "$dir" ticket/10-alpha; then
+    pass "add succeeds"
+  else
+    fail "add succeeds"
+  fi
+  assert_eq "add makes the worktree dir" "yes" "$([[ -d "$dir" ]] && echo yes || echo no)"
+  rm -rf "$parent"
+}
+
+test_worktree_add_existing_dir() {
+  local parent dir
+  parent="/tmp/opencode/ct-add-parent"
+  dir="$parent/10-alpha"
+  rm -rf "$parent"
+  mkdir -p "$dir"
+  fake_command git 'exit 0'
+  if ct_worktree_add "$dir" ticket/10-alpha >/dev/null 2>&1; then
+    fail "add fails when dir exists"
+  else
+    pass "add fails when dir exists"
+  fi
+  rm -rf "$parent"
+}
+
+test_worktree_add_fetch_fails() {
+  fake_command git 'if [[ "$1" == "fetch" ]]; then
+  exit 1
+fi
+exit 0'
+  if ct_worktree_add /tmp/opencode/ct-add-parent/10-alpha ticket/10-alpha >/dev/null 2>&1; then
+    fail "add fails when git fetch fails"
+  else
+    pass "add fails when git fetch fails"
+  fi
+}
+
 test_worktree_prune() {
   local repo parent pruned_dir branch
   repo="/tmp/opencode/ct-prune-repo"
@@ -310,6 +355,10 @@ WORKTREE_PARENT=/tmp/opencode/ct-test-parent run_test test_worktree_create
 WORKTREE_PARENT=/tmp/opencode/ct-test-parent run_test test_worktree_create_existing_dir
 WORKTREE_PARENT=/tmp/opencode/ct-test-parent run_test test_worktree_create_missing_issue
 WORKTREE_PARENT=/tmp/opencode/ct-test-parent run_test test_worktree_create_fetch_fails
+
+run_test test_worktree_add
+run_test test_worktree_add_existing_dir
+run_test test_worktree_add_fetch_fails
 
 run_test test_worktree_prune
 run_test test_worktree_prune_nothing

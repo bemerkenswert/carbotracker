@@ -63,6 +63,44 @@ fake_teardown() {
   FAKE_DIR=""
 }
 
+# Fake a successful worktree-add (creates the dir) and npm ci. When
+# FAKE_GIT_PUSH_FILE is set, the push invocation is captured to it.
+fake_worktree_npm() {
+  fake_command git 'if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  mkdir -p "$3"
+elif [[ "$1" == "push" && -n "${FAKE_GIT_PUSH_FILE:-}" ]]; then
+  printf "%s\n" "$*" > "$FAKE_GIT_PUSH_FILE"
+fi
+exit 0'
+  fake_command npm 'exit 0'
+}
+
+# Fake the commands the implementation pipeline invokes: git worktree add,
+# npm ci, opencode run + session list, and gh pr list / issue comment. The
+# gh fake delegates everything else to the caller-provided body.
+fake_pipeline() {
+  local gh_body="$1" pr_number="${2:-100}"
+  fake_command gh "if [[ \"\$1\" == \"pr\" && \"\$2\" == \"list\" ]]; then
+  printf \"[{\\\"number\\\":$pr_number}]\n\"
+elif [[ \"\$1\" == \"issue\" && \"\$2\" == \"comment\" ]]; then
+  exit 0
+else
+  $gh_body
+fi
+exit 0"
+  fake_command git 'if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  mkdir -p "$3"
+fi
+exit 0'
+  fake_command npm 'exit 0'
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"ses_10\",\"title\":\"carbotracker-ticket-10\",\"created\":1},{\"id\":\"ses_42\",\"title\":\"carbotracker-ticket-42\",\"created\":2}]\n"
+fi
+exit 0'
+}
+
 STATE_DIR=""
 TEST_STATE=""
 WT_PARENT=""
@@ -133,6 +171,62 @@ test_state_has_ticket() {
   else
     pass "has_ticket false for unclaimed ticket"
   fi
+  state_teardown
+}
+
+test_state_complete_updates_entry() {
+  state_setup
+  orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$WT_PARENT/123-foo"
+  orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local entry
+  entry="$(jq '.[0]' "$TEST_STATE")"
+  assert_eq "complete stores session id" "ses_abc" "$(jq -r '.sessionId' <<<"$entry")"
+  assert_eq "complete stores pr number" "456" "$(jq -r '.prNumber' <<<"$entry")"
+  assert_eq "complete transitions phase to awaiting review" "awaiting review" "$(jq -r '.phase' <<<"$entry")"
+  assert_eq "complete leaves only the matching entry touched" "1" "$(jq 'length' "$TEST_STATE")"
+  state_teardown
+}
+
+test_state_complete_with_missing_values() {
+  state_setup
+  orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$WT_PARENT/123-foo"
+  orchestrator_state_complete "$TEST_STATE" 123 "" ""
+  local entry
+  entry="$(jq '.[0]' "$TEST_STATE")"
+  assert_eq "missing session id stored as null" "null" "$(jq -r '.sessionId' <<<"$entry")"
+  assert_eq "missing pr number stored as null" "null" "$(jq -r '.prNumber' <<<"$entry")"
+  assert_eq "phase still transitions without values" "awaiting review" "$(jq -r '.phase' <<<"$entry")"
+  state_teardown
+}
+
+test_state_complete_updates_only_matching_ticket() {
+  state_setup
+  orchestrator_state_add "$TEST_STATE" 1 ticket/1-a "$WT_PARENT/1-a"
+  orchestrator_state_add "$TEST_STATE" 2 ticket/2-b "$WT_PARENT/2-b"
+  orchestrator_state_complete "$TEST_STATE" 2 ses_2 22
+  assert_eq "other entry keeps session null" "null" "$(jq -r '.[0].sessionId' "$TEST_STATE")"
+  assert_eq "other entry keeps phase implementing" "implementing" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  assert_eq "matching entry gets session" "ses_2" "$(jq -r '.[1].sessionId' "$TEST_STATE")"
+  assert_eq "matching entry gets pr number" "22" "$(jq -r '.[1].prNumber' "$TEST_STATE")"
+  state_teardown
+}
+
+test_state_remove_removes_entry() {
+  state_setup
+  orchestrator_state_add "$TEST_STATE" 1 ticket/1-a "$WT_PARENT/1-a"
+  orchestrator_state_add "$TEST_STATE" 2 ticket/2-b "$WT_PARENT/2-b"
+  orchestrator_state_remove "$TEST_STATE" 1
+  assert_eq "remove drops the entry" "2" "$(jq -r '.[0].ticket' "$TEST_STATE")"
+  assert_eq "remove leaves the rest" "1" "$(jq 'length' "$TEST_STATE")"
+  state_teardown
+}
+
+test_state_active_count_counts_implementing_only() {
+  state_setup
+  orchestrator_state_add "$TEST_STATE" 1 ticket/1-a "$WT_PARENT/1-a"
+  orchestrator_state_add "$TEST_STATE" 2 ticket/2-b "$WT_PARENT/2-b"
+  orchestrator_state_complete "$TEST_STATE" 2 ses_2 22
+  assert_eq "completed tickets do not count toward cap" "1" "$(orchestrator_state_active_count "$TEST_STATE")"
   state_teardown
 }
 
@@ -274,7 +368,7 @@ exit 1'
 
 test_poll_once_claims_candidates() {
   state_setup
-  fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
+  fake_pipeline 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
   printf "[{\"number\":10,\"title\":\"Alpha\"},{\"number\":42,\"title\":\"Beta\"}]\n"
 elif [[ "$1" == "api" ]]; then
   printf "no native dependencies\n" >&2
@@ -284,22 +378,23 @@ elif [[ "$1" == "issue" && "$2" == "view" ]]; then
     10) printf "Alpha body\n" ;;
     42) printf "Beta body\n" ;;
   esac
-fi
-exit 0'
+fi'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "claims all unblocked candidates" "2" "$(jq 'length' "$TEST_STATE")"
   assert_eq "claims first ticket number" "10" "$(jq -r '.[0].ticket' "$TEST_STATE")"
   assert_eq "claims second ticket number" "42" "$(jq -r '.[1].ticket' "$TEST_STATE")"
+  assert_eq "implemented tickets transition to awaiting review" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
   assert_contains "logs discovery" "poll: 2 candidate(s)" "$output"
-  assert_contains "logs claim transition" "claim #10 (Alpha): phase implementing" "$output"
+  assert_contains "logs claim transition" "claim #10: phase implementing" "$output"
   assert_contains "logs branch construction" "branch ticket/10-alpha" "$output"
+  assert_contains "logs completed transition" "completed #10: session ses_10, PR #100" "$output"
   state_teardown
 }
 
 test_poll_once_skips_claimed() {
   state_setup
-  fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
+  fake_pipeline 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
   printf "[{\"number\":10,\"title\":\"Alpha\"},{\"number\":42,\"title\":\"Beta\"}]\n"
 elif [[ "$1" == "api" ]]; then
   printf "no native dependencies\n" >&2
@@ -309,11 +404,10 @@ elif [[ "$1" == "issue" && "$2" == "view" ]]; then
     10) printf "Alpha body\n" ;;
     42) printf "Beta body\n" ;;
   esac
-fi
-exit 0'
+fi'
   orchestrator_state_add "$TEST_STATE" 10 ticket/10-alpha "$WT_PARENT/10-alpha"
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "does not re-claim an active ticket" "2" "$(jq 'length' "$TEST_STATE")"
   assert_contains "logs skip of claimed ticket" "skip #10 (Alpha): already claimed" "$output"
   state_teardown
@@ -321,17 +415,16 @@ exit 0'
 
 test_poll_once_skips_blocked() {
   state_setup
-  fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
+  fake_pipeline 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
   printf "[{\"number\":10,\"title\":\"Alpha\"},{\"number\":42,\"title\":\"Beta\"}]\n"
 elif [[ "$1" == "api" ]]; then
   case "$2" in
     */10/*) printf "1\n" ;;
     */42/*) printf "0\n" ;;
   esac
-fi
-exit 0'
+fi'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "only claims unblocked candidate" "1" "$(jq 'length' "$TEST_STATE")"
   assert_eq "claims the unblocked ticket" "42" "$(jq -r '.[0].ticket' "$TEST_STATE")"
   assert_contains "logs skip of blocked ticket" "skip #10 (Alpha): blocked" "$output"
@@ -340,16 +433,16 @@ exit 0'
 
 test_poll_once_respects_concurrency_cap() {
   state_setup
-  fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
+  fake_pipeline 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
   printf "[{\"number\":10,\"title\":\"Alpha\"},{\"number\":42,\"title\":\"Beta\"}]\n"
 elif [[ "$1" == "api" ]]; then
   printf "0\n"
-fi
-exit 0'
+fi'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=1 orchestrator_poll_once)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=1 orchestrator_poll_once 2>&1)"
   assert_eq "cap limits claims to first ticket" "1" "$(jq 'length' "$TEST_STATE")"
   assert_eq "cap claims the FIFO-first ticket" "10" "$(jq -r '.[0].ticket' "$TEST_STATE")"
+  assert_eq "implemented ticket reaches awaiting review" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
   assert_contains "logs cap reached" "concurrency cap 1 reached" "$output"
   state_teardown
 }
@@ -364,9 +457,350 @@ fi
 exit 0'
   orchestrator_state_add "$TEST_STATE" 1 ticket/1-existing "$WT_PARENT/1-existing"
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=1 orchestrator_poll_once)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=1 orchestrator_poll_once 2>&1)"
   assert_eq "no new claims at full cap" "1" "$(jq 'length' "$TEST_STATE")"
   assert_contains "logs cap reached" "concurrency cap 1 reached" "$output"
+  state_teardown
+}
+
+test_opencode_session_id_filters_by_title() {
+  fake_command opencode 'printf "[{\"id\":\"ses_old\",\"title\":\"carbotracker-ticket-10\",\"created\":1},{\"id\":\"ses_new\",\"title\":\"carbotracker-ticket-10\",\"created\":2},{\"id\":\"ses_other\",\"title\":\"other work\",\"created\":3}]\n"
+exit 0'
+  assert_eq "session id filters by title and picks newest" "ses_new" "$(orchestrator_opencode_session_id carbotracker-ticket-10)"
+}
+
+test_opencode_session_id_no_match() {
+  fake_command opencode 'printf "[{\"id\":\"ses_a\",\"title\":\"other work\",\"created\":1}]\n"
+exit 0'
+  assert_eq "session id empty when no title matches" "" "$(orchestrator_opencode_session_id carbotracker-ticket-99)"
+}
+
+test_pr_number_for_branch() {
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[{\"number\":40},{\"number\":42}]\n"
+fi
+exit 0'
+  assert_eq "pr number returns newest pr for branch" "42" "$(orchestrator_pr_number_for_branch ticket/10-alpha)"
+}
+
+test_pr_number_for_branch_missing() {
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[]\n"
+fi
+exit 0'
+  assert_eq "pr number empty when no pr exists" "" "$(orchestrator_pr_number_for_branch ticket/10-alpha)"
+}
+
+test_implement_runs_full_pipeline() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[{\"number\":42}]\n"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_COMMENT_FILE"
+fi
+exit 0'
+  fake_worktree_npm
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  printf "%s\n" "$*" > "$FAKE_OPENCODE_ARGS"
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"ses_abc\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_COMMENT_FILE="$STATE_DIR/comment"
+  export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
+  export FAKE_GIT_PUSH_FILE="$STATE_DIR/git_push"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree"
+  assert_eq "worktree dir created" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_eq "opencode run invoked with title and issue prompt" "run --auto --title carbotracker-ticket-10 /implement the issue is 10" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_contains "branch pushed to origin" "push -u origin ticket/10-alpha" "$(cat "$FAKE_GIT_PUSH_FILE")"
+  assert_eq "state session id stored" "ses_abc" "$(jq -r '.[0].sessionId' "$TEST_STATE")"
+  assert_eq "state pr number stored" "42" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
+  assert_eq "phase transitions to awaiting review" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  assert_contains "issue commented with pr number" "Started implementation. PR #42 created." "$(cat "$FAKE_COMMENT_FILE")"
+  unset FAKE_COMMENT_FILE FAKE_OPENCODE_ARGS FAKE_GIT_PUSH_FILE
+  state_teardown
+}
+
+test_implement_opens_pr_when_none_exists() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  local n
+  n="$(cat "$FAKE_PR_COUNT" 2>/dev/null || echo 0)"
+  if [[ "$n" == "0" ]]; then
+    printf "1\n" > "$FAKE_PR_COUNT"
+    printf "[]\n"
+  else
+    printf "[{\"number\":50}]\n"
+  fi
+elif [[ "$1" == "pr" && "$2" == "create" ]]; then
+  printf "%s\n" "$*" > "$FAKE_PR_CREATE_ARGS"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  exit 0
+fi
+exit 0'
+  fake_worktree_npm
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"ses_1\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_PR_COUNT="$STATE_DIR/pr_count"
+  export FAKE_PR_CREATE_ARGS="$STATE_DIR/pr_create"
+  printf '0\n' > "$FAKE_PR_COUNT"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null
+  assert_contains "creates pr with base main" "--base main" "$(cat "$FAKE_PR_CREATE_ARGS")"
+  assert_contains "creates pr with head branch" "--head ticket/10-alpha" "$(cat "$FAKE_PR_CREATE_ARGS")"
+  assert_contains "creates pr with title" "Implement Alpha (#10)" "$(cat "$FAKE_PR_CREATE_ARGS")"
+  assert_eq "stores created pr number" "50" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
+  unset FAKE_PR_COUNT FAKE_PR_CREATE_ARGS
+  state_teardown
+}
+
+test_implement_fails_when_push_fails() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[]\n"
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  mkdir -p "$3"
+elif [[ "$1" == "push" ]]; then
+  exit 1
+fi
+exit 0'
+  fake_command npm 'exit 0'
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"s\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null 2>&1; then
+    fail "implement fails when git push fails"
+  else
+    pass "implement fails when git push fails"
+  fi
+  state_teardown
+}
+
+test_implement_fails_when_pr_create_fails() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[]\n"
+elif [[ "$1" == "pr" && "$2" == "create" ]]; then
+  exit 1
+fi
+exit 0'
+  fake_worktree_npm
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"s\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null 2>&1; then
+    fail "implement fails when gh pr create fails"
+  else
+    pass "implement fails when gh pr create fails"
+  fi
+  state_teardown
+}
+
+test_implement_fails_when_worktree_fails() {
+  state_setup
+  fake_command git 'if [[ "$1" == "worktree" ]]; then
+  exit 1
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null 2>&1; then
+    fail "implement fails when worktree creation fails"
+  else
+    pass "implement fails when worktree creation fails"
+  fi
+  state_teardown
+}
+
+test_implement_fails_when_npm_ci_fails() {
+  state_setup
+  fake_command git 'if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  mkdir -p "$3"
+fi
+exit 0'
+  fake_command npm 'exit 1'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null 2>&1; then
+    fail "implement fails when npm ci fails"
+  else
+    pass "implement fails when npm ci fails"
+  fi
+  state_teardown
+}
+
+test_implement_fails_when_opencode_fails() {
+  state_setup
+  fake_command git 'if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  mkdir -p "$3"
+fi
+exit 0'
+  fake_command npm 'exit 0'
+  fake_command opencode 'exit 1'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null 2>&1; then
+    fail "implement fails when opencode run fails"
+  else
+    pass "implement fails when opencode run fails"
+  fi
+  state_teardown
+}
+
+test_implement_no_pr_skips_comment() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[]\n"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_COMMENT_FILE"
+fi
+exit 0'
+  fake_worktree_npm
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"ses_abc\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_COMMENT_FILE="$STATE_DIR/comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)"
+  assert_eq "pr number stored as null when no pr" "null" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
+  assert_eq "no comment file written" "no" "$([[ -f "$FAKE_COMMENT_FILE" ]] && echo yes || echo no)"
+  assert_contains "logs warning about missing pr" "no PR found" "$output"
+  unset FAKE_COMMENT_FILE
+  state_teardown
+}
+
+test_implement_no_session_stores_null() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[{\"number\":42}]\n"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  exit 0
+fi
+exit 0'
+  fake_worktree_npm
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[]\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null
+  assert_eq "session id stored as null when not found" "null" "$(jq -r '.[0].sessionId' "$TEST_STATE")"
+  assert_eq "pr number still stored" "42" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
+  state_teardown
+}
+
+test_poll_once_removes_entry_on_failed_implement() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
+  printf "[{\"number\":10,\"title\":\"Alpha\"}]\n"
+elif [[ "$1" == "api" ]]; then
+  printf "0\n"
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "worktree" ]]; then
+  exit 1
+fi
+exit 0'
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
+  assert_eq "failed implementation leaves no state entry" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "logs removal of failed ticket" "removed #10 from state" "$output"
+  state_teardown
+}
+
+test_claim_marks_issue_in_progress() {
+  state_setup
+  local args_file="$STATE_DIR/issue_edit_args"
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_EDIT_ARGS"
+  exit 0
+fi
+exit 1'
+  export FAKE_EDIT_ARGS="$args_file"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_claim 10 ticket/10-alpha "$WT_PARENT/10-alpha"
+  assert_contains "claim removes ready-for-agent" "--remove-label ready-for-agent" "$(cat "$args_file")"
+  assert_contains "claim adds in-progress" "--add-label in-progress" "$(cat "$args_file")"
+  assert_eq "claim records state entry" "1" "$(orchestrator_state_active_count "$TEST_STATE")"
+  assert_eq "state entry phase is implementing" "implementing" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  unset FAKE_EDIT_ARGS
+  state_teardown
+}
+
+test_claim_failure_leaves_no_state() {
+  state_setup
+  fake_command gh 'exit 1'
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_claim 10 ticket/10-alpha "$WT_PARENT/10-alpha" >/dev/null 2>&1; then
+    fail "claim fails when gh issue edit fails"
+  else
+    pass "claim fails when gh issue edit fails"
+  fi
+  assert_eq "failed claim leaves no state entry" "0" "$(orchestrator_state_active_count "$TEST_STATE")"
+  state_teardown
+}
+
+test_poll_once_does_not_cleanup_preexisting_worktree() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
+  printf "[{\"number\":10,\"title\":\"Alpha\"}]\n"
+elif [[ "$1" == "api" ]]; then
+  printf "0\n"
+fi
+exit 0'
+  fake_command git 'exit 0'
+  local worktree="$WT_PARENT/10-alpha"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once >/dev/null 2>&1
+  assert_eq "pre-existing worktree survives failed implementation" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_eq "failed claim leaves no state entry" "0" "$(jq 'length' "$TEST_STATE" 2>/dev/null || echo 0)"
+  state_teardown
+}
+
+test_poll_once_cleans_up_worktree_after_failed_implement() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
+  printf "[{\"number\":10,\"title\":\"Alpha\"}]\n"
+elif [[ "$1" == "api" ]]; then
+  printf "0\n"
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  mkdir -p "$3"
+elif [[ "$1" == "worktree" && "$2" == "remove" ]]; then
+  rm -rf "$3" "$4"
+fi
+exit 0'
+  fake_command npm 'exit 1'
+  local worktree="$WT_PARENT/10-alpha"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once >/dev/null
+  assert_eq "worktree removed after failed implementation" "no" "$([[ -d "$worktree" ]] && echo yes || echo no)"
   state_teardown
 }
 
@@ -406,7 +840,7 @@ test_cli_help() {
 
 test_cli_once() {
   state_setup
-  fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
+  fake_pipeline 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
   printf "[{\"number\":10,\"title\":\"Alpha\"}]\n"
 elif [[ "$1" == "api" ]]; then
   printf "no native dependencies\n" >&2
@@ -415,11 +849,11 @@ elif [[ "$1" == "issue" && "$2" == "view" ]]; then
   case "$3" in
     10) printf "Alpha body\n" ;;
   esac
-fi
-exit 0'
+fi'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" bash "$ROOT/tools/ct-orchestrator.sh" once)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" bash "$ROOT/tools/ct-orchestrator.sh" once 2>&1)"
   assert_eq "once mode claims the ticket" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "once mode completes the ticket" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
   assert_contains "once mode logs discovery" "poll:" "$output"
   state_teardown
 }
@@ -441,6 +875,11 @@ test_state_loaded_but_empty_file() {
 
 test_state_load_missing
 test_state_loaded_but_empty_file
+test_state_complete_updates_entry
+test_state_complete_with_missing_values
+test_state_complete_updates_only_matching_ticket
+test_state_remove_removes_entry
+test_state_active_count_counts_implementing_only
 
 test_config_defaults
 test_config_file_parsing
@@ -457,11 +896,29 @@ test_issue_unblocked_when_blocker_closed
 test_issue_blocked_when_blocker_state_unresolvable
 test_issue_blocked_via_blocked_by_section
 test_body_blocker_numbers_stops_at_next_section
+test_opencode_session_id_filters_by_title
+test_opencode_session_id_no_match
+test_pr_number_for_branch
+test_pr_number_for_branch_missing
+test_implement_runs_full_pipeline
+test_implement_fails_when_worktree_fails
+test_implement_fails_when_npm_ci_fails
+test_implement_fails_when_opencode_fails
+test_implement_no_pr_skips_comment
+test_implement_no_session_stores_null
+test_implement_opens_pr_when_none_exists
+test_implement_fails_when_push_fails
+test_implement_fails_when_pr_create_fails
 test_poll_once_claims_candidates
 test_poll_once_skips_claimed
 test_poll_once_skips_blocked
 test_poll_once_respects_concurrency_cap
 test_poll_once_skips_when_cap_full
+test_poll_once_removes_entry_on_failed_implement
+test_poll_once_cleans_up_worktree_after_failed_implement
+test_poll_once_does_not_cleanup_preexisting_worktree
+test_claim_marks_issue_in_progress
+test_claim_failure_leaves_no_state
 test_cli_once
 fake_teardown
 

@@ -16,6 +16,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+WorkingDirectory=%h/git/carbotracker
 ExecStart=%h/git/carbotracker/tools/ct-orchestrator.sh
 Restart=on-failure
 RestartSec=10

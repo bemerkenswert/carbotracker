@@ -3,7 +3,9 @@
 WORKTREE_PARENT="$HOME/git/worktrees/carbotracker"
 
 slugify() {
-  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//'
+  # LC_ALL=C keeps character ranges ASCII-only so output is identical under
+  # any locale (UTF-8 would let non-ASCII through into branch names).
+  printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C sed 's/[^a-z0-9]/-/g' | LC_ALL=C sed 's/--*/-/g' | LC_ALL=C sed 's/^-//;s/-$//'
 }
 
 ct_issue_title() {
@@ -66,6 +68,22 @@ ct_merged_pr_count() {
   gh pr list --head "$1" --state merged --json number --jq 'length' 2>/dev/null || echo 0
 }
 
+ct_worktree_add() {
+  local dir="$1" branch="$2"
+
+  CT_WORKTREE_CREATED=0
+  git fetch origin main || return 1
+
+  if [[ -d "$dir" ]]; then
+    echo "Error: Worktree already exists at $dir" >&2
+    return 1
+  fi
+
+  mkdir -p "$(dirname "$dir")" || return 1
+  git worktree add "$dir" -b "$branch" origin/main || return 1
+  CT_WORKTREE_CREATED=1
+}
+
 ct_worktree_create() {
   local issue_number="$1"
   local title slug
@@ -85,15 +103,7 @@ ct_worktree_create() {
   echo "Path:   $CT_WORKTREE_DIR"
   echo ""
 
-  git fetch origin main || return 1
-
-  if [[ -d "$CT_WORKTREE_DIR" ]]; then
-    echo "Error: Worktree already exists at $CT_WORKTREE_DIR" >&2
-    return 1
-  fi
-
-  mkdir -p "$WORKTREE_PARENT" || return 1
-  git worktree add "$CT_WORKTREE_DIR" -b "$CT_WORKTREE_BRANCH" origin/main || return 1
+  ct_worktree_add "$CT_WORKTREE_DIR" "$CT_WORKTREE_BRANCH" || return 1
 }
 
 ct_worktree_list() {

@@ -11,6 +11,7 @@ ENV_ORCHESTRATOR_CONCURRENCY_CAP="${ORCHESTRATOR_CONCURRENCY_CAP-}"
 ENV_ORCHESTRATOR_STATE_FILE="${ORCHESTRATOR_STATE_FILE-}"
 ENV_ORCHESTRATOR_WORKTREE_PARENT="${ORCHESTRATOR_WORKTREE_PARENT-}"
 ENV_ORCHESTRATOR_ISSUE_LABELS="${ORCHESTRATOR_ISSUE_LABELS-}"
+ENV_ORCHESTRATOR_IN_PROGRESS_LABEL="${ORCHESTRATOR_IN_PROGRESS_LABEL-}"
 
 CONF_FILE="${CT_ORCHESTRATOR_CONF:-$SCRIPT_DIR/ct-orchestrator.conf}"
 if [[ -f "$CONF_FILE" ]]; then
@@ -22,9 +23,12 @@ ORCHESTRATOR_CONCURRENCY_CAP="${ENV_ORCHESTRATOR_CONCURRENCY_CAP:-${ORCHESTRATOR
 ORCHESTRATOR_STATE_FILE="${ENV_ORCHESTRATOR_STATE_FILE:-${ORCHESTRATOR_STATE_FILE:-$HOME/.local/state/carbotracker/orchestrator.json}}"
 ORCHESTRATOR_WORKTREE_PARENT="${ENV_ORCHESTRATOR_WORKTREE_PARENT:-${ORCHESTRATOR_WORKTREE_PARENT:-$HOME/git/worktrees/carbotracker}}"
 ORCHESTRATOR_ISSUE_LABELS="${ENV_ORCHESTRATOR_ISSUE_LABELS:-${ORCHESTRATOR_ISSUE_LABELS:-ready-for-agent,ticket}}"
+ORCHESTRATOR_IN_PROGRESS_LABEL="${ENV_ORCHESTRATOR_IN_PROGRESS_LABEL:-${ORCHESTRATOR_IN_PROGRESS_LABEL:-in-progress}}"
 
 orchestrator_log() {
-  printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"
+  # Logs go to stderr so functions that print a value on stdout (e.g. the
+  # state helpers or push_and_open_pr) never pollute it with log lines.
+  printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2
 }
 
 orchestrator_state_load() {
@@ -54,7 +58,7 @@ orchestrator_state_write() {
 }
 
 orchestrator_state_active_count() {
-  orchestrator_state_load "$1" | jq 'length'
+  orchestrator_state_load "$1" | jq '[.[] | select(.phase == "implementing")] | length'
 }
 
 orchestrator_state_has_ticket() {
@@ -76,18 +80,125 @@ orchestrator_state_add() {
   orchestrator_state_write "$state_file" "$state"
 }
 
+orchestrator_state_complete() {
+  local state_file="$1" number="$2" session_id="$3" pr_number="$4"
+  local state
+  state="$(orchestrator_state_load "$state_file")"
+  state="$(printf '%s' "$state" | jq --argjson n "$number" --arg sid "$session_id" --arg prn "$pr_number" \
+    '(.[] | select(.ticket == $n)) |= (.sessionId = (if $sid == "" then null else $sid end) | .prNumber = (if $prn == "" then null else ($prn | tonumber) end) | .phase = "awaiting review")')"
+  orchestrator_state_write "$state_file" "$state"
+}
+
+orchestrator_state_remove() {
+  local state_file="$1" number="$2"
+  local state
+  state="$(orchestrator_state_load "$state_file")"
+  state="$(printf '%s' "$state" | jq --argjson n "$number" 'map(select(.ticket != $n))')"
+  orchestrator_state_write "$state_file" "$state"
+}
+
 orchestrator_claim() {
-  local number="$1" title="$2"
-  local slug branch worktree
-  slug="$(slugify "$title")"
-  branch="ticket/$number-$slug"
-  worktree="$ORCHESTRATOR_WORKTREE_PARENT/$number-$slug"
+  local number="$1" branch="$2" worktree="$3"
+  # The claim is the GitHub-side label flip: dropping ready-for-agent takes
+  # the issue out of every orchestrator's candidate query, so parallel
+  # daemons cannot double-claim it. The state file entry is the local record.
+  if ! gh issue edit "$number" --remove-label ready-for-agent --add-label "$ORCHESTRATOR_IN_PROGRESS_LABEL"; then
+    orchestrator_log "ERROR: failed to mark #$number as $ORCHESTRATOR_IN_PROGRESS_LABEL on GitHub"
+    return 1
+  fi
   orchestrator_state_add "$ORCHESTRATOR_STATE_FILE" "$number" "$branch" "$worktree"
-  orchestrator_log "claim #$number ($title): phase implementing (would create worktree $worktree on branch $branch)"
+  orchestrator_log "claim #$number: phase implementing, worktree $worktree on branch $branch"
+}
+
+orchestrator_opencode_session_id() {
+  local title="$1"
+  opencode session list --format json 2>/dev/null \
+    | jq -r --arg t "$title" \
+        '[.[] | select(.title == $t)] | sort_by(.created) | reverse | .[0].id // empty'
+}
+
+orchestrator_pr_number_for_branch() {
+  local branch="$1"
+  gh pr list --head "$branch" --json number 2>/dev/null \
+    | jq -r 'sort_by(.number) | reverse | .[0].number // empty' 2>/dev/null || true
+}
+
+orchestrator_push_and_open_pr() {
+  local number="$1" title="$2" branch="$3" worktree="$4"
+  local pr_number
+  orchestrator_log "pushing branch $branch for #$number"
+  # git push / gh pr create write progress and the PR url to stdout; this
+  # function's stdout is its return value, so route them to stderr.
+  if ! (cd "$worktree" && git push -u origin "$branch" >&2); then
+    orchestrator_log "ERROR: git push failed for #$number"
+    return 1
+  fi
+  pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+  if [[ -z "$pr_number" ]]; then
+    orchestrator_log "creating PR for #$number ($title)"
+    if ! gh pr create --base main --head "$branch" --title "Implement $title (#$number)" \
+        --body "Automated implementation of #$number.
+
+---
+_Created by carbotracker's agent skills._" >&2; then
+      orchestrator_log "ERROR: gh pr create failed for #$number"
+      return 1
+    fi
+    pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+  fi
+  printf '%s' "$pr_number"
+}
+
+orchestrator_cleanup_worktree() {
+  local worktree="$1" branch="$2"
+  git worktree remove --force "$worktree" 2>/dev/null || rm -rf "$worktree"
+  git branch -D "$branch" 2>/dev/null || true
+}
+
+orchestrator_implement() {
+  local number="$1" title="$2" branch="$3" worktree="$4"
+  local session_title session_id pr_number
+
+  orchestrator_log "implementing #$number: creating worktree $worktree (branch $branch)"
+  if ! ct_worktree_add "$worktree" "$branch"; then
+    orchestrator_log "ERROR: worktree creation failed for #$number"
+    return 1
+  fi
+
+  orchestrator_log "installing dependencies in $worktree"
+  if ! (cd "$worktree" && npm ci --prefer-offline --no-audit --no-fund); then
+    orchestrator_log "ERROR: npm ci failed for #$number"
+    return 1
+  fi
+
+  session_title="carbotracker-ticket-$number"
+  orchestrator_log "launching opencode for #$number (title $session_title)"
+  if ! (cd "$worktree" && opencode run --auto --title "$session_title" "/implement the issue is $number"); then
+    orchestrator_log "ERROR: opencode run failed for #$number"
+    return 1
+  fi
+
+  session_id="$(orchestrator_opencode_session_id "$session_title")"
+  if ! pr_number="$(orchestrator_push_and_open_pr "$number" "$title" "$branch" "$worktree")"; then
+    orchestrator_log "ERROR: push or PR creation failed for #$number"
+    return 1
+  fi
+  orchestrator_state_complete "$ORCHESTRATOR_STATE_FILE" "$number" "$session_id" "$pr_number"
+
+  orchestrator_log "completed #$number: session ${session_id:-<none>}, PR #${pr_number:-<none>}, phase awaiting review"
+  if [[ -n "$pr_number" ]]; then
+    if gh issue comment "$number" --body "Started implementation. PR #$pr_number created."; then
+      orchestrator_log "commented on #$number: Started implementation. PR #$pr_number created."
+    else
+      orchestrator_log "WARNING: failed to comment on #$number"
+    fi
+  else
+    orchestrator_log "WARNING: no PR found for branch $branch on #$number; skipping issue comment"
+  fi
 }
 
 orchestrator_poll_once() {
-  local candidates active_count count line number title
+  local candidates active_count count line number title slug branch worktree
   candidates="$(ct_candidate_issues)"
   active_count="$(orchestrator_state_active_count "$ORCHESTRATOR_STATE_FILE")"
   count="$(printf '%s' "$candidates" | jq 'length')"
@@ -113,8 +224,26 @@ orchestrator_poll_once() {
       continue
     fi
 
-    orchestrator_claim "$number" "$title"
+    slug="$(slugify "$title")"
+    branch="ticket/$number-$slug"
+    worktree="$ORCHESTRATOR_WORKTREE_PARENT/$number-$slug"
+    if ! orchestrator_claim "$number" "$branch" "$worktree"; then
+      orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
+      orchestrator_log "claim failed for #$number; removed from state"
+      continue
+    fi
     active_count=$((active_count + 1))
+
+    if ! orchestrator_implement "$number" "$title" "$branch" "$worktree"; then
+      orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
+      orchestrator_log "removed #$number from state after failed implementation"
+      if [[ "${CT_WORKTREE_CREATED:-0}" == "1" ]]; then
+        orchestrator_cleanup_worktree "$worktree" "$branch"
+      else
+        orchestrator_log "not cleaning up pre-existing worktree $worktree"
+      fi
+      active_count=$((active_count - 1))
+    fi
   done < <(printf '%s' "$candidates" | jq -c '.[]')
 }
 
