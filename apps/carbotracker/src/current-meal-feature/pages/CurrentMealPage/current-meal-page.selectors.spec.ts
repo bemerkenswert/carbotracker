@@ -1,4 +1,5 @@
 import { selectInsulinUnits } from './current-meal-page.selectors';
+import { ThemePreference } from '../../../features/settings/theme-preference.model';
 
 interface InsulinToCarbRatios {
   showInsulinUnits: boolean;
@@ -10,12 +11,13 @@ interface InsulinToCarbRatios {
 
 interface SettingsState {
   insulinToCarbRatios: InsulinToCarbRatios;
+  themePreference: ThemePreference;
 }
 
 describe('selectInsulinUnits', () => {
   const createSettingsState = (
     insulinToCarbRatios: InsulinToCarbRatios,
-  ): SettingsState => ({ insulinToCarbRatios });
+  ): SettingsState => ({ insulinToCarbRatios, themePreference: 'system' });
 
   it('computes night insulin units from the night ratio', () => {
     const state = createSettingsState({
