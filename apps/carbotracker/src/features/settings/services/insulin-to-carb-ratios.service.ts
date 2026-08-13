@@ -9,7 +9,7 @@ import {
   Unsubscribe,
 } from 'firebase/firestore';
 import { from } from 'rxjs';
-import { SettingsApiActions } from '../+state';
+import { SettingsApiActions } from '../+state/actions/api.actions';
 import { InsulinToCarbRatio } from '../insulin-to-carb-ratio.model';
 
 @Injectable({ providedIn: 'root' })
@@ -61,7 +61,11 @@ export class InsulinToCarbRatiosService {
   }) {
     const document = this.getInsulinToCarbRatiosDocument(params);
     return from(
-      setDoc(document, { insulinToCarbRatios: params.insulinToCarbRatios }),
+      setDoc(
+        document,
+        { insulinToCarbRatios: params.insulinToCarbRatios },
+        { merge: true },
+      ),
     );
   }
 

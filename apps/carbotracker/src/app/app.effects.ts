@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { Store } from '@ngrx/store';
 import { catchError, from, map, of, switchMap, tap } from 'rxjs';
-import { authFeature } from '../features/auth/+state';
+import { authFeature } from '../features/auth/+state/auth.store';
 import {
   AuthApiActions,
   LoginApiActions,
@@ -11,6 +11,7 @@ import {
   SignUpApiActions,
 } from '../features/auth/+state/actions/api.actions';
 import { InsulinToCarbRatiosService } from '../features/settings/services/insulin-to-carb-ratios.service';
+import { ThemePreferenceService } from '../features/settings/services/theme-preference.service';
 import { AppRouterEffectsActions } from './app.actions';
 
 export const navigateToProducts$ = createEffect(
@@ -65,6 +66,38 @@ export const stopStreamingInsulinToCarbRatios$ = createEffect(
       ofType(LogoutApiActions.logoutSuccessful),
       tap(() => {
         insulinToCarbRatiosService.unsubscribeFromOwnInsulinToCarbRatios();
+      }),
+    ),
+  { dispatch: false, functional: true },
+);
+
+export const startStreamingThemePreference$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    themePreferenceService = inject(ThemePreferenceService),
+    store = inject(Store),
+  ) =>
+    actions$.pipe(
+      ofType(AuthApiActions.userIsLoggedIn),
+      switchMap(() => store.select(authFeature.selectUserId)),
+      tap((uid) => {
+        if (uid) {
+          themePreferenceService.subscribeToOwnThemePreference({ uid });
+        }
+      }),
+    ),
+  { dispatch: false, functional: true },
+);
+
+export const stopStreamingThemePreference$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    themePreferenceService = inject(ThemePreferenceService),
+  ) =>
+    actions$.pipe(
+      ofType(LogoutApiActions.logoutSuccessful),
+      tap(() => {
+        themePreferenceService.unsubscribeFromOwnThemePreference();
       }),
     ),
   { dispatch: false, functional: true },

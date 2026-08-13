@@ -17,12 +17,26 @@ A GitHub review splits across two surfaces — collect both:
 
 - **General comments** (the review's overall message): `gh pr view <n> --comments`.
 - **Inline threads**, which live on the diff, _not_ the issue thread — `gh pr view <n> --comments` shows only the top of each thread:
-  - Diff comments: `gh api repos/<owner>/<repo>/pulls/<n>/comments` — one entry per comment, each with `path`, `line`, and `in_reply_to`, so threads string together via `in_reply_to`.
-  - Review-level comments: `gh api repos/<owner>/<repo>/pulls/<n>/reviews` for the review bodies.
-  - Resolution markers land on the comment resource as `resolved` / `dismissed` via `gh api repos/<owner>/<repo>/pulls/<n>/comments/<id>` if you need thread state.
+  - Diff comments: `gh api repos/{owner}/{repo}/pulls/<n>/comments` — one entry per comment, each with `path`, `line`, and `in_reply_to`, so threads string together via `in_reply_to`.
+  - Review-level comments: `gh api repos/{owner}/{repo}/pulls/<n>/reviews` for the review bodies.
+  - Resolution markers land on the comment resource as `resolved` / `dismissed` via `gh api repos/{owner}/{repo}/pulls/comments/<id>` if you need thread state — note the single-comment route carries **no** pull number.
 - The repo and pull number: `gh pr view <n>` inside the clone infers the repo from the remote.
 
 **Done when** every thread and general comment for the PR is captured, each tagged with its `path` + `line` (inline) or its review (general). A thread with replies is one point to address, not several.
+
+### GitHub review-comment endpoints
+
+`gh api` substitutes `{owner}` and `{repo}` from the current repo's remote, so every path below runs verbatim from the clone. The pull number appears in the list/reply paths but **not** in the single-comment get/resolve paths — that asymmetry is the #1 source of 404s:
+
+| Operation            | Command                                                                     |
+| -------------------- | --------------------------------------------------------------------------- |
+| List diff comments   | `gh api repos/{owner}/{repo}/pulls/<n>/comments`                            |
+| Review bodies        | `gh api repos/{owner}/{repo}/pulls/<n>/reviews`                             |
+| Reply to a thread    | `gh api repos/{owner}/{repo}/pulls/<n>/comments/<id>/replies -f body="..."` |
+| Get a single comment | `gh api repos/{owner}/{repo}/pulls/comments/<id>`                           |
+| Resolve a thread     | `gh api repos/{owner}/{repo}/pulls/comments/<id> -X PUT -f resolved=true`   |
+
+Prefer native `gh` commands where they exist (`gh pr view`, `gh issue comment`); the inline-thread operations above have **no** CLI equivalent and must use `gh api`. After posting a reply or resolving a thread, verify by **re-listing** `pulls/<n>/comments` and checking `in_reply_to_id` (threading) / `resolved` — don't GET single comments just to confirm; it's an extra round-trip and one more URL to mistype.
 
 ### 2. Classify
 
@@ -61,7 +75,7 @@ Respond to each thread on the PR with a pointer back at it:
 - **Push-back** → leave the thread **open**, reply with the argument, and invite the reviewer to close it once convinced.
 - **Clarify** → reply with the question; keep it open until answered.
 
-Reply _to the thread_, not to the PR. A threaded inline reply is created with `POST /repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies` (body only); `gh api repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies -f body="..."`. Resolve an inline thread via `PUT .../comments/{comment_id}` with `{ "resolved": true }`. A general comment is a plain issue reply: `gh issue comment <n> --body "..."`.
+Reply _to the thread_, not to the PR. A threaded inline reply is created with `POST /repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies` (body only); `gh api repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies -f body="..."`. Resolve an inline thread via `PUT /repos/{owner}/{repo}/pulls/comments/{comment_id}` with `{ "resolved": true }` (again, **no** pull number in this path). A general comment is a plain issue reply: `gh issue comment <n> --body "..."`.
 
 **Agent-authored replies MUST carry the AI-source footer** — a colleague reading the thread must be able to tell your reply from the human's. Append this footer line to every reply body:
 
