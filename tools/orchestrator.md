@@ -3,8 +3,12 @@
 `ct-orchestrator.sh` is the ticket-to-PR pipeline: it polls GitHub for
 `ready-for-agent` tickets, claims them up to a concurrency cap, and runs each
 one through a full implementation cycle — worktree, dependency install,
-headless `opencode`, and finally a pushed branch with a pull request. It runs
-as a systemd user service (see `carbotracker-orchestrator.service`).
+headless `opencode`, and finally a pushed branch with a pull request. Once a
+PR is up it also runs the **review loop**: every poll it checks awaiting-review
+PRs for new comments and, when it finds one, resumes the original opencode
+session with `/review-comments` so the agent answers the review and pushes
+updates. It runs as a systemd user service (see
+`carbotracker-orchestrator.service`).
 
 ## Lifecycle
 
@@ -15,6 +19,8 @@ stateDiagram-v2
     [*] --> implementing: poll finds eligible ticket, claim flips GitHub labels
     implementing --> awaiting_review: opencode done, PR opened
     implementing --> [*]: failure, un-claim and clean up
+    awaiting_review --> review_round: new comment on PR (newer than lastCommentAt)
+    review_round --> awaiting_review: /review-comments succeeds or a retry fails
     awaiting_review --> [*]: human merges the PR
 ```
 
@@ -27,6 +33,39 @@ add `in-progress`) and in the local state file. The label flip is what makes
 the claim visible to humans and atomic against parallel orchestrators — once
 an issue drops `ready-for-agent` it stops matching the candidate query, so a
 second daemon cannot claim it.
+
+## Review loop
+
+Each poll, after claiming work, the orchestrator walks every state entry in
+`awaiting review` that has a PR number and a session id:
+
+- It queries the PR's review surfaces — inline threads
+  (`pulls/<n>/comments`), top-level review submissions (`pulls/<n>/reviews`),
+  and general comments (`issues/<n>/comments`) — and takes the newest
+  non-pipeline timestamp as the latest comment timestamp. Comments and
+  reviews carrying the `_Created by carbotracker's agent skills._` footer are
+  the orchestrator's own output and are excluded from the watermark, so the
+  agent's replies and the failure notices can never re-trigger the loop.
+- If that timestamp is newer than the entry's `lastCommentAt`, it launches
+  `opencode run --auto --session <sessionId> "/review-comments on PR #<n>"`
+  in the worktree — the same session that implemented the ticket, so the
+  agent keeps full context.
+- On success the watermark advances to the newest human comment (the agent's
+  own replies are filtered out), and the failure counter resets. A review
+  that arrived mid-round is newer than the trigger, so it is seen on the
+  next poll.
+- On failure the orchestrator logs the error, increments `reviewFailures`,
+  and posts a visible notice on the PR — "Automated review round failed
+  (attempt N/R)". The watermark stays put, so the same round is retried on
+  the next poll (self-healing).
+- After `ORCHESTRATOR_REVIEW_RETRIES` consecutive failures the watermark is
+  advanced anyway and polling pauses: the PR stays stale until someone
+  intervenes. A newer comment on the PR (the failure notices don't count,
+  they are filtered) starts a fresh retry budget.
+- An entry in `awaiting review` without a session id can never resume with
+  full context; the orchestrator posts a one-time notice on the PR
+  (tracked via `reviewNoticePosted`) so the stale PR is visible to a
+  maintainer.
 
 ## State file
 
@@ -42,21 +81,27 @@ Active tickets live in a single JSON array, written atomically
     "worktree": "/home/steffen/git/worktrees/carbotracker/218-worktree-creation-opencode-implementation-and-pr-tracking",
     "sessionId": "ses_007927ec0ffeYJFyKLBlmBSp1e",
     "prNumber": 234,
+    "lastCommentAt": "2026-08-13T00:07:00Z",
+    "reviewFailures": 0,
+    "reviewNoticePosted": false,
     "phase": "awaiting review",
     "startedAt": "2026-08-13T00:07:00Z"
   }
 ]
 ```
 
-| Field       | Meaning                                                 |
-| ----------- | ------------------------------------------------------- |
-| `ticket`    | GitHub issue number being implemented                   |
-| `branch`    | `ticket/<issue>-<slug>` branch the work happens on      |
-| `worktree`  | Absolute path of the git worktree for that branch       |
-| `sessionId` | opencode session id for the run (`null` until it exits) |
-| `prNumber`  | PR opened for the branch (`null` until it exists)       |
-| `phase`     | `implementing` or `awaiting review`                     |
-| `startedAt` | UTC timestamp of the claim                              |
+| Field                | Meaning                                                           |
+| -------------------- | ----------------------------------------------------------------- |
+| `ticket`             | GitHub issue number being implemented                             |
+| `branch`             | `ticket/<issue>-<slug>` branch the work happens on                |
+| `worktree`           | Absolute path of the git worktree for that branch                 |
+| `sessionId`          | opencode session id for the run (`null` until it exits)           |
+| `prNumber`           | PR opened for the branch (`null` until it exists)                 |
+| `lastCommentAt`      | Newest human comment timestamp handled on the PR (`null` = never) |
+| `reviewFailures`     | Consecutive failed review rounds (resets on success)              |
+| `reviewNoticePosted` | Whether the missing-session notice was already posted on the PR   |
+| `phase`              | `implementing` or `awaiting review`                               |
+| `startedAt`          | UTC timestamp of the claim                                        |
 
 ## Data flow per poll
 
@@ -76,6 +121,15 @@ flowchart TD
     K --> L[state: sessionId + prNumber, phase awaiting review]
     L --> M[gh issue comment: Started implementation. PR #N created.]
     F -- failure --> N[un-claim + remove worktree/branch, retry next poll]
+    M --> O[review loop: walk awaiting-review entries]
+    O --> P[gh api pulls/N/comments + pulls/N/reviews + issues/N/comments → newest non-bot timestamp]
+    P --> Q{newer than lastCommentAt?}
+    Q -- no --> O
+    Q -- yes --> R[opencode run --auto --session S /review-comments on PR #N]
+    R -- success --> S[watermark = newest comment, failures = 0]
+    R -- failure --> T[failures++, post PR notice attempt N/R]
+    T -- failures < R --> O
+    T -- failures = R --> U[watermark advanced, polling pauses for human]
 ```
 
 The orchestrator never resolves review threads or merges — after the PR is
@@ -92,6 +146,7 @@ file, which wins over defaults):
 | `ORCHESTRATOR_CONCURRENCY_CAP`       | `3`                                                 |
 | `ORCHESTRATOR_ISSUE_LABELS`          | `ready-for-agent,ticket`                            |
 | `ORCHESTRATOR_IN_PROGRESS_LABEL`     | `in-progress`                                       |
+| `ORCHESTRATOR_REVIEW_RETRIES`        | `3`                                                 |
 | `ORCHESTRATOR_STATE_FILE`            | `$HOME/.local/state/carbotracker/orchestrator.json` |
 | `ORCHESTRATOR_WORKTREE_PARENT`       | `$HOME/git/worktrees/carbotracker`                  |
 
@@ -114,5 +169,13 @@ Follow the daemon with `journalctl --user -u carbotracker-orchestrator -f`.
   only a worktree this run actually created (`CT_WORKTREE_CREATED`) is
   removed, so a parallel orchestrator that loses the claim race never deletes
   the winner's worktree.
+- Review detection compares strictly against the watermark. The watermark is
+  the newest comment that is **not** the pipeline's own output — comments and
+  reviews carrying the `_Created by carbotracker's agent skills._` footer are
+  filtered out — so a successful round never re-triggers on itself while a
+  review that lands mid-round still does. A failed round keeps the watermark
+  in place so the same review is retried — capped by
+  `ORCHESTRATOR_REVIEW_RETRIES`, after which the orchestrator backs off until
+  a new comment appears or the PR is merged.
 - `orchestrator_log` writes to stderr: several helpers return their value on
   stdout inside `$(...)`, so log lines must never land there.
