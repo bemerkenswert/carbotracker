@@ -101,6 +101,49 @@ fi
 exit 0'
 }
 
+# Fake gh api for the review loop: the pulls query returns one human inline
+# comment at $1 plus a bot reply carrying the AI-source footer (so tests
+# exercise the footer exclusion), the reviews query returns nothing, and a
+# general-comment POST is captured to $FAKE_PR_COMMENT_ARGS (appended).
+fake_review_gh() {
+  local latest="${1:-2026-08-13T00:07:00Z}"
+  local footer="_Created by carbotracker's agent skills._"
+  fake_command gh "if [[ \"\$1\" == \"api\" ]]; then
+  case \"\$2\" in
+    *reviews*) printf \"[]\n\" ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"body\\\":\\\"human inline comment\\\"},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\"}]\n\" ;;
+    *issues/*comments*)
+      if [[ \"\$*\" == *\"-f body=\"* ]]; then
+        printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
+        exit 0
+      fi
+      printf \"[]\n\"
+      ;;
+  esac
+fi
+exit 0"
+}
+
+# Fake opencode run that exits 0, optionally capturing the args.
+fake_review_opencode_success() {
+  local capture="${1:-}"
+  fake_command opencode "if [[ \"\$1\" == \"run\" ]]; then
+  ${capture:+printf \"%s\n\" \"\$*\" > \"$capture\"}
+  exit 0
+fi
+exit 1"
+}
+
+# Fake opencode run that exits 1, optionally appending a marker per launch.
+fake_review_opencode_fail() {
+  local log="${1:-}"
+  fake_command opencode "if [[ \"\$1\" == \"run\" ]]; then
+  ${log:+printf \"x\n\" >> \"$log\"}
+  exit 1
+fi
+exit 1"
+}
+
 STATE_DIR=""
 TEST_STATE=""
 WT_PARENT=""
@@ -807,8 +850,9 @@ exit 0'
 test_pr_latest_comment_at_returns_newest() {
   fake_command gh 'if [[ "$1" == "api" ]]; then
   case "$2" in
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\"},{\"created_at\":\"2026-08-13T00:07:00Z\"}]\n" ;;
-    *issues/*) printf "[{\"created_at\":\"2026-08-13T00:06:00Z\"}]\n" ;;
+    *reviews*) printf "[]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"body\":\"a\"},{\"created_at\":\"2026-08-13T00:07:00Z\",\"body\":\"b\"}]\n" ;;
+    *issues/*comments*) printf "[{\"created_at\":\"2026-08-13T00:06:00Z\",\"body\":\"c\"}]\n" ;;
   esac
 fi
 exit 0'
@@ -818,12 +862,50 @@ exit 0'
 test_pr_latest_comment_at_prefers_general_when_newer() {
   fake_command gh 'if [[ "$1" == "api" ]]; then
   case "$2" in
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\"}]\n" ;;
-    *issues/*) printf "[{\"created_at\":\"2026-08-13T00:09:00Z\"}]\n" ;;
+    *reviews*) printf "[]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"body\":\"a\"}]\n" ;;
+    *issues/*comments*) printf "[{\"created_at\":\"2026-08-13T00:09:00Z\",\"body\":\"b\"}]\n" ;;
   esac
 fi
 exit 0'
   assert_eq "newest comment across both surfaces wins" "2026-08-13T00:09:00Z" "$(orchestrator_pr_latest_comment_at 100)"
+}
+
+test_pr_latest_comment_at_includes_review_submission() {
+  fake_command gh 'if [[ "$1" == "api" ]]; then
+  case "$2" in
+    *reviews*) printf "[{\"submitted_at\":\"2026-08-13T00:08:00Z\",\"body\":\"summary review\"}]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"body\":\"a\"}]\n" ;;
+    *issues/*comments*) printf "[]\n" ;;
+  esac
+fi
+exit 0'
+  assert_eq "top-level review submission counts toward the watermark" "2026-08-13T00:08:00Z" "$(orchestrator_pr_latest_comment_at 100)"
+}
+
+test_pr_latest_comment_at_ignores_pending_reviews() {
+  fake_command gh 'if [[ "$1" == "api" ]]; then
+  case "$2" in
+    *reviews*) printf "[{\"submitted_at\":null,\"body\":\"draft review\"}]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"body\":\"a\"}]\n" ;;
+    *issues/*comments*) printf "[]\n" ;;
+  esac
+fi
+exit 0'
+  assert_eq "pending review does not move the watermark" "2026-08-13T00:05:00Z" "$(orchestrator_pr_latest_comment_at 100)"
+}
+
+test_pr_latest_comment_at_excludes_bot_comments() {
+  local footer="_Created by carbotracker's agent skills._"
+  fake_command gh "if [[ \"\$1\" == \"api\" ]]; then
+  case \"\$2\" in
+    *reviews*) printf \"[]\n\" ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"2026-08-13T00:07:00Z\\\",\\\"body\\\":\\\"human review comment\\\"},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\"}]\n\" ;;
+    *issues/*comments*) printf \"[{\\\"created_at\\\":\\\"2026-08-13T00:08:00Z\\\",\\\"body\\\":\\\"$footer\\\"}]\n\" ;;
+  esac
+fi
+exit 0"
+  assert_eq "agent replies and notices never move the watermark" "2026-08-13T00:07:00Z" "$(orchestrator_pr_latest_comment_at 100)"
 }
 
 test_pr_latest_comment_at_none() {
@@ -835,8 +917,9 @@ exit 0'
 test_pr_latest_comment_at_one_surface_empty() {
   fake_command gh 'if [[ "$1" == "api" ]]; then
   case "$2" in
+    *reviews*) printf "[]\n" ;;
     *pulls/*) printf "[]\n" ;;
-    *issues/*) printf "[{\"created_at\":\"2026-08-13T00:09:00Z\"}]\n" ;;
+    *issues/*comments*) printf "[{\"created_at\":\"2026-08-13T00:09:00Z\",\"body\":\"a\"}]\n" ;;
   esac
 fi
 exit 0'
@@ -880,24 +963,8 @@ test_state_mark_reviewed_touches_only_matching() {
 
 test_review_round_success_updates_state() {
   state_setup
-  fake_command gh 'if [[ "$1" == "api" ]]; then
-  case "$2" in
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:07:00Z\"}]\n" ;;
-    *issues/*comments*)
-      if [[ "$*" == *"-f body="* ]]; then
-        printf "%s\n" "$*" > "$FAKE_PR_COMMENT_ARGS"
-      else
-        printf "[{\"created_at\":\"2026-08-13T00:07:00Z\"}]\n"
-      fi
-      ;;
-  esac
-fi
-exit 0'
-  fake_command opencode 'if [[ "$1" == "run" ]]; then
-  printf "%s\n" "$*" > "$FAKE_OPENCODE_ARGS"
-  exit 0
-fi
-exit 1'
+  fake_review_gh
+  fake_review_opencode_success "$STATE_DIR/opencode_args"
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
@@ -916,20 +983,8 @@ exit 1'
 
 test_review_round_failure_increments_and_posts_notice() {
   state_setup
-  fake_command gh 'if [[ "$1" == "api" ]]; then
-  case "$2" in
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:07:00Z\"}]\n" ;;
-    *issues/*comments*)
-      if [[ "$*" == *"-f body="* ]]; then
-        printf "%s\n" "$*" > "$FAKE_PR_COMMENT_ARGS"
-      else
-        printf "[]\n"
-      fi
-      ;;
-  esac
-fi
-exit 0'
-  fake_command opencode 'exit 1'
+  fake_review_gh
+  fake_review_opencode_fail
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
@@ -951,20 +1006,8 @@ exit 0'
 
 test_review_round_third_failure_pauses_and_consumes() {
   state_setup
-  fake_command gh 'if [[ "$1" == "api" ]]; then
-  case "$2" in
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:07:00Z\"}]\n" ;;
-    *issues/*comments*)
-      if [[ "$*" == *"-f body="* ]]; then
-        printf "%s\n" "$*" > "$FAKE_PR_COMMENT_ARGS"
-      else
-        printf "[]\n"
-      fi
-      ;;
-  esac
-fi
-exit 0'
-  fake_command opencode 'exit 1'
+  fake_review_gh
+  fake_review_opencode_fail
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
@@ -984,17 +1027,8 @@ exit 0'
 
 test_review_round_after_pause_starts_fresh_budget() {
   state_setup
-  fake_command gh 'if [[ "$1" == "api" ]]; then
-  case "$2" in
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T01:00:00Z\"}]\n" ;;
-    *issues/*comments*) printf "[]\n" ;;
-  esac
-fi
-exit 0'
-  fake_command opencode 'if [[ "$1" == "run" ]]; then
-  exit 0
-fi
-exit 1'
+  fake_review_gh "2026-08-13T01:00:00Z"
+  fake_review_opencode_success
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
@@ -1024,18 +1058,8 @@ test_state_set_review_failures_updates() {
 
 test_review_poll_launches_round_on_new_comment() {
   state_setup
-  fake_command gh 'if [[ "$1" == "api" ]]; then
-  case "$2" in
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:07:00Z\"}]\n" ;;
-    *issues/*) printf "[]\n" ;;
-  esac
-fi
-exit 0'
-  fake_command opencode 'if [[ "$1" == "run" ]]; then
-  printf "%s\n" "$*" > "$FAKE_OPENCODE_ARGS"
-  exit 0
-fi
-exit 1'
+  fake_review_gh
+  fake_review_opencode_success "$STATE_DIR/opencode_args"
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
@@ -1052,18 +1076,8 @@ exit 1'
 
 test_review_poll_skips_when_no_new_comment() {
   state_setup
-  fake_command gh 'if [[ "$1" == "api" ]]; then
-  case "$2" in
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:07:00Z\"}]\n" ;;
-    *issues/*) printf "[]\n" ;;
-  esac
-fi
-exit 0'
-  fake_command opencode 'if [[ "$1" == "run" ]]; then
-  printf "%s\n" "$*" > "$FAKE_OPENCODE_ARGS"
-  exit 0
-fi
-exit 1'
+  fake_review_gh
+  fake_review_opencode_success "$STATE_DIR/opencode_args"
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
@@ -1094,7 +1108,7 @@ exit 1'
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_poll 2>&1)"
   assert_eq "poll does not launch without a session" "no" "$([[ -f "$FAKE_OPENCODE_ARGS" ]] && echo yes || echo no)"
-  assert_contains "logs skip for missing session" "no session" "$output"
+  assert_contains "logs missing-session handling" "missing-session notice" "$output"
   unset FAKE_OPENCODE_ARGS
   state_teardown
 }
@@ -1141,23 +1155,8 @@ exit 1'
 
 test_review_poll_retries_failed_round() {
   state_setup
-  fake_command gh 'if [[ "$1" == "api" ]]; then
-  case "$2" in
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:07:00Z\"}]\n" ;;
-    *issues/*comments*)
-      if [[ "$*" == *"-f body="* ]]; then
-        exit 0
-      fi
-      printf "[]\n"
-      ;;
-  esac
-fi
-exit 0'
-  fake_command opencode 'if [[ "$1" == "run" ]]; then
-  printf "x\n" >> "$FAKE_OPENCODE_LOG"
-  exit 1
-fi
-exit 1'
+  fake_review_gh
+  fake_review_opencode_fail "$STATE_DIR/opencode_log"
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
@@ -1174,26 +1173,12 @@ exit 1'
 
 test_review_poll_pauses_after_three_failures() {
   state_setup
-  fake_command gh 'if [[ "$1" == "api" ]]; then
-  case "$2" in
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:07:00Z\"}]\n" ;;
-    *issues/*comments*)
-      if [[ "$*" == *"-f body="* ]]; then
-        exit 0
-      fi
-      printf "[]\n"
-      ;;
-  esac
-fi
-exit 0'
-  fake_command opencode 'if [[ "$1" == "run" ]]; then
-  printf "x\n" >> "$FAKE_OPENCODE_LOG"
-  exit 1
-fi
-exit 1'
+  fake_review_gh
+  fake_review_opencode_fail "$STATE_DIR/opencode_log"
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment_log"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_poll 2>/dev/null
@@ -1203,24 +1188,18 @@ exit 1'
   assert_eq "three failed rounds run before pausing" "3" "$(wc -l < "$FAKE_OPENCODE_LOG")"
   assert_eq "failure counter caps at three" "3" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   assert_eq "third failure consumes the comment watermark" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
-  unset FAKE_OPENCODE_LOG
+  assert_eq "one failure notice per failed round" "3" "$(grep -c -- '-f body=' "$FAKE_PR_COMMENT_ARGS")"
+  assert_eq "notice names attempt one" "1" "$(grep -c 'attempt 1/3' "$FAKE_PR_COMMENT_ARGS")"
+  assert_eq "notice names attempt two" "1" "$(grep -c 'attempt 2/3' "$FAKE_PR_COMMENT_ARGS")"
+  assert_eq "notice names attempt three" "1" "$(grep -c 'attempt 3/3' "$FAKE_PR_COMMENT_ARGS")"
+  unset FAKE_OPENCODE_LOG FAKE_PR_COMMENT_ARGS
   state_teardown
 }
 
 test_review_poll_resumes_after_pause_on_new_comment() {
   state_setup
-  fake_command gh 'if [[ "$1" == "api" ]]; then
-  case "$2" in
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T01:00:00Z\"}]\n" ;;
-    *issues/*) printf "[]\n" ;;
-  esac
-fi
-exit 0'
-  fake_command opencode 'if [[ "$1" == "run" ]]; then
-  printf "x\n" >> "$FAKE_OPENCODE_LOG"
-  exit 0
-fi
-exit 1'
+  fake_review_gh "2026-08-13T01:00:00Z"
+  fake_review_opencode_success "$STATE_DIR/opencode_log"
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
@@ -1237,21 +1216,8 @@ exit 1'
 
 test_poll_once_runs_review_loop() {
   state_setup
-  fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
-  printf "[]\n"
-elif [[ "$1" == "api" ]]; then
-  case "$2" in
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:07:00Z\"}]\n" ;;
-    *issues/*) printf "[]\n" ;;
-    *) printf "0\n" ;;
-  esac
-fi
-exit 0'
-  fake_command opencode 'if [[ "$1" == "run" ]]; then
-  printf "%s\n" "$*" > "$FAKE_OPENCODE_ARGS"
-  exit 0
-fi
-exit 1'
+  fake_review_gh
+  fake_review_opencode_success "$STATE_DIR/opencode_args"
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
@@ -1263,6 +1229,61 @@ exit 1'
   assert_eq "poll once updates last comment in state" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_contains "logs review round" "review #123: launching /review-comments" "$output"
   unset FAKE_OPENCODE_ARGS
+  state_teardown
+}
+
+test_state_add_creates_review_notice_false() {
+  state_setup
+  orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$WT_PARENT/123-foo"
+  assert_eq "new entry tracks notice flag as false" "false" "$(jq -r '.[0].reviewNoticePosted' "$TEST_STATE")"
+  state_teardown
+}
+
+test_state_mark_notice_posted_updates() {
+  state_setup
+  orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$WT_PARENT/123-foo"
+  orchestrator_state_mark_notice_posted "$TEST_STATE" 123
+  assert_eq "mark notice sets the flag" "true" "$(jq -r '.[0].reviewNoticePosted' "$TEST_STATE")"
+  state_teardown
+}
+
+test_review_poll_posts_notice_when_no_session() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "api" ]]; then
+  printf "%s\n" "$*" > "$FAKE_PR_COMMENT_ARGS"
+fi
+exit 0'
+  fake_command opencode 'exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 "" 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_poll 2>&1)"
+  assert_contains "missing-session notice posted on the PR" "no opencode session" "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  assert_eq "notice posted flag stored" "true" "$(jq -r '.[0].reviewNoticePosted' "$TEST_STATE")"
+  assert_contains "logs the notice" "posted missing-session notice" "$output"
+  unset FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_poll_posts_notice_only_once() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "api" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_PR_COMMENT_LOG"
+fi
+exit 0'
+  fake_command opencode 'exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_PR_COMMENT_LOG="$STATE_DIR/pr_comment_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 "" 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_poll 2>/dev/null
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_poll 2>/dev/null
+  assert_eq "notice posted exactly once" "1" "$(grep -c -- '-f body=' "$FAKE_PR_COMMENT_LOG")"
+  unset FAKE_PR_COMMENT_LOG
   state_teardown
 }
 
@@ -1344,9 +1365,11 @@ test_state_remove_removes_entry
 test_state_active_count_counts_implementing_only
 test_state_add_creates_last_comment_null
 test_state_add_creates_review_failures_zero
+test_state_add_creates_review_notice_false
 test_state_mark_reviewed_sets_timestamp
 test_state_mark_reviewed_touches_only_matching
 test_state_set_review_failures_updates
+test_state_mark_notice_posted_updates
 
 test_config_defaults
 test_config_file_parsing
@@ -1369,6 +1392,9 @@ test_pr_number_for_branch
 test_pr_number_for_branch_missing
 test_pr_latest_comment_at_returns_newest
 test_pr_latest_comment_at_prefers_general_when_newer
+test_pr_latest_comment_at_includes_review_submission
+test_pr_latest_comment_at_ignores_pending_reviews
+test_pr_latest_comment_at_excludes_bot_comments
 test_pr_latest_comment_at_none
 test_pr_latest_comment_at_one_surface_empty
 test_pr_latest_comment_at_gh_error
@@ -1379,6 +1405,8 @@ test_review_round_after_pause_starts_fresh_budget
 test_review_poll_launches_round_on_new_comment
 test_review_poll_skips_when_no_new_comment
 test_review_poll_skips_entry_without_session
+test_review_poll_posts_notice_when_no_session
+test_review_poll_posts_notice_only_once
 test_review_poll_skips_entry_without_pr
 test_review_poll_ignores_implementing_phase
 test_review_poll_retries_failed_round

@@ -77,7 +77,7 @@ orchestrator_state_add() {
   state="$(orchestrator_state_load "$state_file")"
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   entry="$(jq -n --argjson ticket "$number" --arg branch "$branch" --arg worktree "$worktree" --arg started "$now" \
-    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, lastCommentAt: null, reviewFailures: 0, phase: "implementing", startedAt: $started}')"
+    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, lastCommentAt: null, reviewFailures: 0, reviewNoticePosted: false, phase: "implementing", startedAt: $started}')"
   state="$(printf '%s' "$state" | jq --argjson entry "$entry" '. + [$entry]')"
   orchestrator_state_write "$state_file" "$state"
 }
@@ -123,6 +123,15 @@ orchestrator_state_set_review_failures() {
   orchestrator_state_write "$state_file" "$state"
 }
 
+orchestrator_state_mark_notice_posted() {
+  local state_file="$1" number="$2"
+  local state
+  state="$(orchestrator_state_load "$state_file")"
+  state="$(printf '%s' "$state" | jq --argjson n "$number" \
+    '(.[] | select(.ticket == $n)) |= (.reviewNoticePosted = true)')"
+  orchestrator_state_write "$state_file" "$state"
+}
+
 orchestrator_claim() {
   local number="$1" branch="$2" worktree="$3"
   # The claim is the GitHub-side label flip: dropping ready-for-agent takes
@@ -150,21 +159,29 @@ orchestrator_pr_number_for_branch() {
 }
 
 orchestrator_pr_latest_comment_at() {
-  local pr="$1" review general latest
-  # Inline diff threads live under pulls/<n>/comments, general comments on the
-  # PR conversation under issues/<n>/comments. Both are review surfaces; the
-  # newest timestamp across them is the last-known-comment watermark. ISO-8601
-  # timestamps sort lexically, so a plain > comparison works.
-  review="$(gh api "repos/{owner}/{repo}/pulls/$pr/comments" 2>/dev/null | jq -r '[.[].created_at] | max // empty' 2>/dev/null || true)"
-  general="$(gh api "repos/{owner}/{repo}/issues/$pr/comments" 2>/dev/null | jq -r '[.[].created_at] | max // empty' 2>/dev/null || true)"
-  latest="$review"
+  local pr="$1" me inline reviews general latest
+  # Review surfaces: inline threads (pulls/<n>/comments), top-level review
+  # submissions (pulls/<n>/reviews), and general comments on the PR
+  # conversation (issues/<n>/comments). The newest non-bot timestamp across
+  # them is the last-known-comment watermark. Comments and reviews authored by
+  # the pipeline carry the AI-source footer, so they are filtered out: the
+  # agent's own replies never re-trigger the loop, and a review that arrives
+  # mid-round stays visible. ISO-8601 timestamps sort lexically.
+  me="_Created by carbotracker's agent skills._"
+  inline="$(gh api "repos/{owner}/{repo}/pulls/$pr/comments" 2>/dev/null | jq -r --arg me "$me" '[.[] | select((.body // "") | contains($me) | not) | .created_at] | max // empty' 2>/dev/null || true)"
+  reviews="$(gh api "repos/{owner}/{repo}/pulls/$pr/reviews" 2>/dev/null | jq -r --arg me "$me" '[.[] | select(.submitted_at != null) | select((.body // "") | contains($me) | not) | .submitted_at] | max // empty' 2>/dev/null || true)"
+  general="$(gh api "repos/{owner}/{repo}/issues/$pr/comments" 2>/dev/null | jq -r --arg me "$me" '[.[] | select((.body // "") | contains($me) | not) | .created_at] | max // empty' 2>/dev/null || true)"
+  latest="$inline"
+  if [[ -n "$reviews" && ( -z "$latest" || "$reviews" > "$latest" ) ]]; then
+    latest="$reviews"
+  fi
   if [[ -n "$general" && ( -z "$latest" || "$general" > "$latest" ) ]]; then
     latest="$general"
   fi
   printf '%s' "$latest"
 }
 
-orchestrator_pr_comment() {
+orchestrator_pr_post_comment() {
   local pr="$1" body="$2"
   gh api "repos/{owner}/{repo}/issues/$pr/comments" -f body="$body" >/dev/null 2>&1
 }
@@ -194,7 +211,7 @@ orchestrator_review_round() {
   body="Automated review round failed (attempt $failures/$retries) on PR #$pr_number. The orchestrator will retry.
 ---
 _Created by carbotracker's agent skills._"
-  if orchestrator_pr_comment "$pr_number" "$body"; then
+  if orchestrator_pr_post_comment "$pr_number" "$body"; then
     orchestrator_log "review #$number: posted failure notice (attempt $failures/$retries) on PR #$pr_number"
   else
     orchestrator_log "WARNING: failed to post failure notice on PR #$pr_number"
@@ -212,7 +229,7 @@ _Created by carbotracker's agent skills._"
 }
 
 orchestrator_review_poll() {
-  local line number pr_number session_id worktree last_comment_at latest
+  local line number pr_number session_id worktree last_comment_at latest notice_posted
   while IFS= read -r line; do
     number="$(printf '%s' "$line" | jq -r '.ticket')"
     pr_number="$(printf '%s' "$line" | jq -r '.prNumber')"
@@ -225,7 +242,18 @@ orchestrator_review_poll() {
       continue
     fi
     if [[ -z "$session_id" || "$session_id" == "null" ]]; then
-      orchestrator_log "skip review #$number: no session recorded"
+      # No session means the agent cannot resume with full context. Tell
+      # Steffen once so the stale PR is visible, then stay quiet.
+      notice_posted="$(printf '%s' "$line" | jq -r '.reviewNoticePosted // false')"
+      if [[ "$notice_posted" != "true" ]]; then
+        orchestrator_pr_post_comment "$pr_number" "Cannot auto-respond to reviews on PR #$pr_number: no opencode session was recorded for ticket #$number. A maintainer should handle this PR manually.
+---
+_Created by carbotracker's agent skills._"
+        orchestrator_state_mark_notice_posted "$ORCHESTRATOR_STATE_FILE" "$number"
+        orchestrator_log "review #$number: posted missing-session notice on PR #$pr_number"
+      else
+        orchestrator_log "skip review #$number: no session recorded (notice already posted)"
+      fi
       continue
     fi
 

@@ -40,22 +40,32 @@ Each poll, after claiming work, the orchestrator walks every state entry in
 `awaiting review` that has a PR number and a session id:
 
 - It queries the PR's review surfaces — inline threads
-  (`pulls/<n>/comments`) and general comments (`issues/<n>/comments`) — and
-  takes the newest `created_at` across both as the latest comment timestamp.
+  (`pulls/<n>/comments`), top-level review submissions (`pulls/<n>/reviews`),
+  and general comments (`issues/<n>/comments`) — and takes the newest
+  non-pipeline timestamp as the latest comment timestamp. Comments and
+  reviews carrying the `_Created by carbotracker's agent skills._` footer are
+  the orchestrator's own output and are excluded from the watermark, so the
+  agent's replies and the failure notices can never re-trigger the loop.
 - If that timestamp is newer than the entry's `lastCommentAt`, it launches
   `opencode run --auto --session <sessionId> "/review-comments on PR #<n>"`
   in the worktree — the same session that implemented the ticket, so the
   agent keeps full context.
-- On success the watermark advances to the newest comment (which includes the
-  agent's own replies, so the round never re-triggers on itself) and the
-  failure counter resets.
+- On success the watermark advances to the newest human comment (the agent's
+  own replies are filtered out), and the failure counter resets. A review
+  that arrived mid-round is newer than the trigger, so it is seen on the
+  next poll.
 - On failure the orchestrator logs the error, increments `reviewFailures`,
   and posts a visible notice on the PR — "Automated review round failed
   (attempt N/R)". The watermark stays put, so the same round is retried on
   the next poll (self-healing).
 - After `ORCHESTRATOR_REVIEW_RETRIES` consecutive failures the watermark is
-  advanced anyway and polling pauses: the PR stays stale until a human
-  intervenes. A newer human comment on the PR starts a fresh retry budget.
+  advanced anyway and polling pauses: the PR stays stale until someone
+  intervenes. A newer comment on the PR (the failure notices don't count,
+  they are filtered) starts a fresh retry budget.
+- An entry in `awaiting review` without a session id can never resume with
+  full context; the orchestrator posts a one-time notice on the PR
+  (tracked via `reviewNoticePosted`) so the stale PR is visible to a
+  maintainer.
 
 ## State file
 
@@ -73,23 +83,25 @@ Active tickets live in a single JSON array, written atomically
     "prNumber": 234,
     "lastCommentAt": "2026-08-13T00:07:00Z",
     "reviewFailures": 0,
+    "reviewNoticePosted": false,
     "phase": "awaiting review",
     "startedAt": "2026-08-13T00:07:00Z"
   }
 ]
 ```
 
-| Field            | Meaning                                                     |
-| ---------------- | ----------------------------------------------------------- |
-| `ticket`         | GitHub issue number being implemented                       |
-| `branch`         | `ticket/<issue>-<slug>` branch the work happens on          |
-| `worktree`       | Absolute path of the git worktree for that branch           |
-| `sessionId`      | opencode session id for the run (`null` until it exits)     |
-| `prNumber`       | PR opened for the branch (`null` until it exists)           |
-| `lastCommentAt`  | Newest comment timestamp handled on the PR (`null` = never) |
-| `reviewFailures` | Consecutive failed review rounds (resets on success)        |
-| `phase`          | `implementing` or `awaiting review`                         |
-| `startedAt`      | UTC timestamp of the claim                                  |
+| Field                | Meaning                                                           |
+| -------------------- | ----------------------------------------------------------------- |
+| `ticket`             | GitHub issue number being implemented                             |
+| `branch`             | `ticket/<issue>-<slug>` branch the work happens on                |
+| `worktree`           | Absolute path of the git worktree for that branch                 |
+| `sessionId`          | opencode session id for the run (`null` until it exits)           |
+| `prNumber`           | PR opened for the branch (`null` until it exists)                 |
+| `lastCommentAt`      | Newest human comment timestamp handled on the PR (`null` = never) |
+| `reviewFailures`     | Consecutive failed review rounds (resets on success)              |
+| `reviewNoticePosted` | Whether the missing-session notice was already posted on the PR   |
+| `phase`              | `implementing` or `awaiting review`                               |
+| `startedAt`          | UTC timestamp of the claim                                        |
 
 ## Data flow per poll
 
@@ -110,7 +122,7 @@ flowchart TD
     L --> M[gh issue comment: Started implementation. PR #N created.]
     F -- failure --> N[un-claim + remove worktree/branch, retry next poll]
     M --> O[review loop: walk awaiting-review entries]
-    O --> P[gh api pulls/N/comments + issues/N/comments → newest created_at]
+    O --> P[gh api pulls/N/comments + pulls/N/reviews + issues/N/comments → newest non-bot timestamp]
     P --> Q{newer than lastCommentAt?}
     Q -- no --> O
     Q -- yes --> R[opencode run --auto --session S /review-comments on PR #N]
@@ -157,10 +169,13 @@ Follow the daemon with `journalctl --user -u carbotracker-orchestrator -f`.
   only a worktree this run actually created (`CT_WORKTREE_CREATED`) is
   removed, so a parallel orchestrator that loses the claim race never deletes
   the winner's worktree.
-- Review detection compares strictly against the watermark, and the watermark
-  advances past the agent's own replies after a round, so a successful round
-  never re-triggers on itself. A failed round keeps the watermark in place
-  so the same review is retried — capped by `ORCHESTRATOR_REVIEW_RETRIES`,
-  after which the orchestrator backs off until a human comments or merges.
+- Review detection compares strictly against the watermark. The watermark is
+  the newest comment that is **not** the pipeline's own output — comments and
+  reviews carrying the `_Created by carbotracker's agent skills._` footer are
+  filtered out — so a successful round never re-triggers on itself while a
+  review that lands mid-round still does. A failed round keeps the watermark
+  in place so the same review is retried — capped by
+  `ORCHESTRATOR_REVIEW_RETRIES`, after which the orchestrator backs off until
+  a new comment appears or the PR is merged.
 - `orchestrator_log` writes to stderr: several helpers return their value on
   stdout inside `$(...)`, so log lines must never land there.
