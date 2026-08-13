@@ -1,7 +1,15 @@
 import { DOCUMENT } from '@angular/common';
 import { inject, Injectable } from '@angular/core';
 import { Store } from '@ngrx/store';
-import { combineLatest, map, Observable, shareReplay, tap } from 'rxjs';
+import {
+  combineLatest,
+  fromEvent,
+  map,
+  Observable,
+  shareReplay,
+  startWith,
+  tap,
+} from 'rxjs';
 import { ThemePreference } from '../features/settings/theme-preference.model';
 import { settingsFeature } from './app.reducer';
 
@@ -53,15 +61,10 @@ export class ThemeApplicationService {
   }
 
   private createSystemPrefersDark$(): Observable<boolean> {
-    return new Observable<boolean>((subscriber) => {
-      const mediaQueryList = window.matchMedia(PREFERS_COLOR_SCHEME_DARK);
-      const onChange = (event: MediaQueryListEvent) =>
-        subscriber.next(event.matches);
-
-      subscriber.next(mediaQueryList.matches);
-      mediaQueryList.addEventListener('change', onChange);
-
-      return () => mediaQueryList.removeEventListener('change', onChange);
-    });
+    const mediaQueryList = window.matchMedia(PREFERS_COLOR_SCHEME_DARK);
+    return fromEvent<MediaQueryListEvent>(mediaQueryList, 'change').pipe(
+      map((event) => event.matches),
+      startWith(mediaQueryList.matches),
+    );
   }
 }
