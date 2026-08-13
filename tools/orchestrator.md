@@ -42,15 +42,15 @@ Active tickets live in a single JSON array, written atomically
 ]
 ```
 
-Field            | Meaning
------------------|--------------------------------------------------------
-`ticket`         | GitHub issue number being implemented
-`branch`         | `ticket/<issue>-<slug>` branch the work happens on
-`worktree`       | Absolute path of the git worktree for that branch
-`sessionId`      | opencode session id for the run (`null` until it exits)
-`prNumber`       | PR opened for the branch (`null` until it exists)
-`phase`          | `implementing` or `awaiting review`
-`startedAt`      | UTC timestamp of the claim
+| Field       | Meaning                                                 |
+| ----------- | ------------------------------------------------------- |
+| `ticket`    | GitHub issue number being implemented                   |
+| `branch`    | `ticket/<issue>-<slug>` branch the work happens on      |
+| `worktree`  | Absolute path of the git worktree for that branch       |
+| `sessionId` | opencode session id for the run (`null` until it exits) |
+| `prNumber`  | PR opened for the branch (`null` until it exists)       |
+| `phase`     | `implementing` or `awaiting review`                     |
+| `startedAt` | UTC timestamp of the claim                              |
 
 ## Data flow per poll
 
@@ -80,13 +80,13 @@ opened it hands off to a human.
 Sourced from `ct-orchestrator.conf` (environment variables win over the conf
 file, which wins over defaults):
 
-| Variable                              | Default                                              |
-|---------------------------------------|------------------------------------------------------|
-| `ORCHESTRATOR_POLL_INTERVAL_SECONDS`  | `300`                                                |
-| `ORCHESTRATOR_CONCURRENCY_CAP`        | `3`                                                  |
-| `ORCHESTRATOR_ISSUE_LABELS`           | `ready-for-agent,ticket`                             |
-| `ORCHESTRATOR_STATE_FILE`             | `$HOME/.local/state/carbotracker/orchestrator.json`  |
-| `ORCHESTRATOR_WORKTREE_PARENT`        | `$HOME/git/worktrees/carbotracker`                   |
+| Variable                             | Default                                             |
+| ------------------------------------ | --------------------------------------------------- |
+| `ORCHESTRATOR_POLL_INTERVAL_SECONDS` | `300`                                               |
+| `ORCHESTRATOR_CONCURRENCY_CAP`       | `3`                                                 |
+| `ORCHESTRATOR_ISSUE_LABELS`          | `ready-for-agent,ticket`                            |
+| `ORCHESTRATOR_STATE_FILE`            | `$HOME/.local/state/carbotracker/orchestrator.json` |
+| `ORCHESTRATOR_WORKTREE_PARENT`       | `$HOME/git/worktrees/carbotracker`                  |
 
 ## Running
 
