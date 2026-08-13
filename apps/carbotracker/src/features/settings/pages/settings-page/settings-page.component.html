@@ -1,23 +1,27 @@
 <ctui-toolbar title="Settings" subTitle="GENERAL"></ctui-toolbar>
 <mat-list>
-  @for (settingsItem of settingsItems; track settingsItem.icon) {
-    <mat-list-item>
-      <span matListItemIcon
-        ><mat-icon>{{ settingsItem.icon }}</mat-icon></span
-      >
-      @if (settingsItem.onToggle) {
-        <span class="list-item list-item-toggle">
-          <span class="list-item-name">{{ settingsItem.name }}</span>
-          <mat-slide-toggle
-            [checked]="settingsItem.checked$ | async"
-            (change)="settingsItem.onToggle($event.checked)"
-          ></mat-slide-toggle>
-        </span>
-      } @else {
-        <span class="list-item" (click)="settingsItem.onClick!()">{{
-          settingsItem.name
-        }}</span>
-      }
-    </mat-list-item>
-  }
+  <mat-list-item>
+    <span matListItemIcon><mat-icon>person</mat-icon></span>
+    <span class="list-item" (click)="onAccountClicked()">Account</span>
+  </mat-list-item>
+  <mat-list-item>
+    <span matListItemIcon><mat-icon>edit_attributes</mat-icon></span>
+    <span class="list-item" (click)="onInsulinToCarbRatiosClicked()"
+      >Insulin to carb ratios</span
+    >
+  </mat-list-item>
+  <mat-list-item>
+    <span matListItemIcon><mat-icon>dark_mode</mat-icon></span>
+    <span class="list-item list-item-toggle">
+      <span class="list-item-name">Dark theme</span>
+      <mat-slide-toggle
+        [checked]="darkThemeEnabled()"
+        (change)="onDarkThemeChanged($event.checked)"
+      ></mat-slide-toggle>
+    </span>
+  </mat-list-item>
+  <mat-list-item>
+    <span matListItemIcon><mat-icon>logout</mat-icon></span>
+    <span class="list-item" (click)="onLogoutClicked()">Logout</span>
+  </mat-list-item>
 </mat-list>

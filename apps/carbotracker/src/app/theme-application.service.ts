@@ -1,3 +1,4 @@
+import { DOCUMENT } from '@angular/common';
 import { inject, Injectable } from '@angular/core';
 import { Store } from '@ngrx/store';
 import { combineLatest, map, Observable, shareReplay, tap } from 'rxjs';
@@ -24,6 +25,7 @@ const resolveTheme = (
 
 @Injectable({ providedIn: 'root' })
 export class ThemeApplicationService {
+  private readonly document = inject(DOCUMENT);
   private readonly store = inject(Store);
   private readonly systemPrefersDark$ = this.createSystemPrefersDark$();
 
@@ -41,7 +43,7 @@ export class ThemeApplicationService {
     this.resolvedTheme$
       .pipe(
         tap((theme) => {
-          document.documentElement.classList.toggle(
+          this.document.documentElement.classList.toggle(
             DARK_THEME_CLASS,
             theme === 'dark',
           );
