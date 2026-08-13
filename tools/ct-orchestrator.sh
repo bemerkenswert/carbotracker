@@ -24,7 +24,9 @@ ORCHESTRATOR_WORKTREE_PARENT="${ENV_ORCHESTRATOR_WORKTREE_PARENT:-${ORCHESTRATOR
 ORCHESTRATOR_ISSUE_LABELS="${ENV_ORCHESTRATOR_ISSUE_LABELS:-${ORCHESTRATOR_ISSUE_LABELS:-ready-for-agent,ticket}}"
 
 orchestrator_log() {
-  printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"
+  # Logs go to stderr so functions that print a value on stdout (e.g. the
+  # state helpers or push_and_open_pr) never pollute it with log lines.
+  printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2
 }
 
 orchestrator_state_load() {
@@ -112,6 +114,32 @@ orchestrator_pr_number_for_branch() {
     | jq -r 'sort_by(.number) | reverse | .[0].number // empty' 2>/dev/null || true
 }
 
+orchestrator_push_and_open_pr() {
+  local number="$1" title="$2" branch="$3" worktree="$4"
+  local pr_number
+  orchestrator_log "pushing branch $branch for #$number"
+  # git push / gh pr create write progress and the PR url to stdout; this
+  # function's stdout is its return value, so route them to stderr.
+  if ! (cd "$worktree" && git push -u origin "$branch" >&2); then
+    orchestrator_log "ERROR: git push failed for #$number"
+    return 1
+  fi
+  pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+  if [[ -z "$pr_number" ]]; then
+    orchestrator_log "creating PR for #$number ($title)"
+    if ! gh pr create --base main --head "$branch" --title "Implement $title (#$number)" \
+        --body "Automated implementation of #$number.
+
+---
+_Created by carbotracker's agent skills._" >&2; then
+      orchestrator_log "ERROR: gh pr create failed for #$number"
+      return 1
+    fi
+    pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+  fi
+  printf '%s' "$pr_number"
+}
+
 orchestrator_cleanup_worktree() {
   local worktree="$1" branch="$2"
   git worktree remove --force "$worktree" 2>/dev/null || rm -rf "$worktree"
@@ -119,7 +147,7 @@ orchestrator_cleanup_worktree() {
 }
 
 orchestrator_implement() {
-  local number="$1" branch="$2" worktree="$3"
+  local number="$1" title="$2" branch="$3" worktree="$4"
   local session_title session_id pr_number
 
   orchestrator_log "implementing #$number: creating worktree $worktree (branch $branch)"
@@ -142,7 +170,10 @@ orchestrator_implement() {
   fi
 
   session_id="$(orchestrator_opencode_session_id "$session_title")"
-  pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+  if ! pr_number="$(orchestrator_push_and_open_pr "$number" "$title" "$branch" "$worktree")"; then
+    orchestrator_log "ERROR: push or PR creation failed for #$number"
+    return 1
+  fi
   orchestrator_state_complete "$ORCHESTRATOR_STATE_FILE" "$number" "$session_id" "$pr_number"
 
   orchestrator_log "completed #$number: session ${session_id:-<none>}, PR #${pr_number:-<none>}, phase awaiting review"
@@ -190,7 +221,7 @@ orchestrator_poll_once() {
     orchestrator_claim "$number" "$branch" "$worktree"
     active_count=$((active_count + 1))
 
-    if ! orchestrator_implement "$number" "$branch" "$worktree"; then
+    if ! orchestrator_implement "$number" "$title" "$branch" "$worktree"; then
       orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
       orchestrator_log "removed #$number from state after failed implementation"
       orchestrator_cleanup_worktree "$worktree" "$branch"

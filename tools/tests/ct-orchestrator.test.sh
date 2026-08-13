@@ -63,10 +63,13 @@ fake_teardown() {
   FAKE_DIR=""
 }
 
-# Fake a successful worktree-add (creates the dir) and npm ci.
+# Fake a successful worktree-add (creates the dir) and npm ci. When
+# FAKE_GIT_PUSH_FILE is set, the push invocation is captured to it.
 fake_worktree_npm() {
   fake_command git 'if [[ "$1" == "worktree" && "$2" == "add" ]]; then
   mkdir -p "$3"
+elif [[ "$1" == "push" && -n "${FAKE_GIT_PUSH_FILE:-}" ]]; then
+  printf "%s\n" "$*" > "$FAKE_GIT_PUSH_FILE"
 fi
 exit 0'
   fake_command npm 'exit 0'
@@ -377,7 +380,7 @@ elif [[ "$1" == "issue" && "$2" == "view" ]]; then
   esac
 fi'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "claims all unblocked candidates" "2" "$(jq 'length' "$TEST_STATE")"
   assert_eq "claims first ticket number" "10" "$(jq -r '.[0].ticket' "$TEST_STATE")"
   assert_eq "claims second ticket number" "42" "$(jq -r '.[1].ticket' "$TEST_STATE")"
@@ -404,7 +407,7 @@ elif [[ "$1" == "issue" && "$2" == "view" ]]; then
 fi'
   orchestrator_state_add "$TEST_STATE" 10 ticket/10-alpha "$WT_PARENT/10-alpha"
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "does not re-claim an active ticket" "2" "$(jq 'length' "$TEST_STATE")"
   assert_contains "logs skip of claimed ticket" "skip #10 (Alpha): already claimed" "$output"
   state_teardown
@@ -421,7 +424,7 @@ elif [[ "$1" == "api" ]]; then
   esac
 fi'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "only claims unblocked candidate" "1" "$(jq 'length' "$TEST_STATE")"
   assert_eq "claims the unblocked ticket" "42" "$(jq -r '.[0].ticket' "$TEST_STATE")"
   assert_contains "logs skip of blocked ticket" "skip #10 (Alpha): blocked" "$output"
@@ -436,7 +439,7 @@ elif [[ "$1" == "api" ]]; then
   printf "0\n"
 fi'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=1 orchestrator_poll_once)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=1 orchestrator_poll_once 2>&1)"
   assert_eq "cap limits claims to first ticket" "1" "$(jq 'length' "$TEST_STATE")"
   assert_eq "cap claims the FIFO-first ticket" "10" "$(jq -r '.[0].ticket' "$TEST_STATE")"
   assert_eq "implemented ticket reaches awaiting review" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
@@ -454,7 +457,7 @@ fi
 exit 0'
   orchestrator_state_add "$TEST_STATE" 1 ticket/1-existing "$WT_PARENT/1-existing"
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=1 orchestrator_poll_once)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=1 orchestrator_poll_once 2>&1)"
   assert_eq "no new claims at full cap" "1" "$(jq 'length' "$TEST_STATE")"
   assert_contains "logs cap reached" "concurrency cap 1 reached" "$output"
   state_teardown
@@ -507,15 +510,109 @@ exit 0'
   local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
   export FAKE_COMMENT_FILE="$STATE_DIR/comment"
   export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
+  export FAKE_GIT_PUSH_FILE="$STATE_DIR/git_push"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "$branch" "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree"
   assert_eq "worktree dir created" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
   assert_eq "opencode run invoked with title and issue prompt" "run --auto --title carbotracker-ticket-10 /implement the issue is 10" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_contains "branch pushed to origin" "push -u origin ticket/10-alpha" "$(cat "$FAKE_GIT_PUSH_FILE")"
   assert_eq "state session id stored" "ses_abc" "$(jq -r '.[0].sessionId' "$TEST_STATE")"
   assert_eq "state pr number stored" "42" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
   assert_eq "phase transitions to awaiting review" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
   assert_contains "issue commented with pr number" "Started implementation. PR #42 created." "$(cat "$FAKE_COMMENT_FILE")"
-  unset FAKE_COMMENT_FILE FAKE_OPENCODE_ARGS
+  unset FAKE_COMMENT_FILE FAKE_OPENCODE_ARGS FAKE_GIT_PUSH_FILE
+  state_teardown
+}
+
+test_implement_opens_pr_when_none_exists() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  local n
+  n="$(cat "$FAKE_PR_COUNT" 2>/dev/null || echo 0)"
+  if [[ "$n" == "0" ]]; then
+    printf "1\n" > "$FAKE_PR_COUNT"
+    printf "[]\n"
+  else
+    printf "[{\"number\":50}]\n"
+  fi
+elif [[ "$1" == "pr" && "$2" == "create" ]]; then
+  printf "%s\n" "$*" > "$FAKE_PR_CREATE_ARGS"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  exit 0
+fi
+exit 0'
+  fake_worktree_npm
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"ses_1\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_PR_COUNT="$STATE_DIR/pr_count"
+  export FAKE_PR_CREATE_ARGS="$STATE_DIR/pr_create"
+  printf '0\n' > "$FAKE_PR_COUNT"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null
+  assert_contains "creates pr with base main" "--base main" "$(cat "$FAKE_PR_CREATE_ARGS")"
+  assert_contains "creates pr with head branch" "--head ticket/10-alpha" "$(cat "$FAKE_PR_CREATE_ARGS")"
+  assert_contains "creates pr with title" "Implement Alpha (#10)" "$(cat "$FAKE_PR_CREATE_ARGS")"
+  assert_eq "stores created pr number" "50" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
+  unset FAKE_PR_COUNT FAKE_PR_CREATE_ARGS
+  state_teardown
+}
+
+test_implement_fails_when_push_fails() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[]\n"
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  mkdir -p "$3"
+elif [[ "$1" == "push" ]]; then
+  exit 1
+fi
+exit 0'
+  fake_command npm 'exit 0'
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"s\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null 2>&1; then
+    fail "implement fails when git push fails"
+  else
+    pass "implement fails when git push fails"
+  fi
+  state_teardown
+}
+
+test_implement_fails_when_pr_create_fails() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[]\n"
+elif [[ "$1" == "pr" && "$2" == "create" ]]; then
+  exit 1
+fi
+exit 0'
+  fake_worktree_npm
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"s\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null 2>&1; then
+    fail "implement fails when gh pr create fails"
+  else
+    pass "implement fails when gh pr create fails"
+  fi
   state_teardown
 }
 
@@ -527,7 +624,7 @@ fi
 exit 0'
   local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
-  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "$branch" "$worktree" >/dev/null 2>&1; then
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null 2>&1; then
     fail "implement fails when worktree creation fails"
   else
     pass "implement fails when worktree creation fails"
@@ -544,7 +641,7 @@ exit 0'
   fake_command npm 'exit 1'
   local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
-  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "$branch" "$worktree" >/dev/null 2>&1; then
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null 2>&1; then
     fail "implement fails when npm ci fails"
   else
     pass "implement fails when npm ci fails"
@@ -562,7 +659,7 @@ exit 0'
   fake_command opencode 'exit 1'
   local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
-  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "$branch" "$worktree" >/dev/null 2>&1; then
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null 2>&1; then
     fail "implement fails when opencode run fails"
   else
     pass "implement fails when opencode run fails"
@@ -589,7 +686,7 @@ exit 0'
   export FAKE_COMMENT_FILE="$STATE_DIR/comment"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "$branch" "$worktree")"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)"
   assert_eq "pr number stored as null when no pr" "null" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
   assert_eq "no comment file written" "no" "$([[ -f "$FAKE_COMMENT_FILE" ]] && echo yes || echo no)"
   assert_contains "logs warning about missing pr" "no PR found" "$output"
@@ -614,7 +711,7 @@ fi
 exit 0'
   local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "$branch" "$worktree" >/dev/null
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null
   assert_eq "session id stored as null when not found" "null" "$(jq -r '.[0].sessionId' "$TEST_STATE")"
   assert_eq "pr number still stored" "42" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
   state_teardown
@@ -633,7 +730,7 @@ exit 0'
 fi
 exit 0'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "failed implementation leaves no state entry" "0" "$(jq 'length' "$TEST_STATE")"
   assert_contains "logs removal of failed ticket" "removed #10 from state" "$output"
   state_teardown
@@ -707,7 +804,7 @@ elif [[ "$1" == "issue" && "$2" == "view" ]]; then
   esac
 fi'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" bash "$ROOT/tools/ct-orchestrator.sh" once)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" bash "$ROOT/tools/ct-orchestrator.sh" once 2>&1)"
   assert_eq "once mode claims the ticket" "1" "$(jq 'length' "$TEST_STATE")"
   assert_eq "once mode completes the ticket" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
   assert_contains "once mode logs discovery" "poll:" "$output"
@@ -762,6 +859,9 @@ test_implement_fails_when_npm_ci_fails
 test_implement_fails_when_opencode_fails
 test_implement_no_pr_skips_comment
 test_implement_no_session_stores_null
+test_implement_opens_pr_when_none_exists
+test_implement_fails_when_push_fails
+test_implement_fails_when_pr_create_fails
 test_poll_once_claims_candidates
 test_poll_once_skips_claimed
 test_poll_once_skips_blocked
