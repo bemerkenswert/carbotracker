@@ -149,12 +149,15 @@ orchestrator_opencode_session_id() {
   local title="$1"
   opencode session list --format json 2>/dev/null \
     | jq -r --arg t "$title" \
-        '[.[] | select(.title == $t)] | sort_by(.created) | reverse | .[0].id // empty'
+        '[.[] | select(.title == $t)] | sort_by(.created) | reverse | .[0].id // empty' 2>/dev/null || true
 }
 
 orchestrator_pr_number_for_branch() {
   local branch="$1"
-  gh pr list --head "$branch" --json number 2>/dev/null \
+  # --state all so a merged or closed PR for the branch still counts: during
+  # crash recovery the orchestrator must never open a duplicate PR for a
+  # branch that already has one in any state.
+  gh pr list --head "$branch" --state all --json number 2>/dev/null \
     | jq -r 'sort_by(.number) | reverse | .[0].number // empty' 2>/dev/null || true
 }
 
@@ -342,6 +345,19 @@ _Created by carbotracker's agent skills._"; then
   done < <(orchestrator_awaiting_review_entries)
 }
 
+orchestrator_create_pr() {
+  local number="$1" title="$2" branch="$3"
+  orchestrator_log "creating PR for #$number ($title)"
+  if ! gh pr create --base main --head "$branch" --title "Implement $title (#$number)" \
+      --body "Automated implementation of #$number.
+
+---
+_Created by carbotracker's agent skills._" >&2; then
+    orchestrator_log "ERROR: gh pr create failed for #$number"
+    return 1
+  fi
+}
+
 orchestrator_push_and_open_pr() {
   local number="$1" title="$2" branch="$3" worktree="$4"
   local pr_number
@@ -354,13 +370,7 @@ orchestrator_push_and_open_pr() {
   fi
   pr_number="$(orchestrator_pr_number_for_branch "$branch")"
   if [[ -z "$pr_number" ]]; then
-    orchestrator_log "creating PR for #$number ($title)"
-    if ! gh pr create --base main --head "$branch" --title "Implement $title (#$number)" \
-        --body "Automated implementation of #$number.
-
----
-_Created by carbotracker's agent skills._" >&2; then
-      orchestrator_log "ERROR: gh pr create failed for #$number"
+    if ! orchestrator_create_pr "$number" "$title" "$branch"; then
       return 1
     fi
     pr_number="$(orchestrator_pr_number_for_branch "$branch")"
@@ -374,9 +384,72 @@ orchestrator_cleanup_worktree() {
   git branch -D "$branch" 2>/dev/null || true
 }
 
+orchestrator_run_opencode() {
+  local worktree="$1" number="$2" log_file="$3"
+  shift 3
+  local prompt="/implement the issue is $number"
+  if (cd "$worktree" && opencode run --auto "$@" "$prompt") 2>&1 | tee "$log_file"; then
+    return 0
+  fi
+  orchestrator_log "ERROR: opencode run failed for #$number (attempt 1); retrying with --continue"
+  if (cd "$worktree" && opencode run --auto --continue "$prompt") 2>&1 | tee -a "$log_file"; then
+    return 0
+  fi
+  orchestrator_log "ERROR: opencode run failed for #$number on the retry as well"
+  return 1
+}
+
+orchestrator_escalate_failure() {
+  local number="$1" branch="$2" worktree="$3" log_file="$4" reason="$5"
+  local tail snippet body
+  tail="$(tail -n 30 "$log_file" 2>/dev/null || true)"
+  snippet=""
+  if [[ -n "$tail" ]]; then
+    snippet="$(printf '\n```\n%s\n```' "$tail")"
+  fi
+  body="Automated implementation of #$number failed: $reason. Escalated to needs-triage for human review.
+${snippet}
+---
+_Created by carbotracker's agent skills._"
+  if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --remove-label ticket --add-label needs-triage \
+    && gh issue comment "$number" --body "$body"; then
+    orchestrator_prune_ticket "$number" "$branch" "$worktree"
+    orchestrator_log "escalated #$number to needs-triage after $reason; pruned worktree and removed from state"
+    return 0
+  fi
+  orchestrator_log "WARNING: failed to escalate #$number; leaving entry in state for the poll loop to un-claim"
+  return 1
+}
+
+orchestrator_state_complete_and_comment() {
+  local number="$1" session_id="$2" pr_number="$3"
+  orchestrator_state_complete "$ORCHESTRATOR_STATE_FILE" "$number" "$session_id" "$pr_number"
+  orchestrator_log "completed #$number: session ${session_id:-<none>}, PR #${pr_number:-<none>}, phase awaiting review"
+  if [[ -n "$pr_number" ]]; then
+    if gh issue comment "$number" --body "Started implementation. PR #$pr_number created."; then
+      orchestrator_log "commented on #$number: Started implementation. PR #$pr_number created."
+    else
+      orchestrator_log "WARNING: failed to comment on #$number"
+    fi
+  else
+    orchestrator_log "WARNING: no PR found for #$number; skipping issue comment"
+  fi
+}
+
+orchestrator_finish_implementation() {
+  local number="$1" title="$2" branch="$3" worktree="$4" session_title="$5"
+  local session_id pr_number
+  session_id="$(orchestrator_opencode_session_id "$session_title")"
+  if ! pr_number="$(orchestrator_push_and_open_pr "$number" "$title" "$branch" "$worktree")"; then
+    orchestrator_log "ERROR: push or PR creation failed for #$number"
+    return 1
+  fi
+  orchestrator_state_complete_and_comment "$number" "$session_id" "$pr_number"
+}
+
 orchestrator_implement() {
   local number="$1" title="$2" branch="$3" worktree="$4"
-  local session_title session_id pr_number
+  local session_title session_id pr_number log_file
 
   orchestrator_log "implementing #$number: creating worktree $worktree (branch $branch)"
   if ! ct_worktree_add "$worktree" "$branch"; then
@@ -391,29 +464,157 @@ orchestrator_implement() {
   fi
 
   session_title="carbotracker-ticket-$number"
+  log_file="$(mktemp "${TMPDIR:-/tmp}/carbotracker-opencode.XXXXXX")"
   orchestrator_log "launching opencode for #$number (title $session_title)"
-  if ! (cd "$worktree" && opencode run --auto --title "$session_title" "/implement the issue is $number"); then
-    orchestrator_log "ERROR: opencode run failed for #$number"
+  if ! orchestrator_run_opencode "$worktree" "$number" "$log_file" --title "$session_title"; then
+    orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "opencode exited non-zero twice"
+    rm -f "$log_file"
     return 1
   fi
+  rm -f "$log_file"
 
-  session_id="$(orchestrator_opencode_session_id "$session_title")"
-  if ! pr_number="$(orchestrator_push_and_open_pr "$number" "$title" "$branch" "$worktree")"; then
-    orchestrator_log "ERROR: push or PR creation failed for #$number"
+  orchestrator_finish_implementation "$number" "$title" "$branch" "$worktree" "$session_title"
+}
+
+# ---- Crash recovery ----
+
+orchestrator_branch_pushed() {
+  local branch="$1"
+  git ls-remote origin "refs/heads/$branch" 2>/dev/null | grep -q .
+}
+
+orchestrator_unpushed_commit_count() {
+  local worktree="$1" branch="$2"
+  local base="origin/main"
+  if git -C "$worktree" rev-parse --verify -q "refs/remotes/origin/$branch" >/dev/null 2>&1; then
+    base="refs/remotes/origin/$branch"
+  fi
+  git -C "$worktree" rev-list --count "$base..HEAD" 2>/dev/null || echo 0
+}
+
+orchestrator_worktree_has_work() {
+  local worktree="$1" branch="$2"
+  if [[ ! -d "$worktree" ]]; then
     return 1
   fi
-  orchestrator_state_complete "$ORCHESTRATOR_STATE_FILE" "$number" "$session_id" "$pr_number"
+  if ! git -C "$worktree" rev-parse --git-dir >/dev/null 2>&1; then
+    return 1
+  fi
+  if [[ -n "$(git -C "$worktree" status --porcelain 2>/dev/null)" ]]; then
+    return 0
+  fi
+  if [[ "$(orchestrator_unpushed_commit_count "$worktree" "$branch")" -gt 0 ]]; then
+    return 0
+  fi
+  return 1
+}
 
-  orchestrator_log "completed #$number: session ${session_id:-<none>}, PR #${pr_number:-<none>}, phase awaiting review"
-  if [[ -n "$pr_number" ]]; then
-    if gh issue comment "$number" --body "Started implementation. PR #$pr_number created."; then
-      orchestrator_log "commented on #$number: Started implementation. PR #$pr_number created."
-    else
-      orchestrator_log "WARNING: failed to comment on #$number"
-    fi
+orchestrator_resume_implementation() {
+  local number="$1" title="$2" branch="$3" worktree="$4" session_id="$5"
+  local session_title log_file run_flags
+  session_title="carbotracker-ticket-$number"
+  orchestrator_log "resuming implementation #$number in $worktree"
+
+  if [[ -n "$session_id" ]]; then
+    run_flags=(--session "$session_id")
   else
-    orchestrator_log "WARNING: no PR found for branch $branch on #$number; skipping issue comment"
+    run_flags=(--continue)
   fi
+  log_file="$(mktemp "${TMPDIR:-/tmp}/carbotracker-opencode.XXXXXX")"
+  if ! orchestrator_run_opencode "$worktree" "$number" "$log_file" "${run_flags[@]}"; then
+    orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "opencode exited non-zero twice while resuming"
+    rm -f "$log_file"
+    return 1
+  fi
+  rm -f "$log_file"
+
+  orchestrator_finish_implementation "$number" "$title" "$branch" "$worktree" "$session_title"
+}
+
+orchestrator_recover_pushed_branch() {
+  local number="$1" title="$2" branch="$3" worktree="$4" session_id="$5"
+  local pr_number
+  if [[ -z "$session_id" ]]; then
+    session_id="$(orchestrator_opencode_session_id "carbotracker-ticket-$number")"
+  fi
+  pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+  if [[ -z "$pr_number" ]]; then
+    if ! orchestrator_create_pr "$number" "$title" "$branch"; then
+      return 1
+    fi
+    pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+  fi
+  orchestrator_state_complete_and_comment "$number" "$session_id" "$pr_number"
+}
+
+orchestrator_drop_unrecoverable() {
+  local number="$1" branch="$2" worktree="$3"
+  orchestrator_cleanup_worktree "$worktree" "$branch"
+  if ! gh issue comment "$number" --body "The orchestrator found no recoverable work for this ticket after a restart. It has been cleaned up and removed from the pipeline. Re-tag with ready-for-agent to retry.
+---
+_Created by carbotracker's agent skills._"; then
+    orchestrator_log "WARNING: failed to comment on #$number; keeping entry to retry on the next restart"
+    return 1
+  fi
+  # Un-claim on GitHub: drop in-progress so the issue is no longer marked as
+  # being worked, but do not re-add ready-for-agent — the comment above is the
+  # handoff to a human, and an automatic re-claim could loop on a broken ticket.
+  gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" 2>/dev/null \
+    || orchestrator_log "WARNING: failed to remove $ORCHESTRATOR_IN_PROGRESS_LABEL from #$number"
+  orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
+  orchestrator_log "recovered #$number: nothing recoverable; cleaned up, removed from state"
+}
+
+orchestrator_reconcile() {
+  local line number title branch worktree session_id pr_number
+  orchestrator_log "reconciling state file against observable git facts"
+  while IFS= read -r line; do
+    number="$(printf '%s' "$line" | jq -r '.ticket')"
+    branch="$(printf '%s' "$line" | jq -r '.branch')"
+    worktree="$(printf '%s' "$line" | jq -r '.worktree')"
+    session_id="$(printf '%s' "$line" | jq -r '.sessionId // ""')"
+    if [[ "$session_id" == "null" ]]; then
+      session_id=""
+    fi
+    title="$(gh issue view "$number" --json title --jq .title 2>/dev/null || true)"
+    if [[ -z "$title" ]]; then
+      # gh is transiently down (or the issue is gone): do not destroy state —
+      # leave the entry untouched so the next restart re-inspects it.
+      orchestrator_log "WARNING: could not resolve issue #$number; skipping entry until the next restart"
+      continue
+    fi
+
+    pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+    if [[ -n "$pr_number" ]]; then
+      if [[ -z "$session_id" ]]; then
+        session_id="$(orchestrator_opencode_session_id "carbotracker-ticket-$number")"
+      fi
+      orchestrator_log "recovered #$number: PR #$pr_number exists for branch $branch; setting phase awaiting review"
+      orchestrator_state_complete "$ORCHESTRATOR_STATE_FILE" "$number" "$session_id" "$pr_number"
+      continue
+    fi
+
+    if orchestrator_branch_pushed "$branch"; then
+      orchestrator_log "recovered #$number: branch $branch pushed but no PR; creating the PR"
+      if orchestrator_recover_pushed_branch "$number" "$title" "$branch" "$worktree" "$session_id"; then
+        orchestrator_log "recovered #$number: PR created for pushed branch $branch"
+      else
+        orchestrator_log "ERROR: could not create a PR for recovered #$number"
+      fi
+      continue
+    fi
+
+    if orchestrator_worktree_has_work "$worktree" "$branch"; then
+      orchestrator_log "recovered #$number: worktree has unpushed work; resuming implementation"
+      if ! orchestrator_resume_implementation "$number" "$title" "$branch" "$worktree" "$session_id"; then
+        orchestrator_log "ERROR: could not resume implementation for #$number"
+      fi
+      continue
+    fi
+
+    orchestrator_log "recovered #$number: nothing recoverable; cleaning up"
+    orchestrator_drop_unrecoverable "$number" "$branch" "$worktree"
+  done < <(orchestrator_state_load "$ORCHESTRATOR_STATE_FILE" | jq -c '.[]')
 }
 
 orchestrator_poll_once() {
@@ -454,12 +655,19 @@ orchestrator_poll_once() {
     active_count=$((active_count + 1))
 
     if ! orchestrator_implement "$number" "$title" "$branch" "$worktree"; then
-      orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
-      orchestrator_log "removed #$number from state after failed implementation"
-      if [[ "${CT_WORKTREE_CREATED:-0}" == "1" ]]; then
-        orchestrator_cleanup_worktree "$worktree" "$branch"
+      if orchestrator_state_has_ticket "$ORCHESTRATOR_STATE_FILE" "$number"; then
+        # Non-opencode failure (worktree/npm/push/PR): un-claim and clean up,
+        # the next poll starts the ticket over. When opencode failed twice the
+        # implementation already escalated and pruned, so the entry is gone.
+        orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
+        orchestrator_log "removed #$number from state after failed implementation"
+        if [[ "${CT_WORKTREE_CREATED:-0}" == "1" ]]; then
+          orchestrator_cleanup_worktree "$worktree" "$branch"
+        else
+          orchestrator_log "not cleaning up pre-existing worktree $worktree"
+        fi
       else
-        orchestrator_log "not cleaning up pre-existing worktree $worktree"
+        orchestrator_log "#$number already escalated and pruned after failed implementation"
       fi
       active_count=$((active_count - 1))
     fi
@@ -471,6 +679,7 @@ orchestrator_poll_once() {
 
 orchestrator_daemon() {
   orchestrator_log "orchestrator started: poll every ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s, concurrency cap $ORCHESTRATOR_CONCURRENCY_CAP, state $ORCHESTRATOR_STATE_FILE"
+  orchestrator_reconcile
   while true; do
     orchestrator_poll_once
     orchestrator_log "sleeping ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s until the next poll"
@@ -492,6 +701,7 @@ main() {
   fi
   case "${1:-}" in
     once | --once)
+      orchestrator_reconcile
       orchestrator_poll_once
       ;;
     help | --help | -h)
