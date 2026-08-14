@@ -314,8 +314,22 @@ orchestrator_merge_poll() {
         fi
         ;;
       CLOSED)
-        orchestrator_log "PR #$pr_number closed without merge for #$number; pruning worktree"
-        orchestrator_prune_ticket "$number" "$branch" "$worktree"
+        # The PR was closed without merging: the work is rejected and the
+        # ticket is no longer in flight. Prune the worktree/branch, then
+        # escalate the issue to human triage — drop in-progress, add
+        # needs-triage, and leave a comment naming the closed PR. The entry is
+        # removed only once the escalation lands, so a transient gh failure
+        # retries next poll instead of stranding an un-labelled issue.
+        orchestrator_log "PR #$pr_number closed without merge for #$number; pruning worktree and escalating to triage"
+        if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --add-label needs-triage \
+          && gh issue comment "$number" --body "PR #$pr_number was closed without merging. Escalated to needs-triage for human review.
+---
+_Created by carbotracker's agent skills._"; then
+          orchestrator_prune_ticket "$number" "$branch" "$worktree"
+          orchestrator_log "escalated #$number to needs-triage and pruned worktree"
+        else
+          orchestrator_log "WARNING: failed to escalate #$number; keeping entry to retry next poll"
+        fi
         ;;
       OPEN)
         orchestrator_log "merge #$number: PR #$pr_number still open"

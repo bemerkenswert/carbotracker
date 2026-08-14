@@ -48,9 +48,12 @@ Each poll, before the review loop, the orchestrator walks every state entry in
   a concurrency slot. If `gh issue close` fails, the entry is **kept** so the
   merge is re-detected and the close retried on the next poll — the closure
   is never silently dropped.
-- **`CLOSED`** — the PR was closed without merging. The orchestrator prunes
-  the worktree and branch and removes the entry from the state file, but does
-  not touch the issue.
+- **`CLOSED`** — the PR was closed without merging: the work is rejected. The
+  orchestrator prunes the worktree and branch, then escalates the issue to a
+  human — drops `in-progress`, adds `needs-triage`, and leaves a comment
+  naming the closed PR. The entry is removed only once the escalation lands,
+  so a transient `gh` failure retries next poll instead of stranding an
+  un-labelled issue.
 - **`OPEN`** — still awaiting review, nothing to do.
 - **anything else / gh failure** — the state query failed; the entry is kept
   so the merge is retried on the next poll.
@@ -146,8 +149,9 @@ flowchart TD
     O --> P0[gh pr view n → state]
     P0 -- MERGED --> P1[close issue: PR #n merged. Issue closed. → prune worktree/branch, remove from state]
     P1 -- close failed --> O
-    P0 -- CLOSED --> P2[prune worktree/branch, remove from state]
+    P0 -- CLOSED --> P2[escalate: drop in-progress, add needs-triage, comment → prune worktree/branch, remove from state]
     P0 -- OPEN --> P3
+    P2 -- escalate failed --> O
     P2 --> O
     P3[review loop: walk remaining awaiting-review entries]
     P3 --> P[gh api pulls/N/comments + pulls/N/reviews + issues/N/comments → newest non-bot timestamp]
