@@ -158,6 +158,11 @@ orchestrator_pr_number_for_branch() {
     | jq -r 'sort_by(.number) | reverse | .[0].number // empty' 2>/dev/null || true
 }
 
+orchestrator_pr_state() {
+  local pr="$1"
+  gh pr view "$pr" --json state --jq .state 2>/dev/null || true
+}
+
 orchestrator_pr_latest_comment_at() {
   local pr="$1" me inline reviews general latest
   # Review surfaces: inline threads (pulls/<n>/comments), top-level review
@@ -228,6 +233,10 @@ _Created by carbotracker's agent skills._"
   return 1
 }
 
+orchestrator_awaiting_review_entries() {
+  orchestrator_state_load "$ORCHESTRATOR_STATE_FILE" | jq -c '.[] | select(.phase == "awaiting review")'
+}
+
 orchestrator_review_poll() {
   local line number pr_number session_id worktree last_comment_at latest notice_posted
   while IFS= read -r line; do
@@ -270,7 +279,52 @@ _Created by carbotracker's agent skills._"
     fi
     orchestrator_log "review #$number: new comment on PR #$pr_number (latest $latest, last known ${last_comment_at:-<none>})"
     orchestrator_review_round "$number" "$session_id" "$pr_number" "$worktree" || true
-  done < <(orchestrator_state_load "$ORCHESTRATOR_STATE_FILE" | jq -c '.[] | select(.phase == "awaiting review")')
+  done < <(orchestrator_awaiting_review_entries)
+}
+
+orchestrator_prune_ticket() {
+  local number="$1" branch="$2" worktree="$3"
+  orchestrator_cleanup_worktree "$worktree" "$branch"
+  orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
+  orchestrator_log "pruned #$number: worktree removed, branch deleted, removed from state"
+}
+
+orchestrator_merge_poll() {
+  local line number pr_number branch worktree state
+  while IFS= read -r line; do
+    number="$(printf '%s' "$line" | jq -r '.ticket')"
+    pr_number="$(printf '%s' "$line" | jq -r '.prNumber')"
+    branch="$(printf '%s' "$line" | jq -r '.branch')"
+    worktree="$(printf '%s' "$line" | jq -r '.worktree')"
+
+    if [[ -z "$pr_number" || "$pr_number" == "null" ]]; then
+      orchestrator_log "skip merge #$number: no PR recorded"
+      continue
+    fi
+
+    state="$(orchestrator_pr_state "$pr_number")"
+    case "$state" in
+      MERGED)
+        orchestrator_log "merge detected: PR #$pr_number merged for #$number; closing issue"
+        if gh issue close "$number" --comment "PR #$pr_number merged. Issue closed."; then
+          orchestrator_prune_ticket "$number" "$branch" "$worktree"
+          orchestrator_log "closed issue #$number with merge comment"
+        else
+          orchestrator_log "WARNING: failed to close issue #$number; keeping entry to retry next poll"
+        fi
+        ;;
+      CLOSED)
+        orchestrator_log "PR #$pr_number closed without merge for #$number; pruning worktree"
+        orchestrator_prune_ticket "$number" "$branch" "$worktree"
+        ;;
+      OPEN)
+        orchestrator_log "merge #$number: PR #$pr_number still open"
+        ;;
+      *)
+        orchestrator_log "WARNING: could not determine state of PR #$pr_number for #$number"
+        ;;
+    esac
+  done < <(orchestrator_awaiting_review_entries)
 }
 
 orchestrator_push_and_open_pr() {
@@ -396,6 +450,7 @@ orchestrator_poll_once() {
     fi
   done < <(printf '%s' "$candidates" | jq -c '.[]')
 
+  orchestrator_merge_poll
   orchestrator_review_poll
 }
 

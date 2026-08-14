@@ -4,11 +4,11 @@
 `ready-for-agent` tickets, claims them up to a concurrency cap, and runs each
 one through a full implementation cycle — worktree, dependency install,
 headless `opencode`, and finally a pushed branch with a pull request. Once a
-PR is up it also runs the **review loop**: every poll it checks awaiting-review
-PRs for new comments and, when it finds one, resumes the original opencode
-session with `/review-comments` so the agent answers the review and pushes
-updates. It runs as a systemd user service (see
-`carbotracker-orchestrator.service`).
+PR is up it runs the **merge poll** (detecting merged or closed PRs and
+cleaning up) and the **review loop**: every poll it checks awaiting-review PRs
+for new comments and, when it finds one, resumes the original opencode session
+with `/review-comments` so the agent answers the review and pushes updates. It
+runs as a systemd user service (see `carbotracker-orchestrator.service`).
 
 ## Lifecycle
 
@@ -21,7 +21,8 @@ stateDiagram-v2
     implementing --> [*]: failure, un-claim and clean up
     awaiting_review --> review_round: new comment on PR (newer than lastCommentAt)
     review_round --> awaiting_review: /review-comments succeeds or a retry fails
-    awaiting_review --> [*]: human merges the PR
+    awaiting_review --> [*]: merge poll sees PR merged, closes issue
+    awaiting_review --> [*]: merge poll sees PR closed without merge
 ```
 
 `implementing` means the orchestrator is actively running a session for the
@@ -33,6 +34,26 @@ add `in-progress`) and in the local state file. The label flip is what makes
 the claim visible to humans and atomic against parallel orchestrators — once
 an issue drops `ready-for-agent` it stops matching the candidate query, so a
 second daemon cannot claim it.
+
+## Merge detection and cleanup
+
+Each poll, before the review loop, the orchestrator walks every state entry in
+`awaiting review` that has a PR number and checks the PR's state via
+`gh pr view <n> --json state`:
+
+- **`MERGED`** — the human merged the PR. The orchestrator closes the issue
+  with the comment "PR #&lt;n&gt; merged. Issue closed.", prunes the worktree
+  and branch, and removes the entry from the state file. The lifecycle
+  (issue → PR → merged → closed) is complete and the ticket no longer occupies
+  a concurrency slot. If `gh issue close` fails, the entry is **kept** so the
+  merge is re-detected and the close retried on the next poll — the closure
+  is never silently dropped.
+- **`CLOSED`** — the PR was closed without merging. The orchestrator prunes
+  the worktree and branch and removes the entry from the state file, but does
+  not touch the issue.
+- **`OPEN`** — still awaiting review, nothing to do.
+- **anything else / gh failure** — the state query failed; the entry is kept
+  so the merge is retried on the next poll.
 
 ## Review loop
 
@@ -121,8 +142,15 @@ flowchart TD
     K --> L[state: sessionId + prNumber, phase awaiting review]
     L --> M[gh issue comment: Started implementation. PR #N created.]
     F -- failure --> N[un-claim + remove worktree/branch, retry next poll]
-    M --> O[review loop: walk awaiting-review entries]
-    O --> P[gh api pulls/N/comments + pulls/N/reviews + issues/N/comments → newest non-bot timestamp]
+    M --> O[merge poll: walk awaiting-review entries]
+    O --> P0[gh pr view n → state]
+    P0 -- MERGED --> P1[close issue: PR #n merged. Issue closed. → prune worktree/branch, remove from state]
+    P1 -- close failed --> O
+    P0 -- CLOSED --> P2[prune worktree/branch, remove from state]
+    P0 -- OPEN --> P3
+    P2 --> O
+    P3[review loop: walk remaining awaiting-review entries]
+    P3 --> P[gh api pulls/N/comments + pulls/N/reviews + issues/N/comments → newest non-bot timestamp]
     P --> Q{newer than lastCommentAt?}
     Q -- no --> O
     Q -- yes --> R[opencode run --auto --session S /review-comments on PR #N]
@@ -133,7 +161,8 @@ flowchart TD
 ```
 
 The orchestrator never resolves review threads or merges — after the PR is
-opened it hands off to a human.
+opened it hands off to a human, and on merge (or close without merge) the
+merge poll prunes the worktree and closes the issue.
 
 ## Configuration
 

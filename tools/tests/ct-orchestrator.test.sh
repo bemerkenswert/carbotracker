@@ -144,6 +144,30 @@ fi
 exit 1"
 }
 
+# Fake gh for the merge poll: `pr view` returns the PR state passed as $1, and
+# an `issue close` invocation is captured to $FAKE_ISSUE_CLOSE_ARGS. Everything
+# else exits 0 with no output.
+fake_merge_gh() {
+  local state="${1:-OPEN}"
+  fake_command gh "if [[ \"\$1\" == \"pr\" && \"\$2\" == \"view\" ]]; then
+  printf \"$state\n\"
+elif [[ \"\$1\" == \"issue\" && \"\$2\" == \"close\" ]]; then
+  printf \"%s\n\" \"\$*\" > \"\${FAKE_ISSUE_CLOSE_ARGS:-/dev/null}\"
+fi
+exit 0"
+}
+
+# Fake git that removes the dir on `worktree remove`, mirroring how the
+# cleanup helper is invoked by the orchestrator.
+fake_merge_git() {
+  fake_command git 'if [[ "$1" == "worktree" && "$2" == "remove" ]]; then
+  rm -rf "$3" "$4"
+elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
+  exit 0
+fi
+exit 0'
+}
+
 STATE_DIR=""
 TEST_STATE=""
 WT_PARENT=""
@@ -1232,6 +1256,160 @@ test_poll_once_runs_review_loop() {
   state_teardown
 }
 
+test_pr_state_returns_merged() {
+  fake_merge_gh "MERGED"
+  assert_eq "pr state returns MERGED" "MERGED" "$(orchestrator_pr_state 456)"
+}
+
+test_pr_state_returns_closed() {
+  fake_merge_gh "CLOSED"
+  assert_eq "pr state returns CLOSED" "CLOSED" "$(orchestrator_pr_state 456)"
+}
+
+test_pr_state_returns_open() {
+  fake_merge_gh "OPEN"
+  assert_eq "pr state returns OPEN" "OPEN" "$(orchestrator_pr_state 456)"
+}
+
+test_pr_state_gh_error() {
+  fake_command gh 'exit 1'
+  assert_eq "pr state empty on gh error" "" "$(orchestrator_pr_state 456)"
+}
+
+test_merge_poll_prunes_merged_pr() {
+  state_setup
+  fake_merge_gh "MERGED"
+  fake_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_ISSUE_CLOSE_ARGS="$STATE_DIR/issue_close"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "merged pr removed from state" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "merged pr worktree removed" "no" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_contains "merged pr closes issue with comment" "PR #456 merged. Issue closed." "$(cat "$FAKE_ISSUE_CLOSE_ARGS")"
+  assert_contains "logs merge detected" "PR #456 merged" "$output"
+  unset FAKE_ISSUE_CLOSE_ARGS
+  state_teardown
+}
+
+test_merge_poll_prunes_closed_pr() {
+  state_setup
+  fake_merge_gh "CLOSED"
+  fake_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_ISSUE_CLOSE_ARGS="$STATE_DIR/issue_close"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>/dev/null
+  assert_eq "closed without merge removed from state" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "closed without merge worktree removed" "no" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_eq "closed without merge does not close issue" "no" "$([[ -f "$FAKE_ISSUE_CLOSE_ARGS" ]] && echo yes || echo no)"
+  unset FAKE_ISSUE_CLOSE_ARGS
+  state_teardown
+}
+
+test_merge_poll_keeps_entry_when_close_fails() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  printf "MERGED\n"
+elif [[ "$1" == "issue" && "$2" == "close" ]]; then
+  exit 1
+fi
+exit 0'
+  fake_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "failed issue close keeps entry in state" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "failed issue close keeps worktree" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_contains "logs close retry warning" "keeping entry to retry next poll" "$output"
+  state_teardown
+}
+
+test_merge_poll_keeps_open_pr() {
+  state_setup
+  fake_merge_gh "OPEN"
+  fake_command git 'exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>/dev/null
+  assert_eq "open pr kept in state" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "open pr worktree kept" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  state_teardown
+}
+
+test_merge_poll_skips_entry_without_pr() {
+  state_setup
+  fake_command gh 'exit 0'
+  fake_command git 'exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc ""
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "entry without pr stays in state" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "logs skip for missing pr" "no PR recorded" "$output"
+  state_teardown
+}
+
+test_merge_poll_gh_error_keeps_entry() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  exit 1
+fi
+exit 0'
+  fake_command git 'exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "gh error keeps entry in state" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "logs gh error handling" "could not determine state" "$output"
+  state_teardown
+}
+
+test_merge_poll_ignores_implementing_phase() {
+  state_setup
+  fake_merge_gh "MERGED"
+  fake_command git 'exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>/dev/null
+  assert_eq "implementing entry untouched" "1" "$(jq 'length' "$TEST_STATE")"
+  state_teardown
+}
+
+test_poll_once_runs_merge_poll() {
+  state_setup
+  fake_merge_gh "MERGED"
+  fake_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_ISSUE_CLOSE_ARGS="$STATE_DIR/issue_close"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_poll_once 2>&1)"
+  assert_eq "poll once prunes merged pr" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "poll once closes issue on merge" "PR #456 merged. Issue closed." "$(cat "$FAKE_ISSUE_CLOSE_ARGS")"
+  assert_contains "logs merge poll" "PR #456 merged" "$output"
+  unset FAKE_ISSUE_CLOSE_ARGS
+  state_teardown
+}
+
 test_state_add_creates_review_notice_false() {
   state_setup
   orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$WT_PARENT/123-foo"
@@ -1412,6 +1590,18 @@ test_review_poll_ignores_implementing_phase
 test_review_poll_retries_failed_round
 test_review_poll_pauses_after_three_failures
 test_review_poll_resumes_after_pause_on_new_comment
+test_pr_state_returns_merged
+test_pr_state_returns_closed
+test_pr_state_returns_open
+test_pr_state_gh_error
+test_merge_poll_prunes_merged_pr
+test_merge_poll_prunes_closed_pr
+test_merge_poll_keeps_entry_when_close_fails
+test_merge_poll_keeps_open_pr
+test_merge_poll_skips_entry_without_pr
+test_merge_poll_gh_error_keeps_entry
+test_merge_poll_ignores_implementing_phase
+test_poll_once_runs_merge_poll
 test_implement_runs_full_pipeline
 test_implement_fails_when_worktree_fails
 test_implement_fails_when_npm_ci_fails
