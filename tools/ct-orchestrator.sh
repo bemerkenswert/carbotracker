@@ -306,7 +306,8 @@ orchestrator_merge_poll() {
     case "$state" in
       MERGED)
         orchestrator_log "merge detected: PR #$pr_number merged for #$number; closing issue"
-        if gh issue close "$number" --comment "PR #$pr_number merged. Issue closed."; then
+        if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" \
+          && gh issue close "$number" --comment "PR #$pr_number merged. Issue closed."; then
           orchestrator_prune_ticket "$number" "$branch" "$worktree"
           orchestrator_log "closed issue #$number with merge comment"
         else

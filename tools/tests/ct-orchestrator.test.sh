@@ -144,13 +144,16 @@ fi
 exit 1"
 }
 
-# Fake gh for the merge poll: `pr view` returns the PR state passed as $1, and
-# an `issue close` invocation is captured to $FAKE_ISSUE_CLOSE_ARGS. Everything
+# Fake gh for the merge poll: `pr view` returns the PR state passed as $1, an
+# `issue edit` (label removal) is captured to $FAKE_ISSUE_EDIT_ARGS, and an
+# `issue close` invocation is captured to $FAKE_ISSUE_CLOSE_ARGS. Everything
 # else exits 0 with no output.
 fake_merge_gh() {
   local state="${1:-OPEN}"
   fake_command gh "if [[ \"\$1\" == \"pr\" && \"\$2\" == \"view\" ]]; then
   printf \"$state\n\"
+elif [[ \"\$1\" == \"issue\" && \"\$2\" == \"edit\" ]]; then
+  printf \"%s\n\" \"\$*\" > \"\${FAKE_ISSUE_EDIT_ARGS:-/dev/null}\"
 elif [[ \"\$1\" == \"issue\" && \"\$2\" == \"close\" ]]; then
   printf \"%s\n\" \"\$*\" > \"\${FAKE_ISSUE_CLOSE_ARGS:-/dev/null}\"
 fi
@@ -1295,15 +1298,17 @@ test_merge_poll_prunes_merged_pr() {
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_ISSUE_CLOSE_ARGS="$STATE_DIR/issue_close"
+  export FAKE_ISSUE_EDIT_ARGS="$STATE_DIR/issue_edit"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
   assert_eq "merged pr removed from state" "0" "$(jq 'length' "$TEST_STATE")"
   assert_eq "merged pr worktree removed" "no" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_contains "merged pr removes in-progress label" "--remove-label in-progress" "$(cat "$FAKE_ISSUE_EDIT_ARGS")"
   assert_contains "merged pr closes issue with comment" "PR #456 merged. Issue closed." "$(cat "$FAKE_ISSUE_CLOSE_ARGS")"
   assert_contains "logs merge detected" "PR #456 merged" "$output"
-  unset FAKE_ISSUE_CLOSE_ARGS
+  unset FAKE_ISSUE_CLOSE_ARGS FAKE_ISSUE_EDIT_ARGS
   state_teardown
 }
 

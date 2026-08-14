@@ -41,13 +41,13 @@ Each poll, before the review loop, the orchestrator walks every state entry in
 `awaiting review` that has a PR number and checks the PR's state via
 `gh pr view <n> --json state`:
 
-- **`MERGED`** — the human merged the PR. The orchestrator closes the issue
-  with the comment "PR #&lt;n&gt; merged. Issue closed.", prunes the worktree
-  and branch, and removes the entry from the state file. The lifecycle
-  (issue → PR → merged → closed) is complete and the ticket no longer occupies
-  a concurrency slot. If `gh issue close` fails, the entry is **kept** so the
-  merge is re-detected and the close retried on the next poll — the closure
-  is never silently dropped.
+- **`MERGED`** — the human merged the PR. The orchestrator drops the
+  `in-progress` label, closes the issue with the comment
+  "PR #&lt;n&gt; merged. Issue closed.", prunes the worktree and branch, and
+  removes the entry from the state file. The lifecycle (issue → PR → merged →
+  closed) is complete and the ticket no longer occupies a concurrency slot. If
+  the close fails, the entry is **kept** so the merge is re-detected and the
+  close retried on the next poll — the closure is never silently dropped.
 - **`CLOSED`** — the PR was closed without merging: the work is rejected. The
   orchestrator prunes the worktree and branch, then escalates the issue to a
   human — drops `in-progress`, adds `needs-triage`, and leaves a comment
