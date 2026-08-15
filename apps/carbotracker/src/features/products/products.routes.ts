@@ -1,12 +1,14 @@
 import { Routes } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
 import { provideState } from '@ngrx/store';
-import * as apiEffects from './+state/effects/api.effects';
-import * as dialogEffects from './+state/effects/dialog.effects';
-import * as routingEffects from './+state/effects/routing.effects';
-import * as snackbarEffects from './+state/effects/snackbar.effects';
-import { productsFeature } from './+state/products.reducer';
-import { ProductsPageComponent } from './pages/ProductsPage/products-page.component';
+import {
+  apiEffects,
+  dialogEffects,
+  productsFeature,
+  routingEffects,
+  snackbarEffects,
+} from './+state';
+import { ProductsPageComponent } from './pages/products-page/products-page.component';
 
 const PRODUCTS_ROUTES: Routes = [
   {
@@ -25,12 +27,12 @@ const PRODUCTS_ROUTES: Routes = [
   {
     path: 'create',
     loadComponent: () =>
-      import('./pages/CreateProductPage/create-product-page.component'),
+      import('./pages/create-product-page/create-product-page.component'),
   },
   {
     path: ':id',
     loadComponent: () =>
-      import('./pages/EditProductPage/edit-product-page.component'),
+      import('./pages/edit-product-page/edit-product-page.component'),
   },
 ];
 

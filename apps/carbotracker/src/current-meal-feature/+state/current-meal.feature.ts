@@ -6,7 +6,7 @@ import {
   MemoizedSelector,
   on,
 } from '@ngrx/store';
-import { Product } from '../../products-feature/product.model';
+import { Product } from '../../features/products/product.model';
 import { CurrentMeal, MealEntry } from '../current-meal.model';
 import {
   CurrentMealApiActions,

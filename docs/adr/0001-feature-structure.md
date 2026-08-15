@@ -45,6 +45,7 @@ src/features/<name>/
 ### Conventions
 
 - **Folder name:** `src/features/<name>` — not `src/<name>-feature`.
+- **Page/component/form folder names:** kebab-case, one folder per page/component/form — `pages/products-page/`, `components/login-form/`, `form/save-current-meal/` (not `ProductsPage` / `LoginForm` / `SaveCurrentMeal`).
 - **Store file:** `<name>.store.ts` (no `*.feature.ts` / `*.reducer.ts`).
 - **State split:** one action file per concern under `actions/` (api / component / routing / snackbar, plus `dialog` when a feature opens dialogs). Effects split along the same roles. Concern files and the store are produced _as needed_ — a layout feature with no data slice (shell) omits the store and the api/snackbar/dialog concerns.
 - **Barrel:** `+state/index.ts` re-exports all action groups and the store, and re-exports each effects file as a namespace (`export * as apiEffects`), so consumers import from `'feature/+state'` only.

@@ -1,5 +1,5 @@
 import { createSelector } from '@ngrx/store';
-import { productsFeature } from '../../+state/products.reducer';
+import { productsFeature } from '../../+state';
 import { Product } from '../../product.model';
 
 export interface EditProductPageViewModel {

@@ -9,7 +9,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { ProductsApiActions } from '../+state/actions/api.actions';
-import { Product } from '../../products-feature/product.model';
+import { Product } from '../../features/products/product.model';
 
 @Injectable({ providedIn: 'root' })
 export class ProductsService {

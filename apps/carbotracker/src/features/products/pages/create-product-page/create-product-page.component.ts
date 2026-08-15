@@ -15,7 +15,7 @@ import {
   CtuiToolbarComponent,
 } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
-import { CreateProductPageComponentActions as ComponentActions } from '../../+state/actions/component.actions';
+import { CreateProductPageComponentActions as ComponentActions } from '../../+state';
 import { selectCreateProductPageViewModel } from './create-product-page.selectors';
 
 interface CreateProductFormControls {

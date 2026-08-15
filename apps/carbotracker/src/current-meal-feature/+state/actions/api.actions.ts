@@ -1,5 +1,5 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
-import { Product } from '../../../products-feature/product.model';
+import { Product } from '../../../features/products/product.model';
 import { CurrentMeal } from '../../current-meal.model';
 
 export const ProductsApiActions = createActionGroup({

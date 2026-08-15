@@ -3,7 +3,7 @@ import { of, Subject, throwError } from 'rxjs';
 import { ProductsService } from '../../services/products.service';
 import { ProductsApiActions } from '../actions/api.actions';
 import { EditProductPageComponentActions } from '../actions/component.actions';
-import { productsFeature } from '../products.reducer';
+import { productsFeature } from '../products.store';
 import { updateProduct$ } from './api.effects';
 
 const selectedProduct = {

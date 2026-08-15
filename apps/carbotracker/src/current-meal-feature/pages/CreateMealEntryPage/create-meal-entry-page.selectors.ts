@@ -1,6 +1,6 @@
 import { createSelector } from '@ngrx/store';
 import { currentMealFeature } from '../../+state/current-meal.feature';
-import { Product } from '../../../products-feature/product.model';
+import { Product } from '../../../features/products/product.model';
 
 export const selectFilteredProducts = createSelector(
   currentMealFeature.selectNotAddedProducts,

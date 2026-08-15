@@ -21,7 +21,7 @@ import {
   CtuiToolbarComponent,
 } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
-import { EditProductPageComponentActions as ComponentActions } from '../../+state/actions/component.actions';
+import { EditProductPageComponentActions as ComponentActions } from '../../+state';
 import { Product } from '../../product.model';
 import { selectEditProductPageViewModel } from './edit-product-page.selectors';
 
