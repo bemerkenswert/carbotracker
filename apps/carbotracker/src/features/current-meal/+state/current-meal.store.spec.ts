@@ -1,10 +1,7 @@
-import { Product } from '../../features/products/product.model';
+import { Product } from '../../../features/products/product.model';
 import { MealEntry } from '../current-meal.model';
-import {
-  CurrentMealApiActions,
-  ProductsApiActions,
-} from './actions/api.actions';
-import { currentMealFeature, getInitialState } from './current-meal.feature';
+import { CurrentMealApiActions } from './actions/api.actions';
+import { currentMealFeature, getInitialState } from './current-meal.store';
 
 describe('currentMealFeature', () => {
   const createMealEntry = (productId: string, amount: number): MealEntry => ({
@@ -50,27 +47,19 @@ describe('currentMealFeature', () => {
 
   describe('selectNotAddedProducts', () => {
     it('excludes products that already have an entry in the current meal', () => {
-      let state = currentMealFeature.reducer(
-        getInitialState(),
-        ProductsApiActions.productsCollectionChanged({
-          products: [createProduct('p1'), createProduct('p2')],
-        }),
-      );
-      state = currentMealFeature.reducer(
-        state,
-        CurrentMealApiActions.currentMealCollectionChanged({
-          currentMeal: { mealEntries: [createMealEntry('p1', 100)] },
-        }),
+      const mealEntryIds = currentMealFeature.selectAllMealEntryIds.projector(
+        currentMealFeature.selectMealEntries.projector(
+          currentMealFeature.reducer(
+            getInitialState(),
+            CurrentMealApiActions.currentMealCollectionChanged({
+              currentMeal: { mealEntries: [createMealEntry('p1', 100)] },
+            }),
+          ),
+        ),
       );
 
-      const products = currentMealFeature.selectAllProductEntries.projector(
-        currentMealFeature.selectProducts.projector(state),
-      );
-      const mealEntryIds = currentMealFeature.selectAllMealEntryIds.projector(
-        currentMealFeature.selectMealEntries.projector(state),
-      );
       const result = currentMealFeature.selectNotAddedProducts.projector(
-        products,
+        [createProduct('p1'), createProduct('p2')],
         mealEntryIds,
       );
       expect(result).toEqual([createProduct('p2')]);

@@ -6,17 +6,14 @@ import {
   MemoizedSelector,
   on,
 } from '@ngrx/store';
-import { Product } from '../../features/products/product.model';
-import { CurrentMeal, MealEntry } from '../current-meal.model';
-import {
-  CurrentMealApiActions,
-  ProductsApiActions,
-} from './actions/api.actions';
-import { CreateMealEntryPageComponentActions } from './actions/component.actions';
 import { getRouterSelectors } from '@ngrx/router-store';
+import { productsFeature } from '../../products/+state';
+import { Product } from '../../products/product.model';
+import { CurrentMeal, MealEntry } from '../current-meal.model';
+import { CurrentMealApiActions } from './actions/api.actions';
+import { CreateMealEntryPageComponentActions } from './actions/component.actions';
 
 interface CurrentMealState {
-  products: EntityState<Product>;
   mealEntries: EntityState<MealEntry>;
   productSearchTerm: string | null;
   error: string | null;
@@ -36,20 +33,7 @@ const getMealEntriesSelectors = (
   return { selectAllMealEntries: selectAll, selectAllMealEntryIds: selectIds };
 };
 
-const productsEntriesEntityAdapter = createEntityAdapter<Product>();
-const getProductsEntriesSelectors = (
-  selectState: MemoizedSelector<Record<string, unknown>, EntityState<Product>>,
-) => {
-  const { selectAll, selectIds } =
-    productsEntriesEntityAdapter.getSelectors(selectState);
-  return {
-    selectAllProductEntries: selectAll,
-    selectAllProductEntryIds: selectIds,
-  };
-};
-
 export const getInitialState = (): CurrentMealState => ({
-  products: productsEntriesEntityAdapter.getInitialState(),
   mealEntries: mealEntriesEntityAdapter.getInitialState(),
   productSearchTerm: null,
   error: null,
@@ -64,13 +48,6 @@ export const currentMealFeature = createFeature({
       (state, { productSearchTerm }): CurrentMealState => ({
         ...state,
         productSearchTerm,
-      }),
-    ),
-    on(
-      ProductsApiActions.productsCollectionChanged,
-      (state, { products }): CurrentMealState => ({
-        ...state,
-        products: productsEntriesEntityAdapter.setAll(products, state.products),
       }),
     ),
     on(
@@ -89,10 +66,6 @@ export const currentMealFeature = createFeature({
   extraSelectors(baseSelectors) {
     const mealEntrySelectors = getMealEntriesSelectors(
       baseSelectors.selectMealEntries,
-    );
-
-    const productsSelectors = getProductsEntriesSelectors(
-      baseSelectors.selectProducts,
     );
 
     const selectCurrentMeal = createSelector(
@@ -116,14 +89,14 @@ export const currentMealFeature = createFeature({
     );
 
     const selectProductById = createSelector(
-      productsSelectors.selectAllProductEntries,
+      productsFeature.selectAll,
       selectProductIdFromRoute,
       (products, productId): Product | null =>
         products.find((product) => product.id === productId) ?? null,
     );
 
     const selectNotAddedProducts = createSelector(
-      productsSelectors.selectAllProductEntries,
+      productsFeature.selectAll,
       mealEntrySelectors.selectAllMealEntryIds,
       (products, mealEntryIds): Product[] =>
         products.filter(
@@ -139,7 +112,6 @@ export const currentMealFeature = createFeature({
 
     return {
       ...mealEntrySelectors,
-      ...productsSelectors,
       selectCurrentMeal,
       selectCurrentMealIsEmpty,
       selectCurrentMealEntry,

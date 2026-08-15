@@ -16,8 +16,7 @@ const SHELL_ROUTES: Routes = [
       },
       {
         path: 'current-meal',
-        loadChildren: () =>
-          import('../../current-meal-feature/current-meal.routes'),
+        loadChildren: () => import('../current-meal/current-meal.routes'),
       },
       {
         path: 'saved-meals',

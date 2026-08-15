@@ -1,6 +1,6 @@
 import { Action, Store } from '@ngrx/store';
 import { of, Subject, throwError } from 'rxjs';
-import { authFeature } from '../../features/auth/+state/auth.store';
+import { authFeature } from '../../../features/auth/+state/auth.store';
 import { CurrentMeal, MealEntry } from '../current-meal.model';
 import { CurrentMealService } from '../services/current-meal.service';
 import { CurrentMealApiActions } from './actions/api.actions';
@@ -8,7 +8,7 @@ import {
   CreateMealEntryPageComponentActions,
   CurrentMealPageComponentActions,
 } from './actions/component.actions';
-import { currentMealFeature } from './current-meal.feature';
+import { currentMealFeature } from './current-meal.store';
 import {
   addMealEntryToCurrentMeal,
   removeAllMealEntriesOfCurrentMeal$,

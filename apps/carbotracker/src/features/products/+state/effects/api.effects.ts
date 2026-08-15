@@ -2,20 +2,21 @@ import { inject } from '@angular/core';
 import { filterNull } from '@carbotracker/utility';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { concatLatestFrom } from '@ngrx/operators';
-import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
 import {
   catchError,
   exhaustMap,
-  filter,
   map,
   mergeMap,
   of,
   switchMap,
   tap,
 } from 'rxjs';
+import {
+  AuthApiActions,
+  LogoutApiActions,
+} from '../../../auth/+state/actions/api.actions';
 import { authFeature } from '../../../auth/+state/auth.store';
-import { SettingsPageActions } from '../../../settings/+state/actions/component.actions';
 import { ProductsService } from '../../services/products.service';
 import { ProductsApiActions } from '../actions/api.actions';
 import {
@@ -23,7 +24,6 @@ import {
   EditProductPageComponentActions,
 } from '../actions/component.actions';
 import { DeleteProductConfirmationDialogActions } from '../actions/dialog.actions';
-import { ProductsRouterActions } from '../actions/routing.actions';
 import { productsFeature } from '../products.store';
 
 export const startStreamingProducts$ = createEffect(
@@ -33,10 +33,7 @@ export const startStreamingProducts$ = createEffect(
     store = inject(Store),
   ) =>
     actions$.pipe(
-      ofType(routerNavigatedAction),
-      filter(({ payload }) =>
-        payload.event.urlAfterRedirects.startsWith('/app/products'),
-      ),
+      ofType(AuthApiActions.userIsLoggedIn),
       switchMap(() => store.select(authFeature.selectUserId)),
       tap((uid) => {
         if (uid) {
@@ -50,10 +47,7 @@ export const startStreamingProducts$ = createEffect(
 export const stopStreamingProducts$ = createEffect(
   (actions$ = inject(Actions), productsService = inject(ProductsService)) =>
     actions$.pipe(
-      ofType(
-        ProductsRouterActions.navigatedAwayFromProductsPage,
-        SettingsPageActions.logoutClicked,
-      ),
+      ofType(LogoutApiActions.logoutSuccessful),
       tap(() => {
         productsService.unsubscribeFromOwnProducts();
       }),

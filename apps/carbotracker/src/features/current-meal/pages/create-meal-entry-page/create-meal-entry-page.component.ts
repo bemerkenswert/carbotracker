@@ -19,7 +19,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { CtuiFixedPositionDirective } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { CreateMealEntryPageComponentActions as ComponentActions } from '../../+state/actions/component.actions';
-import { Product } from '../../../features/products/product.model';
+import { Product } from '../../../../features/products/product.model';
 import { selectCreateMealEntryPageViewModel } from './create-meal-entry-page.selectors';
 
 interface CreateMealEntryFormControls {

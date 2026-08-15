@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { from } from 'rxjs';
 import { SavedMealsApiActions } from '../+state/saved-meals.actions';
-import { CurrentMeal } from '../../current-meal-feature/current-meal.model';
+import { CurrentMeal } from '../../features/current-meal/current-meal.model';
 import { SavedMeal } from '../saved-meal.model';
 
 const transformSavedMeal = (id: string, data: unknown): SavedMeal => {

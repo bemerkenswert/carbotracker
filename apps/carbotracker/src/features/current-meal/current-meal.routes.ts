@@ -1,16 +1,14 @@
 import { Routes } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
 import { provideState } from '@ngrx/store';
-import * as apiEffects from './+state/effects/api.effects';
-import * as routingEffects from './+state/effects/routing.effects';
-import * as snackbarEffects from './+state/effects/snackbar.effects';
-import { currentMealFeature } from './+state/current-meal.feature';
+import { apiEffects, routingEffects, snackbarEffects } from './+state';
+import { currentMealFeature } from './+state';
 
 const CURRENT_MEAL_ROUTES: Routes = [
   {
     path: '',
     loadComponent: () =>
-      import('./pages/CurrentMealPage/current-meal-page.component'),
+      import('./pages/current-meal-page/current-meal-page.component'),
     providers: [
       provideState(currentMealFeature),
       provideEffects(apiEffects, routingEffects, snackbarEffects),
@@ -19,12 +17,12 @@ const CURRENT_MEAL_ROUTES: Routes = [
   {
     path: 'create',
     loadComponent: () =>
-      import('./pages/CreateMealEntryPage/create-meal-entry-page.component'),
+      import('./pages/create-meal-entry-page/create-meal-entry-page.component'),
   },
   {
     path: ':id',
     loadComponent: () =>
-      import('./pages/EditMealEntryPage/edit-meal-entry-page.component'),
+      import('./pages/edit-meal-entry-page/edit-meal-entry-page.component'),
   },
 ];
 

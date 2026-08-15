@@ -1,28 +1,13 @@
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
-import { routerNavigatedAction } from '@ngrx/router-store';
-import { exhaustMap, filter, from, map } from 'rxjs';
+import { exhaustMap, from } from 'rxjs';
 import { ProductsApiActions } from '../actions/api.actions';
 import {
   CreateProductPageComponentActions,
   EditProductPageComponentActions,
   ProductsPageComponentActions,
 } from '../actions/component.actions';
-import { ProductsRouterActions } from '../actions/routing.actions';
-
-export const navigatedAwayFromProductsPage$ = createEffect(
-  (actions$ = inject(Actions)) =>
-    actions$.pipe(
-      ofType(routerNavigatedAction),
-      filter(
-        ({ payload }) =>
-          !payload.event.urlAfterRedirects.startsWith('/app/products'),
-      ),
-      map(() => ProductsRouterActions.navigatedAwayFromProductsPage()),
-    ),
-  { dispatch: true, functional: true },
-);
 
 export const navigateToEditProduct$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>

@@ -10,7 +10,7 @@ import {
 } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
 import { EditMealEntryPageComponentActions as ComponentActions } from '../../+state/actions/component.actions';
-import { currentMealFeature } from '../../+state/current-meal.feature';
+import { currentMealFeature } from '../../+state/current-meal.store';
 
 type FormModel = {
   amount: number | null;
