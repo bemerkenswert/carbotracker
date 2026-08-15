@@ -50,7 +50,9 @@ A comment is only classified `implement` at confidence ≥ `0.8`. Below that it 
 
 When `needsHuman` is set, the orchestrator **advances the watermark and pauses polling** for that PR (posting a maintainer notice), so the comment is neither re-triggered forever nor silently consumed.
 
-> **Interim, until #250 lands:** the act phase only implements reply actions. An `implement`-type comment (schema-legal, `needsHuman` false) is currently handled like `needsHuman` — its plan reply is posted, polling pauses, and a maintainer notice goes out — so it is never silently consumed. #250 replaces this with the real implement step.
+### Implement action
+
+An `implement`-type comment is applied by the **act** phase resuming the ticket's original opencode session with a comment-scoped `/implement` prompt: the agent makes the change (**one commit per comment**), pushes the branch, replies on the thread citing the commit, and resolves each inline thread via the `resolveReviewThread` GraphQL mutation. Resolution never happens in bash — the act step only **reads** state (a read-only GraphQL query plus the REST comment listing) to verify, before advancing the watermark, that every implement comment was resolved and replied to; a general implement comment must have gained a new footer-bearing reply. A failed or unverifiable implement step keeps the watermark so the round retries.
 
 ### Commit granularity
 
