@@ -3,9 +3,11 @@ import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { mapResponse } from '@ngrx/operators';
 import { from, switchMap } from 'rxjs';
+import { PasswordApiActions } from '../../../auth/+state/actions/api.actions';
 import {
   AccountPageActions,
   ChangePasswordPageActions,
+  InsulinToCarbRatiosPageActions,
   SettingsPageActions,
 } from '../actions/component.actions';
 import { SettingsRouterEffectsActions } from '../actions/routing.actions';
@@ -68,6 +70,30 @@ export const navigateToInsulinToCarbRatiosPage$ = createEffect(
               SettingsRouterEffectsActions.navigationToInsulinToCarbRatiosPageFailed(
                 { error },
               ),
+          }),
+        ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const navigateToSettingsPage$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(
+        AccountPageActions.goBackIconClicked,
+        PasswordApiActions.updatePasswordSuccessful,
+        InsulinToCarbRatiosPageActions.goBackIconClicked,
+      ),
+      switchMap(() =>
+        from(router.navigate(['app', 'settings'])).pipe(
+          mapResponse({
+            next: () =>
+              SettingsRouterEffectsActions.navigationToSettingsPageSuccessful(),
+            error: (error) =>
+              SettingsRouterEffectsActions.navigationToSettingsPageFailed({
+                error,
+              }),
           }),
         ),
       ),

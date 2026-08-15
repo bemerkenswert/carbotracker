@@ -8,7 +8,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterOutlet } from '@angular/router';
 import { getRouterSelectors } from '@ngrx/router-store';
 import { createSelector, Store } from '@ngrx/store';
-import { ShellComponentActions } from '../../shell.actions';
+import { ShellComponentActions } from '../../+state';
 
 interface NavItem {
   onClick: () => void;
