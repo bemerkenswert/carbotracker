@@ -124,14 +124,93 @@ fi
 exit 0"
 }
 
-# Fake opencode run that exits 0, optionally capturing the args.
+# Fake opencode run that exits 0, optionally capturing the args and writing a
+# plan file (copied from $2) to ORCHESTRATOR_REVIEW_PLAN_FILE — the analyze
+# step's output channel.
 fake_review_opencode_success() {
-  local capture="${1:-}"
+  local capture="${1:-}" plan_src="${2:-}"
   fake_command opencode "if [[ \"\$1\" == \"run\" ]]; then
   ${capture:+printf \"%s\n\" \"\$*\" > \"$capture\"}
+  ${plan_src:+cp \"$plan_src\" \"\$ORCHESTRATOR_REVIEW_PLAN_FILE\"}
   exit 0
 fi
 exit 1"
+}
+
+# Fake gh api for the act phase: a thread reply POST is captured to
+# $FAKE_THREAD_REPLY_ARGS (appended), the pulls/reviews/general-comment GETs
+# feed the watermark query, and a general-comment POST is captured to
+# $FAKE_PR_COMMENT_ARGS (appended).
+fake_review_act_gh() {
+  local latest="${1:-2026-08-13T00:07:00Z}"
+  local footer="_Created by carbotracker's agent skills._"
+  fake_command gh "if [[ \"\$1\" == \"api\" ]]; then
+  case \"\$2\" in
+    *reviews*) printf \"[]\n\" ;;
+    *replies*)
+      printf \"%s\n\" \"\$*\" >> \"\${FAKE_THREAD_REPLY_ARGS:-/dev/null}\"
+      ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"body\\\":\\\"human inline comment\\\"},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\"}]\n\" ;;
+    *issues/*comments*)
+      if [[ \"\$*\" == *\"-f body=\"* ]]; then
+        printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
+        exit 0
+      fi
+      printf \"[]\n\"
+      ;;
+  esac
+fi
+exit 0"
+}
+
+# Like fake_review_act_gh, but a thread reply whose body contains $1 exits 1 —
+# simulating a per-thread posting failure. The first reply to fail is skipped
+# (not captured), later replies still succeed.
+fake_review_act_gh_fail_reply_containing() {
+  local needle="$1" latest="${2:-2026-08-13T00:07:00Z}"
+  local footer="_Created by carbotracker's agent skills._"
+  fake_command gh "if [[ \"\$1\" == \"api\" ]]; then
+  case \"\$2\" in
+    *reviews*) printf \"[]\n\" ;;
+    *replies*)
+      if [[ \"\$*\" == *\"$needle\"* ]]; then exit 1; fi
+      printf \"%s\n\" \"\$*\" >> \"\${FAKE_THREAD_REPLY_ARGS:-/dev/null}\"
+      ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"body\\\":\\\"human inline comment\\\"}]\n\" ;;
+    *issues/*comments*)
+      if [[ \"\$*\" == *\"-f body=\"* ]]; then
+        printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
+        exit 0
+      fi
+      printf \"[]\n\"
+      ;;
+  esac
+fi
+exit 0"
+}
+
+# Like fake_review_act_gh, but every thread reply POST fails.
+fake_review_act_gh_all_replies_fail() {
+  fake_command gh "if [[ \"\$1\" == \"api\" ]]; then
+  case \"\$2\" in
+    *reviews*) printf \"[]\n\" ;;
+    *replies*) exit 1 ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"2026-08-13T00:07:00Z\\\",\\\"body\\\":\\\"human inline comment\\\"}]\n\" ;;
+    *issues/*comments*)
+      if [[ \"\$*\" == *\"-f body=\"* ]]; then
+        printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
+        exit 0
+      fi
+      printf \"[]\n\"
+      ;;
+  esac
+fi
+exit 0"
+}
+
+# Write a valid single-answer plan file for the success-path tests.
+write_answer_plan() {
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 3788850731, "path": "README.md", "line": 4, "type": "answer", "reply": "The ratio is stored per meal type.", "confidence": 0.9}]}' > "$1"
 }
 
 # Fake opencode run that exits 1, optionally appending a marker per launch.
@@ -1124,8 +1203,10 @@ test_state_mark_reviewed_touches_only_matching() {
 
 test_review_round_success_updates_state() {
   state_setup
+  local plan="$STATE_DIR/plan.json"
+  write_answer_plan "$plan"
   fake_review_gh
-  fake_review_opencode_success "$STATE_DIR/opencode_args"
+  fake_review_opencode_success "$STATE_DIR/opencode_args" "$plan"
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
@@ -1133,12 +1214,228 @@ test_review_round_success_updates_state() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 2
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree"
-  assert_eq "opencode run resumes the session" "run --auto --session ses_abc /review-comments on PR #456" "$(cat "$FAKE_OPENCODE_ARGS")"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  assert_eq "opencode run resumes the session headless" "run --auto --session ses_abc /review-comments on PR #456 headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "state last comment updated after round" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_eq "successful round resets failure counter" "0" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   assert_eq "no failure notice posted on success" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
   unset FAKE_OPENCODE_ARGS FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_answer_posts_reply_and_does_not_resolve() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  write_answer_plan "$plan"
+  fake_review_act_gh
+  fake_review_opencode_success "$STATE_DIR/opencode_args" "$plan"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
+  export FAKE_THREAD_REPLY_ARGS="$STATE_DIR/thread_reply"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  assert_contains "answer reply posted to the thread" "pulls/456/comments/3788850731/replies" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
+  assert_contains "answer reply carries the plan reply text" "The ratio is stored per meal type." "$(cat "$FAKE_THREAD_REPLY_ARGS")"
+  assert_contains "answer reply carries the AI-source footer" "_Created by carbotracker's agent skills._" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
+  assert_eq "answer round advances the watermark" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  assert_eq "answer round leaves needsHuman false" "false" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
+  assert_eq "answer round posts no maintainer notice" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
+  assert_eq "answer round resets failure counter" "0" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  unset FAKE_OPENCODE_ARGS FAKE_THREAD_REPLY_ARGS FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_general_comment_reply_posts_on_pr() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 999, "path": null, "line": null, "type": "answer", "reply": "Covered in the PR description.", "confidence": 0.9}]}' > "$plan"
+  fake_review_act_gh
+  fake_review_opencode_success "" "$plan"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  assert_contains "general comment reply posts on the pr conversation" "issues/456/comments" "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  assert_contains "general comment reply carries the plan text" "Covered in the PR description." "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  assert_contains "general comment reply carries the AI-source footer" "_Created by carbotracker's agent skills._" "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  assert_eq "general comment round advances the watermark" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  unset FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_pushback_sets_needs_human() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": true, "comments": [{"commentId": 3788850735, "path": "apps/carbotracker/src/app/meal/meal.component.ts", "line": 12, "type": "pushback", "reply": "ngrx is already the store; a migration is out of scope.", "confidence": 0.95}]}' > "$plan"
+  fake_review_act_gh
+  fake_review_opencode_success "" "$plan"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_THREAD_REPLY_ARGS="$STATE_DIR/thread_reply"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  assert_contains "pushback reply posted to the thread" "pulls/456/comments/3788850735/replies" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
+  assert_contains "pushback reply carries the argument" "ngrx is already the store" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
+  assert_contains "pushback reply carries the AI-source footer" "_Created by carbotracker's agent skills._" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
+  assert_eq "pushback sets needsHuman" "true" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
+  assert_contains "pushback posts a maintainer notice" "need a human decision" "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  assert_eq "pushback round advances the watermark" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  unset FAKE_THREAD_REPLY_ARGS FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_question_sets_needs_human() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": true, "comments": [{"commentId": 3788850734, "path": "README.md", "line": 9, "type": "question", "reply": "Should this be solved repo-wide?", "confidence": 0.9}]}' > "$plan"
+  fake_review_act_gh
+  fake_review_opencode_success "" "$plan"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_THREAD_REPLY_ARGS="$STATE_DIR/thread_reply"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  assert_contains "question reply posted to the thread" "pulls/456/comments/3788850734/replies" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
+  assert_contains "question reply carries the question" "Should this be solved repo-wide?" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
+  assert_eq "question sets needsHuman" "true" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
+  assert_contains "question posts a maintainer notice" "need a human decision" "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  assert_eq "question round advances the watermark" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  unset FAKE_THREAD_REPLY_ARGS FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_implement_needs_human_until_implement_lands() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 3788850732, "path": "apps/carbotracker/src/app/app.component.ts", "line": 42, "type": "implement", "reply": "Will rename the selector.", "confidence": 0.9}]}' > "$plan"
+  fake_review_act_gh
+  fake_review_opencode_success "" "$plan"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_THREAD_REPLY_ARGS="$STATE_DIR/thread_reply"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  assert_contains "implement reply posted to the thread" "pulls/456/comments/3788850732/replies" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
+  assert_eq "implement comment sets needsHuman until #250 lands" "true" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
+  assert_contains "implement comment posts a maintainer notice" "need a human decision" "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  assert_eq "implement round advances the watermark" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  unset FAKE_THREAD_REPLY_ARGS FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_empty_plan_keeps_watermark_and_retries() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments": []}' > "$plan"
+  fake_review_act_gh
+  fake_review_opencode_success "" "$plan"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "empty plan fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "empty plan increments the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  assert_eq "empty plan keeps the watermark" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  assert_contains "empty plan posts a failure notice" "attempt 1/3" "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  unset FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_malformed_plan_keeps_watermark_and_retries() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments":' > "$plan"
+  fake_review_act_gh
+  fake_review_opencode_success "" "$plan"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "malformed plan fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "malformed plan increments the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  assert_eq "malformed plan keeps the watermark" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  assert_contains "malformed plan posts a failure notice" "attempt 1/3" "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  unset FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_schema_invalid_plan_keeps_watermark() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 1, "path": "README.md", "line": 4, "type": "bogus", "reply": "x", "confidence": 0.9}]}' > "$plan"
+  fake_review_act_gh
+  fake_review_opencode_success "" "$plan"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "schema-invalid plan fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "schema-invalid plan keeps the watermark" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  state_teardown
+}
+
+test_review_round_partial_reply_failure_does_not_duplicate() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments": [
+    {"commentId": 3788850731, "path": "README.md", "line": 4, "type": "answer", "reply": "First reply.", "confidence": 0.9},
+    {"commentId": 3788850732, "path": "README.md", "line": 7, "type": "answer", "reply": "Second reply that fails.", "confidence": 0.9}
+  ]}' > "$plan"
+  fake_review_act_gh_fail_reply_containing "Second reply that fails."
+  fake_review_opencode_success "" "$plan"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_THREAD_REPLY_ARGS="$STATE_DIR/thread_reply"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "partial reply failure still completes the round" "yes" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "only the successful reply is posted" "1" "$(grep -c -- 'First reply.' "$FAKE_THREAD_REPLY_ARGS")"
+  assert_eq "failed reply is never posted" "0" "$(grep -c -- 'Second reply that fails.' "$FAKE_THREAD_REPLY_ARGS")"
+  assert_eq "watermark advances on partial success" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  assert_eq "failure counter stays zero (no retry, no duplicate)" "0" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  unset FAKE_THREAD_REPLY_ARGS
+  state_teardown
+}
+
+test_review_round_all_replies_fail_keeps_watermark_and_retries() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  write_answer_plan "$plan"
+  fake_review_act_gh_all_replies_fail
+  fake_review_opencode_success "" "$plan"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "zero replies posted fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "zero replies increments the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  assert_eq "zero replies keeps the watermark" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  assert_contains "zero replies posts a failure notice" "attempt 1/3" "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  unset FAKE_PR_COMMENT_ARGS
   state_teardown
 }
 
@@ -1188,14 +1485,16 @@ test_review_round_third_failure_pauses_and_consumes() {
 
 test_review_round_after_pause_starts_fresh_budget() {
   state_setup
+  local plan="$STATE_DIR/plan.json"
+  write_answer_plan "$plan"
   fake_review_gh "2026-08-13T01:00:00Z"
-  fake_review_opencode_success
+  fake_review_opencode_success "" "$plan"
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 3
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
   assert_eq "resumed round resets the failure budget" "0" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   state_teardown
 }
@@ -1217,18 +1516,83 @@ test_state_set_review_failures_updates() {
   state_teardown
 }
 
+test_state_add_creates_review_needs_human_false() {
+  state_setup
+  orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$WT_PARENT/123-foo"
+  assert_eq "new entry tracks needsHuman as false" "false" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
+  state_teardown
+}
+
+test_state_set_review_needs_human_updates() {
+  state_setup
+  orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$WT_PARENT/123-foo"
+  orchestrator_state_set_review_needs_human "$TEST_STATE" 123 true
+  assert_eq "set needsHuman stores true" "true" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
+  orchestrator_state_set_review_needs_human "$TEST_STATE" 123 false
+  assert_eq "set needsHuman stores false" "false" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
+  orchestrator_state_set_review_needs_human "$TEST_STATE" 999 true
+  assert_eq "unknown ticket is untouched" "false" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
+  state_teardown
+}
+
+test_review_poll_skips_pr_paused_for_human() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  write_answer_plan "$plan"
+  fake_review_gh
+  fake_review_opencode_success "$STATE_DIR/opencode_args" "$plan"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_mark_reviewed "$TEST_STATE" 123 "2026-08-13T00:07:00Z"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_needs_human "$TEST_STATE" 123 true
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_poll 2>&1)"
+  assert_eq "paused pr does not launch a round" "no" "$([[ -f "$FAKE_OPENCODE_ARGS" ]] && echo yes || echo no)"
+  assert_eq "paused pr stays paused" "true" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
+  assert_contains "logs the human pause" "paused for human decision" "$output"
+  unset FAKE_OPENCODE_ARGS
+  state_teardown
+}
+
+test_review_poll_resumes_paused_pr_on_new_comment() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  write_answer_plan "$plan"
+  fake_review_gh "2026-08-13T01:00:00Z"
+  fake_review_opencode_success "$STATE_DIR/opencode_args" "$plan"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_mark_reviewed "$TEST_STATE" 123 "2026-08-13T00:07:00Z"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_needs_human "$TEST_STATE" 123 true
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_poll 2>&1)"
+  assert_eq "new comment resumes a paused round" "run --auto --session ses_abc /review-comments on PR #456 headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "resumed pr clears needsHuman" "false" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
+  assert_contains "logs the resume" "resumes paused PR #456" "$output"
+  unset FAKE_OPENCODE_ARGS
+  state_teardown
+}
+
 test_review_poll_launches_round_on_new_comment() {
   state_setup
+  local plan="$STATE_DIR/plan.json"
+  write_answer_plan "$plan"
   fake_review_gh
-  fake_review_opencode_success "$STATE_DIR/opencode_args"
+  fake_review_opencode_success "$STATE_DIR/opencode_args" "$plan"
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_poll 2>&1)"
-  assert_eq "poll launches review round on new comment" "run --auto --session ses_abc /review-comments on PR #456" "$(cat "$FAKE_OPENCODE_ARGS")"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_poll 2>&1)"
+  assert_eq "poll launches review round on new comment" "run --auto --session ses_abc /review-comments on PR #456 headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "poll updates last comment in state" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_contains "logs new comment detection" "new comment on PR #456" "$output"
   unset FAKE_OPENCODE_ARGS
@@ -1359,8 +1723,10 @@ test_review_poll_pauses_after_three_failures() {
 
 test_review_poll_resumes_after_pause_on_new_comment() {
   state_setup
+  local plan="$STATE_DIR/plan.json"
+  write_answer_plan "$plan"
   fake_review_gh "2026-08-13T01:00:00Z"
-  fake_review_opencode_success "$STATE_DIR/opencode_log"
+  fake_review_opencode_success "$STATE_DIR/opencode_log" "$plan"
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
@@ -1368,7 +1734,7 @@ test_review_poll_resumes_after_pause_on_new_comment() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 3
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_mark_reviewed "$TEST_STATE" 123 "2026-08-13T00:07:00Z"
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_poll 2>/dev/null
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_poll 2>/dev/null
   assert_eq "new comment after pause resumes the round" "1" "$(wc -l < "$FAKE_OPENCODE_LOG")"
   assert_eq "resumed round resets the failure budget" "0" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   unset FAKE_OPENCODE_LOG
@@ -1377,16 +1743,18 @@ test_review_poll_resumes_after_pause_on_new_comment() {
 
 test_poll_once_runs_review_loop() {
   state_setup
+  local plan="$STATE_DIR/plan.json"
+  write_answer_plan "$plan"
   fake_review_gh
-  fake_review_opencode_success "$STATE_DIR/opencode_args"
+  fake_review_opencode_success "$STATE_DIR/opencode_args" "$plan"
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_poll_once 2>&1)"
-  assert_eq "poll once runs review round for awaiting-review pr" "run --auto --session ses_abc /review-comments on PR #456" "$(cat "$FAKE_OPENCODE_ARGS")"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_poll_once 2>&1)"
+  assert_eq "poll once runs review round for awaiting-review pr" "run --auto --session ses_abc /review-comments on PR #456 headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "poll once updates last comment in state" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_contains "logs review round" "review #123: launching /review-comments" "$output"
   unset FAKE_OPENCODE_ARGS
@@ -1906,9 +2274,21 @@ test_pr_latest_comment_at_none
 test_pr_latest_comment_at_one_surface_empty
 test_pr_latest_comment_at_gh_error
 test_review_round_success_updates_state
+test_review_round_answer_posts_reply_and_does_not_resolve
+test_review_round_general_comment_reply_posts_on_pr
+test_review_round_pushback_sets_needs_human
+test_review_round_question_sets_needs_human
+test_review_round_implement_needs_human_until_implement_lands
+test_review_round_empty_plan_keeps_watermark_and_retries
+test_review_round_malformed_plan_keeps_watermark_and_retries
+test_review_round_schema_invalid_plan_keeps_watermark
+test_review_round_partial_reply_failure_does_not_duplicate
+test_review_round_all_replies_fail_keeps_watermark_and_retries
 test_review_round_failure_increments_and_posts_notice
 test_review_round_third_failure_pauses_and_consumes
 test_review_round_after_pause_starts_fresh_budget
+test_state_add_creates_review_needs_human_false
+test_state_set_review_needs_human_updates
 test_review_poll_launches_round_on_new_comment
 test_review_poll_skips_when_no_new_comment
 test_review_poll_skips_entry_without_session
@@ -1919,6 +2299,8 @@ test_review_poll_ignores_implementing_phase
 test_review_poll_retries_failed_round
 test_review_poll_pauses_after_three_failures
 test_review_poll_resumes_after_pause_on_new_comment
+test_review_poll_skips_pr_paused_for_human
+test_review_poll_resumes_paused_pr_on_new_comment
 test_pr_state_returns_merged
 test_pr_state_returns_closed
 test_pr_state_returns_open

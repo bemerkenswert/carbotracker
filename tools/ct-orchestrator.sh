@@ -33,6 +33,10 @@ orchestrator_log() {
   printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2
 }
 
+# Every agent-authored body carries the AI-source footer so a colleague reading
+# a thread can tell the agent's reply from the human's.
+ORCHESTRATOR_AI_FOOTER=$'\n---\n_Created by carbotracker\'s agent skills._'
+
 orchestrator_state_load() {
   local state_file="$1"
   if [[ ! -f "$state_file" ]]; then
@@ -77,7 +81,7 @@ orchestrator_state_add() {
   state="$(orchestrator_state_load "$state_file")"
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   entry="$(jq -n --argjson ticket "$number" --arg branch "$branch" --arg worktree "$worktree" --arg started "$now" \
-    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, lastCommentAt: null, reviewFailures: 0, reviewNoticePosted: false, phase: "implementing", startedAt: $started}')"
+    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, lastCommentAt: null, reviewFailures: 0, reviewNoticePosted: false, reviewNeedsHuman: false, phase: "implementing", startedAt: $started}')"
   state="$(printf '%s' "$state" | jq --argjson entry "$entry" '. + [$entry]')"
   orchestrator_state_write "$state_file" "$state"
 }
@@ -129,6 +133,15 @@ orchestrator_state_mark_notice_posted() {
   state="$(orchestrator_state_load "$state_file")"
   state="$(printf '%s' "$state" | jq --argjson n "$number" \
     '(.[] | select(.ticket == $n)) |= (.reviewNoticePosted = true)')"
+  orchestrator_state_write "$state_file" "$state"
+}
+
+orchestrator_state_set_review_needs_human() {
+  local state_file="$1" number="$2" flag="$3"
+  local state
+  state="$(orchestrator_state_load "$state_file")"
+  state="$(printf '%s' "$state" | jq --argjson n "$number" --argjson f "$flag" \
+    '(.[] | select(.ticket == $n)) |= (.reviewNeedsHuman = $f)')"
   orchestrator_state_write "$state_file" "$state"
 }
 
@@ -194,9 +207,100 @@ orchestrator_pr_post_comment() {
   gh api "repos/{owner}/{repo}/issues/$pr/comments" -f body="$body" >/dev/null 2>&1
 }
 
+orchestrator_pr_reply_to_thread() {
+  local pr="$1" comment_id="$2" body="$3"
+  gh api "repos/{owner}/{repo}/pulls/$pr/comments/$comment_id/replies" -f body="$body" >/dev/null 2>&1
+}
+
+# Analyze phase of the review round: run the headless /review-comments skill in
+# the ticket's session. The skill's entire output is the plan file it writes to
+# ORCHESTRATOR_REVIEW_PLAN_FILE (set per invocation) — it never asks, never
+# posts, and never implements. Success here only means opencode exited 0; the
+# plan still has to be read and applied by the act phase.
+orchestrator_review_analyze() {
+  local number="$1" session_id="$2" pr_number="$3" worktree="$4" plan_file="$5"
+  local prompt
+  prompt="/review-comments on PR #$pr_number headless: do not ask, do not post, do not implement — write the plan file"
+  orchestrator_log "review #$number: launching /review-comments on PR #$pr_number (session $session_id)"
+  if (cd "$worktree" && ORCHESTRATOR_REVIEW_PLAN_FILE="$plan_file" opencode run --auto --session "$session_id" "$prompt"); then
+    return 0
+  fi
+  return 1
+}
+
+# Act phase of the review round: read the plan file, validate it against the
+# review-comments schema, and apply it. Every comment in the plan gets its
+# reply posted on the thread with the AI-source footer (a general comment — a
+# null path — gets a plain PR-conversation reply). The watermark advances only
+# here, never in analyze. When the plan needs a human (a pushback or question,
+# or an implement comment until #250 lands), polling is paused for the PR and a
+# maintainer notice is posted. Analyze failure, an empty plan, or a malformed
+# or schema-invalid plan returns non-zero and keeps the watermark, so the round
+# falls through to the retry/escalate path.
+orchestrator_review_act() {
+  local number="$1" pr_number="$2" plan_file="$3"
+  local schema count needs_human i entry comment_id path type reply body latest posted
+  schema="$SCRIPT_DIR/../.agents/skills/review-comments/review-plan.schema.json"
+  if [[ ! -f "$plan_file" ]] \
+    || ! node "$SCRIPT_DIR/ct-review-plan-validate.js" "$schema" "$plan_file" >/dev/null 2>&1; then
+    orchestrator_log "review act #$number: plan $plan_file is missing, malformed, or schema-invalid; keeping the watermark"
+    return 1
+  fi
+  count="$(jq '.comments | length' "$plan_file")"
+  if [[ "$count" -eq 0 ]]; then
+    orchestrator_log "review act #$number: plan is empty; keeping the watermark"
+    return 1
+  fi
+  needs_human="$(jq -r '[.needsHuman, (.comments | map(.type == "implement") | any)] | any' "$plan_file")"
+  posted=0
+  for ((i = 0; i < count; i++)); do
+    entry="$(jq -c ".comments[$i]" "$plan_file")"
+    comment_id="$(printf '%s' "$entry" | jq -r '.commentId')"
+    path="$(printf '%s' "$entry" | jq -r '.path')"
+    type="$(printf '%s' "$entry" | jq -r '.type')"
+    reply="$(printf '%s' "$entry" | jq -r '.reply')"
+    body="${reply}
+${ORCHESTRATOR_AI_FOOTER}"
+    if [[ "$path" == "null" || -z "$path" ]]; then
+      if orchestrator_pr_post_comment "$pr_number" "$body"; then
+        posted=$((posted + 1))
+        orchestrator_log "review act #$number: replied to general comment $comment_id on PR #$pr_number ($type)"
+      else
+        orchestrator_log "WARNING: failed to reply to general comment $comment_id on PR #$pr_number"
+      fi
+    else
+      if orchestrator_pr_reply_to_thread "$pr_number" "$comment_id" "$body"; then
+        posted=$((posted + 1))
+        orchestrator_log "review act #$number: replied to thread comment $comment_id on PR #$pr_number ($type)"
+      else
+        orchestrator_log "WARNING: failed to reply to thread comment $comment_id on PR #$pr_number"
+      fi
+    fi
+  done
+  if [[ "$posted" -eq 0 ]]; then
+    orchestrator_log "ERROR: no reply posted on PR #$pr_number; keeping the watermark"
+    return 1
+  fi
+  latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
+  if [[ -n "$latest" ]]; then
+    orchestrator_state_mark_reviewed "$ORCHESTRATOR_STATE_FILE" "$number" "$latest"
+    orchestrator_log "review act #$number: advanced watermark to $latest on PR #$pr_number"
+  fi
+  if [[ "$needs_human" == "true" ]]; then
+    orchestrator_state_set_review_needs_human "$ORCHESTRATOR_STATE_FILE" "$number" true
+    body="Some review comments on PR #$pr_number need a human decision. The orchestrator has paused automated replies on this PR; please handle the open threads.${ORCHESTRATOR_AI_FOOTER}"
+    if orchestrator_pr_post_comment "$pr_number" "$body"; then
+      orchestrator_log "review act #$number: needs human decision; paused polling and posted notice on PR #$pr_number"
+    else
+      orchestrator_log "WARNING: failed to post maintainer notice on PR #$pr_number"
+    fi
+  fi
+  return 0
+}
+
 orchestrator_review_round() {
   local number="$1" session_id="$2" pr_number="$3" worktree="$4"
-  local failures retries latest body
+  local failures retries latest body plan_file temp_plan
   retries="${ORCHESTRATOR_REVIEW_RETRIES:-3}"
   failures="$(orchestrator_state_review_failures "$ORCHESTRATOR_STATE_FILE" "$number")"
   if [[ "$failures" -ge "$retries" ]]; then
@@ -204,21 +308,23 @@ orchestrator_review_round() {
     failures=0
     orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" 0
   fi
-  orchestrator_log "review #$number: launching /review-comments on PR #$pr_number (session $session_id)"
-  if (cd "$worktree" && opencode run --auto --session "$session_id" "/review-comments on PR #$pr_number"); then
-    latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
-    if [[ -n "$latest" ]]; then
-      orchestrator_state_mark_reviewed "$ORCHESTRATOR_STATE_FILE" "$number" "$latest"
-    fi
+  plan_file="${ORCHESTRATOR_REVIEW_PLAN_FILE:-}"
+  temp_plan=""
+  if [[ -z "$plan_file" ]]; then
+    temp_plan="$(mktemp "${TMPDIR:-/tmp}/carbotracker-review-plan.XXXXXX")"
+    plan_file="$temp_plan"
+  fi
+  if orchestrator_review_analyze "$number" "$session_id" "$pr_number" "$worktree" "$plan_file" \
+      && orchestrator_review_act "$number" "$pr_number" "$plan_file"; then
+    rm -f "$temp_plan"
     orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" 0
-    orchestrator_log "review #$number: round succeeded; last comment timestamp ${latest:-<unknown>}"
+    orchestrator_log "review #$number: round succeeded on PR #$pr_number"
     return 0
   fi
+  rm -f "$temp_plan"
   failures=$((failures + 1))
   orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" "$failures"
-  body="Automated review round failed (attempt $failures/$retries) on PR #$pr_number. The orchestrator will retry.
----
-_Created by carbotracker's agent skills._"
+  body="Automated review round failed (attempt $failures/$retries) on PR #$pr_number. The orchestrator will retry.${ORCHESTRATOR_AI_FOOTER}"
   if orchestrator_pr_post_comment "$pr_number" "$body"; then
     orchestrator_log "review #$number: posted failure notice (attempt $failures/$retries) on PR #$pr_number"
   else
@@ -241,13 +347,14 @@ orchestrator_awaiting_review_entries() {
 }
 
 orchestrator_review_poll() {
-  local line number pr_number session_id worktree last_comment_at latest notice_posted
+  local line number pr_number session_id worktree last_comment_at latest notice_posted needs_human
   while IFS= read -r line; do
     number="$(printf '%s' "$line" | jq -r '.ticket')"
     pr_number="$(printf '%s' "$line" | jq -r '.prNumber')"
     session_id="$(printf '%s' "$line" | jq -r '.sessionId')"
     worktree="$(printf '%s' "$line" | jq -r '.worktree')"
     last_comment_at="$(printf '%s' "$line" | jq -r '.lastCommentAt // ""')"
+    needs_human="$(printf '%s' "$line" | jq -r '.reviewNeedsHuman // false')"
 
     if [[ -z "$pr_number" || "$pr_number" == "null" ]]; then
       orchestrator_log "skip review #$number: no PR recorded"
@@ -276,9 +383,17 @@ _Created by carbotracker's agent skills._"
     fi
     if [[ -n "$last_comment_at" ]]; then
       if [[ "$latest" == "$last_comment_at" || "$latest" < "$last_comment_at" ]]; then
-        orchestrator_log "review #$number: no new comment on PR #$pr_number (last known $last_comment_at)"
+        if [[ "$needs_human" == "true" ]]; then
+          orchestrator_log "review #$number: paused for human decision on PR #$pr_number"
+        else
+          orchestrator_log "review #$number: no new comment on PR #$pr_number (last known $last_comment_at)"
+        fi
         continue
       fi
+    fi
+    if [[ "$needs_human" == "true" ]]; then
+      orchestrator_log "review #$number: new comment resumes paused PR #$pr_number"
+      orchestrator_state_set_review_needs_human "$ORCHESTRATOR_STATE_FILE" "$number" false
     fi
     orchestrator_log "review #$number: new comment on PR #$pr_number (latest $latest, last known ${last_comment_at:-<none>})"
     orchestrator_review_round "$number" "$session_id" "$pr_number" "$worktree" || true
