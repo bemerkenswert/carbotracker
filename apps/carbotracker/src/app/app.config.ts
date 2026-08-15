@@ -17,6 +17,7 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { environment } from '../environments/environment';
 import { authFeature } from '../features/auth/+state/auth.store';
 import { getAuthProviders } from '../features/auth/auth.providers';
+import { getProductsProviders } from '../features/products/products.providers';
 import * as appEffects from './app.effects';
 import { settingsFeature } from './app.reducer';
 import { ThemeApplicationService } from './theme-application.service';
@@ -39,6 +40,7 @@ export const appConfig: ApplicationConfig = {
     environment.fireBaseProvider(),
     provideRouterStore(),
     getAuthProviders(),
+    getProductsProviders(),
     provideEffects([appEffects]),
     provideStoreDevtools(),
     provideRouter(

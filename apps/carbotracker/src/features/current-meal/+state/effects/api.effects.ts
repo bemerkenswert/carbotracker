@@ -8,7 +8,6 @@ import { SavedMealsService } from '../../../../saved-meals-feature/services/save
 import { authFeature } from '../../../../features/auth/+state/auth.store';
 import { SavedMealNameDialogService } from '../../../../saved-meals-feature/saved-meal-name-dialog/saved-meal-name-dialog.service';
 import { CurrentMealService } from '../../services/current-meal.service';
-import { ProductsService } from '../../services/products.service';
 import {
   CreateMealEntryPageComponentActions,
   CurrentMealPageComponentActions,
@@ -173,42 +172,6 @@ export const deleteMealEntryOfCurrentMeal = createEffect(
       }),
     ),
   { functional: true, dispatch: false },
-);
-
-export const startStreamingProducts$ = createEffect(
-  (
-    actions$ = inject(Actions),
-    productsService = inject(ProductsService),
-    store = inject(Store),
-  ) =>
-    actions$.pipe(
-      ofType(routerNavigatedAction),
-      filter(({ payload }) =>
-        payload.event.urlAfterRedirects.startsWith('/app/current-meal'),
-      ),
-      switchMap(() => store.select(authFeature.selectUserId)),
-      tap((uid) => {
-        if (uid) {
-          productsService.subscribeToOwnProducts({ uid });
-        }
-      }),
-    ),
-  { dispatch: false, functional: true },
-);
-
-export const stopStreamingProducts$ = createEffect(
-  (actions$ = inject(Actions), productsService = inject(ProductsService)) =>
-    actions$.pipe(
-      ofType(routerNavigatedAction),
-      filter(
-        ({ payload }) =>
-          !payload.event.urlAfterRedirects.startsWith('/app/current-meal'),
-      ),
-      tap(() => {
-        productsService.unsubscribeFromOwnProducts();
-      }),
-    ),
-  { dispatch: false, functional: true },
 );
 
 export const startStreamingCurrentMeal$ = createEffect(
