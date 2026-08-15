@@ -183,6 +183,75 @@ fi
 exit 0"
 }
 
+# Fake git that answers the git-fact queries the reconcile step makes.
+# count: commits the worktree reports ahead of the base; dirty: whether
+# `status --porcelain` is non-empty; pushed: whether `ls-remote` reports
+# the branch on origin.
+fake_reconcile_git() {
+  local count="${1:-0}" dirty="${2:-no}" pushed="${3:-no}"
+  fake_command git "if [[ \"\$1\" == \"-C\" ]]; then
+  shift 2
+  if [[ \"\$1\" == \"rev-parse\" ]]; then
+    exit 0
+  elif [[ \"\$1\" == \"status\" ]]; then
+    if [[ \"$dirty\" == \"yes\" ]]; then printf \" M file.txt\n\"; fi
+    exit 0
+  elif [[ \"\$1\" == \"rev-list\" ]]; then
+    printf \"$count\n\"
+    exit 0
+  elif [[ \"\$1\" == \"push\" ]]; then
+    exit 0
+  fi
+elif [[ \"\$1\" == \"ls-remote\" ]]; then
+  if [[ \"$pushed\" == \"yes\" ]]; then printf \"abc1234\trefs/heads/\${3##*/}\n\"; fi
+  exit 0
+elif [[ \"\$1\" == \"worktree\" ]]; then
+  if [[ \"\$2\" == \"remove\" ]]; then rm -rf \"\$3\" \"\$4\"; fi
+  exit 0
+elif [[ \"\$1\" == \"branch\" || \"\$1\" == \"fetch\" ]]; then
+  exit 0
+fi
+exit 0"
+}
+
+# Fake gh that answers the reconcile-step queries: `pr list` returns the
+# given PR number when non-empty (otherwise an empty list), `pr create` is
+# captured, and `issue view` / `issue comment` / `issue edit` are captured.
+fake_reconcile_gh() {
+  local pr_number="${1:-}"
+  fake_command gh "if [[ \"\$1\" == \"pr\" && \"\$2\" == \"list\" ]]; then
+  if [[ -n \"$pr_number\" ]]; then printf \"[{\\\"number\\\":$pr_number}]\n\"; else printf \"[]\n\"; fi
+  exit 0
+elif [[ \"\$1\" == \"pr\" && \"\$2\" == \"create\" ]]; then
+  printf \"%s\n\" \"\$*\" > \"\${FAKE_PR_CREATE_ARGS:-/dev/null}\"
+  exit 0
+elif [[ \"\$1\" == \"issue\" && \"\$2\" == \"view\" ]]; then
+  printf \"Some Title\n\"
+  exit 0
+elif [[ \"\$1\" == \"issue\" && \"\$2\" == \"comment\" ]]; then
+  printf \"%s\n\" \"\$*\" > \"\${FAKE_ISSUE_COMMENT_ARGS:-/dev/null}\"
+  exit 0
+elif [[ \"\$1\" == \"issue\" && \"\$2\" == \"edit\" ]]; then
+  printf \"%s\n\" \"\$*\" > \"\${FAKE_ISSUE_EDIT_ARGS:-/dev/null}\"
+  exit 0
+fi
+exit 0"
+}
+
+# Fake opencode run that exits 0 and captures the invocation; `session list`
+# returns the given session id (or none).
+fake_reconcile_opencode() {
+  local session_id="${1:-}"
+  fake_command opencode "if [[ \"\$1\" == \"run\" ]]; then
+  printf \"%s\n\" \"\$*\" > \"\${FAKE_OPENCODE_ARGS:-/dev/null}\"
+  exit 0
+elif [[ \"\$1\" == \"session\" ]]; then
+  if [[ -n \"$session_id\" ]]; then printf \"[{\\\"id\\\":\\\"$session_id\\\",\\\"title\\\":\\\"carbotracker-ticket-123\\\",\\\"created\\\":1}]\n\"; else printf \"[]\n\"; fi
+  exit 0
+fi
+exit 0"
+}
+
 STATE_DIR=""
 TEST_STATE=""
 WT_PARENT=""
@@ -731,21 +800,74 @@ exit 0'
   state_teardown
 }
 
-test_implement_fails_when_opencode_fails() {
+test_implement_retries_opencode_with_continue() {
   state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[{\"number\":42}]\n"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  exit 0
+fi
+exit 0'
+  fake_worktree_npm
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  local n
+  n="$(cat "$FAKE_OPENCODE_COUNT" 2>/dev/null || echo 0)"
+  n=$((n + 1))
+  printf "%d\n" "$n" > "$FAKE_OPENCODE_COUNT"
+  printf "%s\n" "$*" >> "$FAKE_OPENCODE_LOG"
+  if [[ "$n" -eq 1 ]]; then exit 1; fi
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"ses_abc\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_OPENCODE_COUNT="$STATE_DIR/opencode_count"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree"
+  assert_eq "first opencode attempt uses fresh title session" "run --auto --title carbotracker-ticket-10 /implement the issue is 10" "$(sed -n '1p' "$FAKE_OPENCODE_LOG")"
+  assert_eq "retry once with --continue" "run --auto --continue /implement the issue is 10" "$(sed -n '2p' "$FAKE_OPENCODE_LOG")"
+  assert_eq "retried run completes the ticket" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  unset FAKE_OPENCODE_COUNT FAKE_OPENCODE_LOG
+  state_teardown
+}
+
+test_implement_escalates_after_two_opencode_failures() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
+  exit 0
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_COMMENT"
+  exit 0
+fi
+exit 1'
   fake_command git 'if [[ "$1" == "worktree" && "$2" == "add" ]]; then
   mkdir -p "$3"
+elif [[ "$1" == "worktree" && "$2" == "remove" ]]; then
+  rm -rf "$3" "$4"
+elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
+  exit 0
 fi
 exit 0'
   fake_command npm 'exit 0'
   fake_command opencode 'exit 1'
   local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
+  export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
-  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" >/dev/null 2>&1; then
-    fail "implement fails when opencode run fails"
-  else
-    pass "implement fails when opencode run fails"
-  fi
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "implement fails when opencode fails twice" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_contains "escalation removes in-progress label" "--remove-label in-progress" "$(cat "$FAKE_ESCALATE_EDIT")"
+  assert_contains "escalation removes ticket label" "--remove-label ticket" "$(cat "$FAKE_ESCALATE_EDIT")"
+  assert_contains "escalation adds needs-triage" "--add-label needs-triage" "$(cat "$FAKE_ESCALATE_EDIT")"
+  assert_contains "escalation comments with failure context" "opencode exited non-zero twice" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_eq "escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "escalation prunes the worktree" "no" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_contains "logs the escalation" "escalated #10 to needs-triage" "$output"
+  unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
   state_teardown
 }
 
@@ -1574,6 +1696,167 @@ test_state_loaded_but_empty_file() {
   state_teardown
 }
 
+test_reconcile_empty_state_is_noop() {
+  state_setup
+  fake_command gh 'exit 99'
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>&1)"
+  assert_eq "reconcile leaves empty state alone" "0" "$(jq 'length' "$TEST_STATE" 2>/dev/null || echo 0)"
+  assert_contains "logs reconciliation" "reconciling" "$output"
+  state_teardown
+}
+
+test_reconcile_pr_exists_sets_awaiting_review() {
+  state_setup
+  fake_reconcile_gh 456
+  fake_reconcile_git 0 no no
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc ""
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>&1)"
+  assert_eq "existing pr moves phase to awaiting review" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  assert_eq "existing pr number recorded" "456" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
+  assert_contains "logs pr recovery" "PR #456 exists" "$output"
+  state_teardown
+}
+
+test_reconcile_pushed_branch_creates_pr() {
+  state_setup
+  fake_reconcile_git 0 no yes
+  fake_command npm 'exit 0'
+  fake_reconcile_opencode ses_old
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  if [[ -f "$FAKE_PR_CREATED" ]]; then
+    printf "[{\"number\":50}]\n"
+  else
+    printf "[]\n"
+  fi
+elif [[ "$1" == "pr" && "$2" == "create" ]]; then
+  printf "%s\n" "$*" > "$FAKE_PR_CREATE_ARGS"
+  touch "$FAKE_PR_CREATED"
+elif [[ "$1" == "issue" && "$2" == "view" ]]; then
+  printf "Some Title\n"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ISSUE_COMMENT_ARGS"
+fi
+exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_PR_CREATED="$STATE_DIR/pr_created"
+  export FAKE_PR_CREATE_ARGS="$STATE_DIR/pr_create"
+  export FAKE_ISSUE_COMMENT_ARGS="$STATE_DIR/issue_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_old ""
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>/dev/null
+  assert_contains "pushed branch creates pr for the branch" "--head ticket/123-foo" "$(cat "$FAKE_PR_CREATE_ARGS")"
+  assert_contains "pushed branch creates pr with base main" "--base main" "$(cat "$FAKE_PR_CREATE_ARGS")"
+  assert_eq "recovered pr number stored" "50" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
+  assert_eq "recovered entry moves to awaiting review" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  assert_contains "issue commented with created pr" "Started implementation. PR #50 created." "$(cat "$FAKE_ISSUE_COMMENT_ARGS")"
+  unset FAKE_PR_COUNT FAKE_PR_CREATE_ARGS FAKE_ISSUE_COMMENT_ARGS
+  state_teardown
+}
+
+test_reconcile_resumes_with_continue_when_no_session() {
+  state_setup
+  fake_reconcile_git 3 no no
+  fake_command npm 'exit 0'
+  fake_reconcile_opencode ses_r
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  if [[ -f "$FAKE_PR_CREATED" ]]; then
+    printf "[{\"number\":70}]\n"
+  else
+    printf "[]\n"
+  fi
+elif [[ "$1" == "pr" && "$2" == "create" ]]; then
+  printf "%s\n" "$*" > "$FAKE_PR_CREATE_ARGS"
+  touch "$FAKE_PR_CREATED"
+elif [[ "$1" == "issue" && "$2" == "view" ]]; then
+  printf "Some Title\n"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  exit 0
+fi
+exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_PR_CREATED="$STATE_DIR/pr_created"
+  export FAKE_PR_CREATE_ARGS="$STATE_DIR/pr_create"
+  export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>/dev/null
+  assert_contains "unpushed work resumes opencode with --continue" "--continue" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_contains "resumed opencode targets the issue" "/implement the issue is 123" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_contains "resumed work opens a pr" "--head ticket/123-foo" "$(cat "$FAKE_PR_CREATE_ARGS")"
+  assert_eq "resumed work reaches awaiting review" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  assert_eq "resumed work records pr number" "70" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
+  unset FAKE_PR_CREATED FAKE_OPENCODE_ARGS FAKE_PR_CREATE_ARGS
+  state_teardown
+}
+
+test_reconcile_resumes_with_recorded_session() {
+  state_setup
+  fake_reconcile_git 2 yes no
+  fake_command npm 'exit 0'
+  fake_reconcile_opencode ses_old
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  if [[ -f "$FAKE_PR_CREATED" ]]; then
+    printf "[{\"number\":71}]\n"
+  else
+    printf "[]\n"
+  fi
+elif [[ "$1" == "pr" && "$2" == "create" ]]; then
+  touch "$FAKE_PR_CREATED"
+elif [[ "$1" == "issue" && "$2" == "view" ]]; then
+  printf "Some Title\n"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  exit 0
+fi
+exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_PR_CREATED="$STATE_DIR/pr_created"
+  export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_old ""
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>/dev/null
+  assert_contains "recorded session is resumed" "--session ses_old" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "dirty worktree reaches awaiting review" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  unset FAKE_OPENCODE_ARGS
+  state_teardown
+}
+
+test_reconcile_nothing_recoverable_cleans_up() {
+  state_setup
+  fake_reconcile_git 0 no no
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[]\n"
+elif [[ "$1" == "issue" && "$2" == "view" ]]; then
+  printf "Some Title\n"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ISSUE_COMMENT_ARGS"
+elif [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ISSUE_EDIT_ARGS"
+fi
+exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_ISSUE_COMMENT_ARGS="$STATE_DIR/issue_comment"
+  export FAKE_ISSUE_EDIT_ARGS="$STATE_DIR/issue_edit"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>&1)"
+  assert_eq "unrecoverable entry removed from state" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "unrecoverable worktree removed" "no" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_contains "unrecoverable issue commented" "no recoverable work" "$(cat "$FAKE_ISSUE_COMMENT_ARGS")"
+  assert_contains "unrecoverable issue drops in-progress" "--remove-label in-progress" "$(cat "$FAKE_ISSUE_EDIT_ARGS")"
+  assert_eq "unrecoverable issue is not re-queued" "0" "$(grep -c -- '--add-label ready-for-agent' "$FAKE_ISSUE_EDIT_ARGS")"
+  assert_contains "logs the cleanup" "nothing recoverable" "$output"
+  unset FAKE_ISSUE_COMMENT_ARGS FAKE_ISSUE_EDIT_ARGS
+  state_teardown
+}
+
 test_state_load_missing
 test_state_loaded_but_empty_file
 test_state_complete_updates_entry
@@ -1606,6 +1889,12 @@ test_issue_blocked_via_blocked_by_section
 test_body_blocker_numbers_stops_at_next_section
 test_opencode_session_id_filters_by_title
 test_opencode_session_id_no_match
+test_reconcile_empty_state_is_noop
+test_reconcile_pr_exists_sets_awaiting_review
+test_reconcile_pushed_branch_creates_pr
+test_reconcile_resumes_with_continue_when_no_session
+test_reconcile_resumes_with_recorded_session
+test_reconcile_nothing_recoverable_cleans_up
 test_pr_number_for_branch
 test_pr_number_for_branch_missing
 test_pr_latest_comment_at_returns_newest
@@ -1646,7 +1935,8 @@ test_poll_once_runs_merge_poll
 test_implement_runs_full_pipeline
 test_implement_fails_when_worktree_fails
 test_implement_fails_when_npm_ci_fails
-test_implement_fails_when_opencode_fails
+test_implement_retries_opencode_with_continue
+test_implement_escalates_after_two_opencode_failures
 test_implement_no_pr_skips_comment
 test_implement_no_session_stores_null
 test_implement_opens_pr_when_none_exists

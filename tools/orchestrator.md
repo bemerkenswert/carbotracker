@@ -10,6 +10,12 @@ for new comments and, when it finds one, resumes the original opencode session
 with `/review-comments` so the agent answers the review and pushes updates. It
 runs as a systemd user service (see `carbotracker-orchestrator.service`).
 
+On startup the daemon first **reconciles** the state file against observable
+git facts (see [Crash recovery](#crash-recovery)), so a VPS restart or crashed
+run resumes from what actually exists on disk rather than from stale in-memory
+state. A failing `opencode run` is retried once with `--continue` before the
+ticket is escalated to a human (see [opencode failures](#opencode-failures)).
+
 ## Lifecycle
 
 A ticket moves through phases as the orchestrator works it:
@@ -19,10 +25,15 @@ stateDiagram-v2
     [*] --> implementing: poll finds eligible ticket, claim flips GitHub labels
     implementing --> awaiting_review: opencode done, PR opened
     implementing --> [*]: failure, un-claim and clean up
+    implementing --> [*]: opencode fails twice, escalated to needs-triage
     awaiting_review --> review_round: new comment on PR (newer than lastCommentAt)
     review_round --> awaiting_review: /review-comments succeeds or a retry fails
     awaiting_review --> [*]: merge poll sees PR merged, closes issue
     awaiting_review --> [*]: merge poll sees PR closed without merge
+    [*] --> recovering: daemon startup reconcile
+    recovering --> implementing: worktree has unpushed work, resume opencode
+    recovering --> awaiting_review: PR exists or branch pushed, create/keep PR
+    recovering --> [*]: nothing recoverable, clean up and return to queue
 ```
 
 `implementing` means the orchestrator is actively running a session for the
@@ -57,6 +68,56 @@ Each poll, before the review loop, the orchestrator walks every state entry in
 - **`OPEN`** — still awaiting review, nothing to do.
 - **anything else / gh failure** — the state query failed; the entry is kept
   so the merge is retried on the next poll.
+
+## Crash recovery
+
+The state file is the orchestrator's memory, never the source of truth. On
+daemon startup (`once` mode too) the orchestrator runs `orchestrator_reconcile`,
+which walks every entry in the state file and inspects the observable facts —
+does the worktree directory exist, what does `git status`/`git log` say, is the
+branch pushed (`git ls-remote`), and is there a PR for the branch (`gh pr list
+--head <branch> --state all`). It then transitions each ticket to the phase
+that matches reality:
+
+- **PR exists** — the implementation finished; set phase `awaiting review`,
+  record the PR number, and let the merge/review polls pick the entry up from
+  the next poll.
+- **Branch pushed, no PR** — the crash happened between push and PR creation.
+  The orchestrator creates the PR (`gh pr create`), transitions to
+  `awaiting review`, and comments "Started implementation. PR #&lt;n&gt;
+  created." Duplicate PRs are impossible: `pr list --state all` also matches a
+  merged or closed PR, so a branch that already has one is never re-created.
+- **Worktree has unpushed work** (local changes or commits not on the remote
+  branch) — the crash interrupted an implementation. Dependencies were already
+  installed before the agent started, so the orchestrator resumes the run
+  directly: `opencode run --auto --continue` (or `--session <id>` when the
+  state file already records one) with `/implement`, then push, PR, and
+  `awaiting review`. The same opencode retry/escalation rules apply as for a
+  fresh run.
+- **Nothing recoverable** (clean worktree, branch never pushed, no PR, or the
+  worktree is gone) — the crash happened before any work landed. The
+  orchestrator prunes the worktree and branch, comments on the issue that no
+  recoverable work was found, drops `in-progress`, and removes the entry from
+  state. The comment is the handoff to a human: `ready-for-agent` is **not**
+  re-added automatically, so a broken ticket does not loop through the
+  pipeline — re-tag it to retry.
+
+Each entry is handled independently; a failure on one (e.g. `gh` transiently
+down) logs a warning and leaves the entry for the next restart rather than
+blocking the rest.
+
+## opencode failures
+
+A fresh or resumed implementation runs `opencode run --auto` (with `--title`,
+`--session`, or `--continue` depending on the situation). On a non-zero exit it
+is **retried once** with `opencode run --auto --continue` against the same
+session. If the retry also fails, the orchestrator **escalates**: it removes
+`in-progress` and `ticket` (the `ready-for-agent` label was already removed at
+claim time), adds `needs-triage`, comments on the issue with the failure reason
+and the tail of the run's output, prunes the worktree and branch, and removes
+the entry from state. The ticket is now a human problem, not a pipeline
+retry-loop. If the escalation itself fails, the entry stays in state and the
+poll loop's normal un-claim/cleanup path removes it.
 
 ## Review loop
 
@@ -127,16 +188,33 @@ Active tickets live in a single JSON array, written atomically
 | `phase`              | `implementing` or `awaiting review`                               |
 | `startedAt`          | UTC timestamp of the claim                                        |
 
-## Data flow per poll
+## Data flow
+
+The full flow: startup reconciliation, then each poll cycle.
 
 ```mermaid
 flowchart TD
-    A[gh issue list ready-for-agent,ticket] --> B{unblocked? skip already-claimed / blocked / at cap}
+    S[startup: reconcile state entries against git facts] --> S1{PR exists for branch?}
+    S1 -- yes --> AR[phase awaiting review, begin polling]
+    S1 -- no --> S2{branch pushed?}
+    S2 -- yes --> S3[create PR + phase awaiting review]
+    S2 -- no --> S4{worktree has unpushed work?}
+    S4 -- yes --> S5[resume opencode --continue, then push + PR]
+    S4 -- no --> S6[prune worktree, comment, drop in-progress, remove from state]
+    S5 --> AR
+    S3 --> AR
+    AR --> A[gh issue list ready-for-agent,ticket] --> B{unblocked? skip already-claimed / blocked / at cap}
     B -- eligible --> C[claim: remove ready-for-agent, add in-progress + append state entry]
     C --> D[ct_worktree_add: git fetch origin/main + worktree add -b ticket/N-slug]
     D --> E[npm ci --prefer-offline --no-audit --no-fund]
     E --> F[opencode run --auto --title carbotracker-ticket-N /implement the issue is N]
-    F --> G[opencode session list → sessionId by title]
+    F --> F1{non-zero exit?}
+    F1 -- no --> G
+    F1 -- yes --> F2[retry: opencode run --auto --continue /implement the issue is N]
+    F2 --> F3{non-zero again?}
+    F3 -- no --> G
+    F3 -- yes --> F4[escalate: needs-triage, comment with output, prune, remove from state]
+    G[opencode session list → sessionId by title]
     G --> H[git push -u origin branch]
     H --> I{PR exists?}
     I -- no --> J[gh pr create --base main --head branch]
@@ -201,7 +279,17 @@ Follow the daemon with `journalctl --user -u carbotracker-orchestrator -f`.
   `opencode` run, which is wasteful but simple and safe. Cleanup is guarded:
   only a worktree this run actually created (`CT_WORKTREE_CREATED`) is
   removed, so a parallel orchestrator that loses the claim race never deletes
-  the winner's worktree.
+  the winner's worktree. When `opencode` itself fails, the failure is not
+  retried by re-claiming: the run is retried once in place with `--continue`,
+  then the ticket is escalated to `needs-triage` so a broken ticket stops
+  consuming pipeline effort (see [opencode failures](#opencode-failures)).
+- Recovery never trusts the state file's phase: `orchestrator_reconcile`
+  derives the phase from `git status`, `git log`, `git ls-remote`, and
+  `gh pr list --state all`. `prNumber` from the state file is ignored in
+  favour of
+  what the remote actually reports, so a crash between push and PR creation is
+  recovered by creating the PR rather than re-running the agent, and a branch
+  whose PR was already merged is never given a second PR.
 - Review detection compares strictly against the watermark. The watermark is
   the newest comment that is **not** the pipeline's own output — comments and
   reviews carrying the `_Created by carbotracker's agent skills._` footer are
