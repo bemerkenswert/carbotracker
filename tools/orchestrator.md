@@ -6,9 +6,11 @@ one through a full implementation cycle — worktree, dependency install,
 headless `opencode`, and finally a pushed branch with a pull request. Once a
 PR is up it runs the **merge poll** (detecting merged or closed PRs and
 cleaning up) and the **review loop**: every poll it checks awaiting-review PRs
-for new comments and, when it finds one, resumes the original opencode session
-with `/review-comments` so the agent answers the review and pushes updates. It
-runs as a systemd user service (see `carbotracker-orchestrator.service`).
+for new comments and, when it finds one, runs an **analyze** step — resuming
+the original opencode session with the headless `/review-comments` skill, which
+writes a structured plan — and an **act** step that applies the plan (posting
+replies and pausing for human decisions). It runs as a systemd user service
+(see `carbotracker-orchestrator.service`).
 
 On startup the daemon first **reconciles** the state file against observable
 git facts (see [Crash recovery](#crash-recovery)), so a VPS restart or crashed
@@ -131,14 +133,26 @@ Each poll, after claiming work, the orchestrator walks every state entry in
   reviews carrying the `_Created by carbotracker's agent skills._` footer are
   the orchestrator's own output and are excluded from the watermark, so the
   agent's replies and the failure notices can never re-trigger the loop.
-- If that timestamp is newer than the entry's `lastCommentAt`, it launches
-  `opencode run --auto --session <sessionId> "/review-comments on PR #<n>"`
-  in the worktree — the same session that implemented the ticket, so the
-  agent keeps full context.
-- On success the watermark advances to the newest human comment (the agent's
-  own replies are filtered out), and the failure counter resets. A review
-  that arrived mid-round is newer than the trigger, so it is seen on the
-  next poll.
+- If that timestamp is newer than the entry's `lastCommentAt`, it runs a
+  review round, split into an **analyze** and an **act** step (see ADR-0003):
+  - **Analyze** — `opencode run --auto --session <sessionId>` invoking the
+    headless `/review-comments` skill ("headless: do not ask, do not post, do
+    not implement — write the plan file") in the worktree. The skill's entire
+    output is a plan file written to `ORCHESTRATOR_REVIEW_PLAN_FILE`; it never
+    posts and never implements. Analyze success only means opencode exited 0.
+  - **Act** — read the plan, validate it against the review-comments plan
+    schema, and apply it: every comment gets its reply posted on the thread
+    with the AI-source footer (a general comment — a null `path` — gets a
+    plain PR-conversation reply). When the plan has a `pushback` or `question`
+    comment (or an `implement` comment, until ticket #250 lands), the entry's
+    `reviewNeedsHuman` flag is set, polling pauses for the PR, and a
+    maintainer notice is posted on the PR.
+- The watermark advances **only in the act step**, after the plan is applied.
+  Analyze failure, an empty plan, or a missing/malformed/schema-invalid plan
+  leaves the watermark in place.
+- On a successful round the failure counter resets. The watermark is the
+  newest human comment at the moment the act step finishes, so a comment that
+  arrives after the round is picked up on the next poll.
 - On failure the orchestrator logs the error, increments `reviewFailures`,
   and posts a visible notice on the PR — "Automated review round failed
   (attempt N/R)". The watermark stays put, so the same round is retried on
@@ -147,6 +161,8 @@ Each poll, after claiming work, the orchestrator walks every state entry in
   advanced anyway and polling pauses: the PR stays stale until someone
   intervenes. A newer comment on the PR (the failure notices don't count,
   they are filtered) starts a fresh retry budget.
+- When `reviewNeedsHuman` is set, the poll skips the PR until a newer human
+  comment appears; that new comment clears the flag and resumes the round.
 - An entry in `awaiting review` without a session id can never resume with
   full context; the orchestrator posts a one-time notice on the PR
   (tracked via `reviewNoticePosted`) so the stale PR is visible to a
@@ -169,6 +185,7 @@ Active tickets live in a single JSON array, written atomically
     "lastCommentAt": "2026-08-13T00:07:00Z",
     "reviewFailures": 0,
     "reviewNoticePosted": false,
+    "reviewNeedsHuman": false,
     "phase": "awaiting review",
     "startedAt": "2026-08-13T00:07:00Z"
   }
@@ -185,6 +202,7 @@ Active tickets live in a single JSON array, written atomically
 | `lastCommentAt`      | Newest human comment timestamp handled on the PR (`null` = never) |
 | `reviewFailures`     | Consecutive failed review rounds (resets on success)              |
 | `reviewNoticePosted` | Whether the missing-session notice was already posted on the PR   |
+| `reviewNeedsHuman`   | Whether a review round paused polling for a human decision        |
 | `phase`              | `implementing` or `awaiting review`                               |
 | `startedAt`          | UTC timestamp of the claim                                        |
 
@@ -233,11 +251,14 @@ flowchart TD
     P2 --> O
     P3[review loop: walk remaining awaiting-review entries]
     P3 --> P[gh api pulls/N/comments + pulls/N/reviews + issues/N/comments → newest non-bot timestamp]
-    P --> Q{newer than lastCommentAt?}
+    P --> Q{newer than lastCommentAt? or paused PR with a new comment?}
     Q -- no --> O
-    Q -- yes --> R[opencode run --auto --session S /review-comments on PR #N]
-    R -- success --> S[watermark = newest comment, failures = 0]
-    R -- failure --> T[failures++, post PR notice attempt N/R]
+    Q -- yes --> R[ANALYZE: opencode run --auto --session S /review-comments headless → plan file]
+    R -- success --> R1[ACT: validate plan, post each reply with footer]
+    R1 --> R2{plan needsHuman?}
+    R2 -- no --> S[watermark = newest comment, failures = 0]
+    R2 -- yes --> U1[set reviewNeedsHuman, post maintainer notice, watermark = newest comment]
+    R -- failure or empty/malformed plan --> T[failures++, post PR notice attempt N/R]
     T -- failures < R --> O
     T -- failures = R --> U[watermark advanced, polling pauses for human]
 ```

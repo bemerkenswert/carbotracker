@@ -50,6 +50,8 @@ A comment is only classified `implement` at confidence ≥ `0.8`. Below that it 
 
 When `needsHuman` is set, the orchestrator **advances the watermark and pauses polling** for that PR (posting a maintainer notice), so the comment is neither re-triggered forever nor silently consumed.
 
+> **Interim, until #250 lands:** the act phase only implements reply actions. An `implement`-type comment (schema-legal, `needsHuman` false) is currently handled like `needsHuman` — its plan reply is posted, polling pauses, and a maintainer notice goes out — so it is never silently consumed. #250 replaces this with the real implement step.
+
 ### Commit granularity
 
 One commit per `implement` comment, so each thread's reply cites a specific commit.
