@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://carbotracker.dev/review-plan.schema.json",
+  "title": "Review-comments headless plan",
+  "description": "The structured plan a headless /review-comments run writes to the plan file. Every review comment is classified into exactly one type with a confidence; the act phase applies the plan. See docs/adr/0003-review-loop-contract.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["needsHuman", "comments"],
+  "properties": {
+    "needsHuman": {
+      "type": "boolean",
+      "description": "True when any comment needs human judgment (pushback or question). Derived from the comments; the schema enforces the consistency."
+    },
+    "comments": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/comment" }
+    }
+  },
+  "allOf": [
+    {
+      "description": "needsHuman is set exactly when at least one comment is pushback or question.",
+      "if": {
+        "properties": {
+          "comments": {
+            "contains": {
+              "anyOf": [
+                {
+                  "properties": { "type": { "const": "pushback" } },
+                  "required": ["type"]
+                },
+                {
+                  "properties": { "type": { "const": "question" } },
+                  "required": ["type"]
+                }
+              ]
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": { "needsHuman": { "const": true } }
+      },
+      "else": {
+        "properties": { "needsHuman": { "const": false } }
+      }
+    }
+  ],
+  "definitions": {
+    "comment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commentId", "path", "line", "type", "reply", "confidence"],
+      "properties": {
+        "commentId": {
+          "type": "integer",
+          "description": "The GitHub review-comment or issue-comment id."
+        },
+        "path": {
+          "type": ["string", "null"],
+          "description": "File path for an inline thread; null for a general comment."
+        },
+        "line": {
+          "type": ["integer", "null"],
+          "description": "Diff line for an inline thread; null for a general comment."
+        },
+        "type": {
+          "enum": ["answer", "pushback", "question", "implement"],
+          "description": "answer: supply requested info; pushback: reasoned disagreement; question: needs human judgment; implement: apply the change."
+        },
+        "reply": {
+          "type": "string",
+          "description": "The reply the act phase posts to the thread."
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "The classifier's confidence in the type assignment."
+        }
+      },
+      "allOf": [
+        {
+          "description": "The confidence gate: an implement comment must carry confidence >= 0.8; anything below must have been downgraded to question.",
+          "if": {
+            "properties": { "type": { "const": "implement" } },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": { "confidence": { "minimum": 0.8 } }
+          }
+        }
+      ]
+    }
+  }
+}

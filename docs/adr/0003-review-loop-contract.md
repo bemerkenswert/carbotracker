@@ -25,8 +25,10 @@ Split review handling into an **analyze** phase (headless opencode, emits a plan
 
 ### Plan schema
 
+Machine-checkable contract: `.agents/skills/review-comments/review-plan.schema.json` (validated by `tools/tests/ct-review-plan.test.sh`). Shape:
+
 ```json
-{ "needsHuman": false, "comments": [{ "commentId": 3788850731, "path": "README.md", "line": 4, "type": "question", "reply": "…", "confidence": 0.9 }] }
+{ "needsHuman": false, "comments": [{ "commentId": 3788850731, "path": "README.md", "line": 4, "type": "answer", "reply": "…", "confidence": 0.9 }] }
 ```
 
 ### Comment types
@@ -67,4 +69,4 @@ One commit per `implement` comment, so each thread's reply cites a specific comm
 - `review-comments` gains a headless section; the interactive flow is unchanged.
 - `orchestrator_review_round` splits into analyze + act; the watermark only moves on a successful act.
 - `needsHuman` introduces a paused-polling state distinct from the retry-exhaustion pause.
-- Bash tests (`tools/tests/ct-orchestrator.test.sh`) cover the plan-file contract, the type→action mapping, and the watermark/pause behavior.
+- Bash tests cover the plan-file contract (`tools/tests/ct-review-plan.test.sh`, validating against the JSON Schema), and the orchestrator tests (`tools/tests/ct-orchestrator.test.sh`) cover the type→action mapping and the watermark/pause behavior.
