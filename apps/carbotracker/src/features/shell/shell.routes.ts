@@ -1,31 +1,32 @@
 import { Routes } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
-import { ShellComponent } from './pages/Shell/shell.component';
-import * as shellEffects from './shell.effects';
+import { routingEffects } from './+state';
+import { ShellComponent } from './pages/shell/shell.component';
 
 const SHELL_ROUTES: Routes = [
   {
     path: '',
     component: ShellComponent,
-    providers: [provideEffects(shellEffects)],
+    providers: [provideEffects(routingEffects)],
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'current-meal' },
       {
         path: 'products',
-        loadChildren: () => import('../features/products/products.routes'),
+        loadChildren: () => import('../products/products.routes'),
       },
       {
         path: 'current-meal',
         loadChildren: () =>
-          import('../current-meal-feature/current-meal.routes'),
+          import('../../current-meal-feature/current-meal.routes'),
       },
       {
         path: 'saved-meals',
-        loadChildren: () => import('../saved-meals-feature/saved-meals.routes'),
+        loadChildren: () =>
+          import('../../saved-meals-feature/saved-meals.routes'),
       },
       {
         path: 'settings',
-        loadChildren: () => import('../features/settings/settings.routes'),
+        loadChildren: () => import('../settings/settings.routes'),
       },
     ],
   },

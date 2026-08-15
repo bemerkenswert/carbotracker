@@ -47,7 +47,7 @@ export const appConfig: ApplicationConfig = {
         {
           path: 'app',
           canMatch: [isLoggedIn],
-          loadChildren: () => import('../shell-feature/shell.routes'),
+          loadChildren: () => import('../features/shell/shell.routes'),
         },
         {
           path: 'login',
