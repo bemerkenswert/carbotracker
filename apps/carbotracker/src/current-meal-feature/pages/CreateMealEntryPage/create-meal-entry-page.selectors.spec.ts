@@ -1,4 +1,4 @@
-import { Product } from '../../../products-feature/product.model';
+import { Product } from '../../../features/products/product.model';
 import { selectCreateMealEntryPageViewModel } from './create-meal-entry-page.selectors';
 
 const createProduct = (id: string, name: string): Product => ({

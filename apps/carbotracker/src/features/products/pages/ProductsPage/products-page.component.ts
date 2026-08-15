@@ -14,8 +14,10 @@ import {
   CtuiToolbarComponent,
 } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
-import { ProductsPageComponentActions as ComponentActions } from '../../+state/actions/component.actions';
-import { productsFeature } from '../../+state/products.reducer';
+import {
+  ProductsPageComponentActions as ComponentActions,
+  productsFeature,
+} from '../../+state';
 import { Product } from '../../product.model';
 @Component({
   selector: 'carbotracker-products-page',

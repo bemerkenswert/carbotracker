@@ -14,8 +14,8 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { authFeature } from '../../../features/auth/+state/auth.store';
-import { SettingsPageActions } from '../../../features/settings/+state/actions/component.actions';
+import { authFeature } from '../../../auth/+state/auth.store';
+import { SettingsPageActions } from '../../../settings/+state/actions/component.actions';
 import { ProductsService } from '../../services/products.service';
 import { ProductsApiActions } from '../actions/api.actions';
 import {
@@ -24,7 +24,7 @@ import {
 } from '../actions/component.actions';
 import { DeleteProductConfirmationDialogActions } from '../actions/dialog.actions';
 import { ProductsRouterActions } from '../actions/routing.actions';
-import { productsFeature } from '../products.reducer';
+import { productsFeature } from '../products.store';
 
 export const startStreamingProducts$ = createEffect(
   (

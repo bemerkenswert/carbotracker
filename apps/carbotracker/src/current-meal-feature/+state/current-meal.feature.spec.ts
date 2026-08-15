@@ -1,4 +1,4 @@
-import { Product } from '../../products-feature/product.model';
+import { Product } from '../../features/products/product.model';
 import { MealEntry } from '../current-meal.model';
 import {
   CurrentMealApiActions,

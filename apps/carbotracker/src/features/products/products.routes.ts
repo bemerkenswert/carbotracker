@@ -1,11 +1,13 @@
 import { Routes } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
 import { provideState } from '@ngrx/store';
-import * as apiEffects from './+state/effects/api.effects';
-import * as dialogEffects from './+state/effects/dialog.effects';
-import * as routingEffects from './+state/effects/routing.effects';
-import * as snackbarEffects from './+state/effects/snackbar.effects';
-import { productsFeature } from './+state/products.reducer';
+import {
+  apiEffects,
+  dialogEffects,
+  productsFeature,
+  routingEffects,
+  snackbarEffects,
+} from './+state';
 import { ProductsPageComponent } from './pages/ProductsPage/products-page.component';
 
 const PRODUCTS_ROUTES: Routes = [

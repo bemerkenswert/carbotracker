@@ -12,7 +12,7 @@ const SHELL_ROUTES: Routes = [
       { path: '', pathMatch: 'full', redirectTo: 'current-meal' },
       {
         path: 'products',
-        loadChildren: () => import('../products-feature/products.routes'),
+        loadChildren: () => import('../features/products/products.routes'),
       },
       {
         path: 'current-meal',
