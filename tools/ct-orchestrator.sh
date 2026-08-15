@@ -37,6 +37,19 @@ orchestrator_log() {
 # a thread can tell the agent's reply from the human's.
 ORCHESTRATOR_AI_FOOTER=$'\n---\n_Created by carbotracker\'s agent skills._'
 
+# A regex matching the AI-source footer when it ends a body (allowing trailing
+# whitespace). Unlike a bare `contains`, it only fires when the footer is the
+# final line, so a human quoting an agent reply mid-body is not misread as the
+# pipeline's own output.
+ORCHESTRATOR_AI_FOOTER_END_RE="_Created by carbotracker's agent skills\._[[:space:]]*\$"
+
+orchestrator_strip_ai_footer() {
+  # Remove every trailing AI-source footer block (and the whitespace around it)
+  # from a reply body, so a caller can append exactly one. Idempotent — if the
+  # skill already embedded one (or two) footers, all are removed.
+  printf '%s' "$1" | sed -zE "s/([[:space:]]*---[[:space:]]*_Created by carbotracker's agent skills\._){1,}[[:space:]]*\$//"
+}
+
 orchestrator_state_load() {
   local state_file="$1"
   if [[ ! -f "$state_file" ]]; then
@@ -184,14 +197,15 @@ orchestrator_pr_latest_comment_at() {
   # Review surfaces: inline threads (pulls/<n>/comments), top-level review
   # submissions (pulls/<n>/reviews), and general comments on the PR
   # conversation (issues/<n>/comments). The newest non-bot timestamp across
-  # them is the last-known-comment watermark. Comments and reviews authored by
-  # the pipeline carry the AI-source footer, so they are filtered out: the
-  # agent's own replies never re-trigger the loop, and a review that arrives
-  # mid-round stays visible. ISO-8601 timestamps sort lexically.
-  me="_Created by carbotracker's agent skills._"
-  inline="$(gh api "repos/{owner}/{repo}/pulls/$pr/comments" 2>/dev/null | jq -r --arg me "$me" '[.[] | select((.body // "") | contains($me) | not) | .created_at] | max // empty' 2>/dev/null || true)"
-  reviews="$(gh api "repos/{owner}/{repo}/pulls/$pr/reviews" 2>/dev/null | jq -r --arg me "$me" '[.[] | select(.submitted_at != null) | select((.body // "") | contains($me) | not) | .submitted_at] | max // empty' 2>/dev/null || true)"
-  general="$(gh api "repos/{owner}/{repo}/issues/$pr/comments" 2>/dev/null | jq -r --arg me "$me" '[.[] | select((.body // "") | contains($me) | not) | .created_at] | max // empty' 2>/dev/null || true)"
+  # them is the last-known-comment watermark. A comment is the pipeline's own
+  # only when the AI-source footer ends its body (a bare `contains` would also
+  # match a human quote-reply that embeds a quoted footer mid-body); a review
+  # submission with an empty body carries no human signal and is skipped too.
+  # ISO-8601 timestamps sort lexically.
+  me="$ORCHESTRATOR_AI_FOOTER_END_RE"
+  inline="$(gh api "repos/{owner}/{repo}/pulls/$pr/comments" 2>/dev/null | jq -r --arg me "$me" '[.[] | select((.body // "") | test($me) | not) | .created_at] | max // empty' 2>/dev/null || true)"
+  reviews="$(gh api "repos/{owner}/{repo}/pulls/$pr/reviews" 2>/dev/null | jq -r --arg me "$me" '[.[] | select(.submitted_at != null) | select((.body // "") | test($me) | not) | select((.body // "") | test("[^[:space:]]")) | .submitted_at] | max // empty' 2>/dev/null || true)"
+  general="$(gh api "repos/{owner}/{repo}/issues/$pr/comments" 2>/dev/null | jq -r --arg me "$me" '[.[] | select((.body // "") | test($me) | not) | .created_at] | max // empty' 2>/dev/null || true)"
   latest="$inline"
   if [[ -n "$reviews" && ( -z "$latest" || "$reviews" > "$latest" ) ]]; then
     latest="$reviews"
@@ -285,6 +299,7 @@ orchestrator_review_act() {
       # The implement run already replied on the thread, citing its commit.
       continue
     fi
+    reply="$(orchestrator_strip_ai_footer "$reply")"
     body="${reply}
 ${ORCHESTRATOR_AI_FOOTER}"
     if [[ "$path" == "null" || -z "$path" ]]; then
@@ -381,10 +396,10 @@ orchestrator_review_implement_verified() {
     return 1
   fi
   jq -e --argjson state "$state" --argjson replies "$replies" \
-    --arg footer "_Created by carbotracker's agent skills._" '
+    --arg footer "$ORCHESTRATOR_AI_FOOTER_END_RE" '
     [.comments[] | select(.type == "implement" and .path != null) | .commentId as $cid |
       ($state[($cid | tostring)] == true) and
-      any($replies[]; (.in_reply_to_id == $cid) and ((.body // "") | contains($footer)))]
+      any($replies[]; (.in_reply_to_id == $cid) and ((.body // "") | test($footer)))]
     | all' "$plan_file" >/dev/null 2>&1 || return 1
   if jq -e '[.comments[] | select(.type == "implement" and .path == null)] | length > 0' "$plan_file" >/dev/null 2>&1; then
     if ! orchestrator_pr_has_new_agent_general_comment "$worktree" "$pr" "$before_ids"; then
@@ -427,8 +442,8 @@ orchestrator_review_threads_state() {
 orchestrator_pr_agent_general_comment_ids() {
   local worktree="$1" pr="$2"
   (cd "$worktree" && gh api "repos/{owner}/{repo}/issues/$pr/comments" 2>/dev/null \
-    | jq -r --arg me "_Created by carbotracker's agent skills._" \
-        '[.[] | select((.body // "") | contains($me)) | .id] | join(",")' 2>/dev/null || true)
+    | jq -r --arg me "$ORCHESTRATOR_AI_FOOTER_END_RE" \
+        '[.[] | select((.body // "") | test($me)) | .id] | join(",")' 2>/dev/null || true)
 }
 
 # True when the run posted a new agent reply on the PR conversation: some id in
@@ -568,7 +583,7 @@ orchestrator_merge_poll() {
       MERGED)
         orchestrator_log "merge detected: PR #$pr_number merged for #$number; closing issue"
         if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" \
-          && gh issue close "$number" --comment "PR #$pr_number merged. Issue closed."; then
+          && gh issue close "$number" --comment "PR #$pr_number merged. Issue closed.${ORCHESTRATOR_AI_FOOTER}"; then
           orchestrator_prune_ticket "$number" "$branch" "$worktree"
           orchestrator_log "closed issue #$number with merge comment"
         else
@@ -684,7 +699,7 @@ orchestrator_state_complete_and_comment() {
   orchestrator_state_complete "$ORCHESTRATOR_STATE_FILE" "$number" "$session_id" "$pr_number"
   orchestrator_log "completed #$number: session ${session_id:-<none>}, PR #${pr_number:-<none>}, phase awaiting review"
   if [[ -n "$pr_number" ]]; then
-    if gh issue comment "$number" --body "Started implementation. PR #$pr_number created."; then
+    if gh issue comment "$number" --body "Started implementation. PR #$pr_number created.${ORCHESTRATOR_AI_FOOTER}"; then
       orchestrator_log "commented on #$number: Started implementation. PR #$pr_number created."
     else
       orchestrator_log "WARNING: failed to comment on #$number"

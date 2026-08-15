@@ -1283,6 +1283,40 @@ test_pr_latest_comment_at_gh_error() {
   assert_eq "gh error returns empty" "" "$(orchestrator_pr_latest_comment_at 100)"
 }
 
+test_pr_latest_comment_at_counts_quote_reply_as_human() {
+  local footer="_Created by carbotracker's agent skills._"
+  local quote="> $footer — but remove it"
+  fake_command gh "if [[ \"\$1\" == \"api\" ]]; then
+  case \"\$2\" in
+    *reviews*) printf \"[]\n\" ;;
+    *pulls/*) printf \"[]\n\" ;;
+    *issues/*comments*) printf \"[{\\\"created_at\\\":\\\"2026-08-13T00:07:00Z\\\",\\\"body\\\":\\\"$footer\\\"},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$quote\\\"}]\n\" ;;
+  esac
+fi
+exit 0"
+  assert_eq "a quote-reply that embeds the footer mid-body still counts as human" "2026-08-13T00:09:00Z" "$(orchestrator_pr_latest_comment_at 100)"
+}
+
+test_pr_latest_comment_at_ignores_empty_review() {
+  fake_command gh 'if [[ "$1" == "api" ]]; then
+  case "$2" in
+    *reviews*) printf "[{\"submitted_at\":\"2026-08-13T00:09:00Z\",\"body\":\"\"}]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"body\":\"human inline comment\"}]\n" ;;
+    *issues/*comments*) printf "[]\n" ;;
+  esac
+fi
+exit 0'
+  assert_eq "an empty-body review submission carries no human signal" "2026-08-13T00:05:00Z" "$(orchestrator_pr_latest_comment_at 100)"
+}
+
+test_strip_ai_footer_removes_trailing_footers() {
+  local marker="_Created by carbotracker's agent skills._"
+  local body
+  body="$(printf 'Keep this.\n\n---\n%s\n\n---\n%s' "$marker" "$marker")"
+  assert_eq "all trailing footer blocks are stripped" "Keep this." "$(orchestrator_strip_ai_footer "$body")"
+  assert_eq "a body without a footer is unchanged" "plain text" "$(orchestrator_strip_ai_footer "plain text")"
+}
+
 test_state_add_creates_last_comment_null() {
   state_setup
   orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$WT_PARENT/123-foo"
@@ -2507,6 +2541,9 @@ test_pr_latest_comment_at_excludes_bot_comments
 test_pr_latest_comment_at_none
 test_pr_latest_comment_at_one_surface_empty
 test_pr_latest_comment_at_gh_error
+test_pr_latest_comment_at_counts_quote_reply_as_human
+test_pr_latest_comment_at_ignores_empty_review
+test_strip_ai_footer_removes_trailing_footers
 test_review_round_success_updates_state
 test_review_round_answer_posts_reply_and_does_not_resolve
 test_review_round_general_comment_reply_posts_on_pr
