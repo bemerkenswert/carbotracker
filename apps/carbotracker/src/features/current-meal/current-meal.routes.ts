@@ -8,7 +8,7 @@ const CURRENT_MEAL_ROUTES: Routes = [
   {
     path: '',
     loadComponent: () =>
-      import('./pages/CurrentMealPage/current-meal-page.component'),
+      import('./pages/current-meal-page/current-meal-page.component'),
     providers: [
       provideState(currentMealFeature),
       provideEffects(apiEffects, routingEffects, snackbarEffects),
@@ -17,12 +17,12 @@ const CURRENT_MEAL_ROUTES: Routes = [
   {
     path: 'create',
     loadComponent: () =>
-      import('./pages/CreateMealEntryPage/create-meal-entry-page.component'),
+      import('./pages/create-meal-entry-page/create-meal-entry-page.component'),
   },
   {
     path: ':id',
     loadComponent: () =>
-      import('./pages/EditMealEntryPage/edit-meal-entry-page.component'),
+      import('./pages/edit-meal-entry-page/edit-meal-entry-page.component'),
   },
 ];
 
