@@ -8,7 +8,7 @@ import {
   routingEffects,
   snackbarEffects,
 } from './+state';
-import { ProductsPageComponent } from './pages/ProductsPage/products-page.component';
+import { ProductsPageComponent } from './pages/products-page/products-page.component';
 
 const PRODUCTS_ROUTES: Routes = [
   {
@@ -27,12 +27,12 @@ const PRODUCTS_ROUTES: Routes = [
   {
     path: 'create',
     loadComponent: () =>
-      import('./pages/CreateProductPage/create-product-page.component'),
+      import('./pages/create-product-page/create-product-page.component'),
   },
   {
     path: ':id',
     loadComponent: () =>
-      import('./pages/EditProductPage/edit-product-page.component'),
+      import('./pages/edit-product-page/edit-product-page.component'),
   },
 ];
 
