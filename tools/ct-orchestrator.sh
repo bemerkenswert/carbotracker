@@ -212,6 +212,15 @@ orchestrator_pr_reply_to_thread() {
   gh api "repos/{owner}/{repo}/pulls/$pr/comments/$comment_id/replies" -f body="$body" >/dev/null 2>&1
 }
 
+# Run one headless opencode session in the worktree — the ticket's original
+# session — logging the launch. Both the analyze and implement steps reuse it;
+# the caller's extra env (e.g. ORCHESTRATOR_REVIEW_PLAN_FILE) is inherited.
+orchestrator_review_run_session() {
+  local number="$1" session_id="$2" worktree="$3" prompt="$4"
+  orchestrator_log "review #$number: launching $prompt (session $session_id)"
+  (cd "$worktree" && opencode run --auto --session "$session_id" "$prompt")
+}
+
 # Analyze phase of the review round: run the headless /review-comments skill in
 # the ticket's session. The skill's entire output is the plan file it writes to
 # ORCHESTRATOR_REVIEW_PLAN_FILE (set per invocation) — it never asks, never
@@ -221,25 +230,28 @@ orchestrator_review_analyze() {
   local number="$1" session_id="$2" pr_number="$3" worktree="$4" plan_file="$5"
   local prompt
   prompt="/review-comments on PR #$pr_number headless: do not ask, do not post, do not implement — write the plan file"
-  orchestrator_log "review #$number: launching /review-comments on PR #$pr_number (session $session_id)"
-  if (cd "$worktree" && ORCHESTRATOR_REVIEW_PLAN_FILE="$plan_file" opencode run --auto --session "$session_id" "$prompt"); then
-    return 0
-  fi
-  return 1
+  ORCHESTRATOR_REVIEW_PLAN_FILE="$plan_file" orchestrator_review_run_session "$number" "$session_id" "$worktree" "$prompt"
 }
 
 # Act phase of the review round: read the plan file, validate it against the
-# review-comments schema, and apply it. Every comment in the plan gets its
+# review-comments schema, and apply it. Comments classified `implement` are
+# applied by resuming the original opencode session with a comment-scoped
+# /implement prompt — the agent makes the change (one commit per comment),
+# pushes, replies on the thread citing the commit, and resolves each inline
+# thread via the resolveReviewThread GraphQL mutation (never bash); the act
+# step then verifies (read-only) that every implement comment was resolved and
+# replied to before the watermark can move. The remaining comments get their
 # reply posted on the thread with the AI-source footer (a general comment — a
 # null path — gets a plain PR-conversation reply). The watermark advances only
-# here, never in analyze. When the plan needs a human (a pushback or question,
-# or an implement comment until #250 lands), polling is paused for the PR and a
-# maintainer notice is posted. Analyze failure, an empty plan, or a malformed
-# or schema-invalid plan returns non-zero and keeps the watermark, so the round
-# falls through to the retry/escalate path.
+# here, never in analyze. When the plan needs a human (a pushback or question),
+# polling is paused for the PR and a maintainer notice is posted. Analyze
+# failure, an empty plan, or a malformed or schema-invalid plan returns
+# non-zero and keeps the watermark, so the round falls through to the
+# retry/escalate path. A failed or unverifiable implement step also keeps the
+# watermark.
 orchestrator_review_act() {
-  local number="$1" pr_number="$2" plan_file="$3"
-  local schema count needs_human i entry comment_id path type reply body latest posted
+  local number="$1" pr_number="$2" plan_file="$3" session_id="$4" worktree="$5"
+  local schema count needs_human i entry comment_id path type reply body latest posted implement_count
   schema="$SCRIPT_DIR/../.agents/skills/review-comments/review-plan.schema.json"
   if [[ ! -f "$plan_file" ]] \
     || ! node "$SCRIPT_DIR/ct-review-plan-validate.js" "$schema" "$plan_file" >/dev/null 2>&1; then
@@ -251,7 +263,17 @@ orchestrator_review_act() {
     orchestrator_log "review act #$number: plan is empty; keeping the watermark"
     return 1
   fi
-  needs_human="$(jq -r '[.needsHuman, (.comments | map(.type == "implement") | any)] | any' "$plan_file")"
+  implement_count="$(jq '[.comments[] | select(.type == "implement")] | length' "$plan_file")"
+  if [[ "$implement_count" -gt 0 ]]; then
+    # The implement step runs before any bash reply is posted: if it fails the
+    # round fails and retries, and the retry resumes the same session with its
+    # own partial work visible — so a reply is never posted twice.
+    if ! orchestrator_review_implement "$number" "$session_id" "$pr_number" "$worktree" "$plan_file"; then
+      orchestrator_log "ERROR: implement step failed on PR #$pr_number; keeping the watermark"
+      return 1
+    fi
+  fi
+  needs_human="$(jq -r '.needsHuman' "$plan_file")"
   posted=0
   for ((i = 0; i < count; i++)); do
     entry="$(jq -c ".comments[$i]" "$plan_file")"
@@ -259,6 +281,10 @@ orchestrator_review_act() {
     path="$(printf '%s' "$entry" | jq -r '.path')"
     type="$(printf '%s' "$entry" | jq -r '.type')"
     reply="$(printf '%s' "$entry" | jq -r '.reply')"
+    if [[ "$type" == "implement" ]]; then
+      # The implement run already replied on the thread, citing its commit.
+      continue
+    fi
     body="${reply}
 ${ORCHESTRATOR_AI_FOOTER}"
     if [[ "$path" == "null" || -z "$path" ]]; then
@@ -277,7 +303,7 @@ ${ORCHESTRATOR_AI_FOOTER}"
       fi
     fi
   done
-  if [[ "$posted" -eq 0 ]]; then
+  if [[ "$posted" -eq 0 && "$implement_count" -eq 0 ]]; then
     orchestrator_log "ERROR: no reply posted on PR #$pr_number; keeping the watermark"
     return 1
   fi
@@ -298,6 +324,123 @@ ${ORCHESTRATOR_AI_FOOTER}"
   return 0
 }
 
+# The implement step of the review round: resume the ticket's original opencode
+# session with a comment-scoped /implement prompt. The agent applies only the
+# changes the implement comments request — one commit per comment — then pushes
+# the branch, replies on each thread citing the commit that implements it, and
+# resolves each inline thread via the resolveReviewThread GraphQL mutation
+# (never bash). The prompt mandates the AI-source footer on every reply, so the
+# agent's own replies never re-trigger the loop. The step then verifies the
+# outcome before the watermark can advance: every inline implement comment must
+# sit in a resolved thread AND have a footer-bearing reply, and a general
+# implement comment (no thread) must have gained a new footer-bearing reply on
+# the PR conversation — never a bare exit-0. Failure here keeps the watermark
+# so the round retries.
+orchestrator_review_implement() {
+  local number="$1" session_id="$2" pr_number="$3" worktree="$4" plan_file="$5"
+  local descriptions prompt before_general_ids
+  descriptions="$(orchestrator_review_implement_descriptions "$plan_file")"
+  prompt="/implement the review comments on PR #$pr_number: $descriptions. Apply ONLY the changes these comments request — one commit per comment — then push the branch, reply on each thread citing the commit that implements it (append the AI-source footer '_Created by carbotracker's agent skills._' to every reply), and resolve each inline thread via the resolveReviewThread GraphQL mutation."
+  before_general_ids="$(orchestrator_pr_agent_general_comment_ids "$worktree" "$pr_number")"
+  if ! orchestrator_review_run_session "$number" "$session_id" "$worktree" "$prompt"; then
+    orchestrator_log "ERROR: review implement run failed on PR #$pr_number; keeping the watermark"
+    return 1
+  fi
+  if ! orchestrator_review_implement_verified "$worktree" "$pr_number" "$plan_file" "$before_general_ids"; then
+    orchestrator_log "ERROR: implement comments not applied or resolved on PR #$pr_number; keeping the watermark"
+    return 1
+  fi
+  orchestrator_log "review #$number: implement comments applied and threads resolved on PR #$pr_number"
+  return 0
+}
+
+# A human-readable, comment-scoped description of each implement comment in the
+# plan, e.g. `comment 3788850732 at apps/carbotracker/src/app/app.component.ts:42
+# — "Will rename the selector."`, so the resumed session knows exactly which
+# points to apply.
+orchestrator_review_implement_descriptions() {
+  local plan_file="$1"
+  jq -r '[.comments[] | select(.type == "implement") |
+    (if .path == null then "comment \(.commentId) (a general PR comment)" else "comment \(.commentId) at \(.path):\(.line)" end) as $loc |
+    "\($loc) — \"\(.reply)\""] | join(" | ")' "$plan_file"
+}
+
+# Verify the implement step actually landed, never trusting the run's exit code
+# alone. Every inline implement comment must sit in a resolved thread (read
+# from GraphQL) and have a footer-bearing reply on it (the reply is what cites
+# the commit); a general implement comment has no thread, so it must have
+# gained a footer-bearing reply on the PR conversation that was not there
+# before the run. Nothing here resolves anything — resolution is always the
+# agent's resolveReviewThread mutation inside the implement session.
+orchestrator_review_implement_verified() {
+  local worktree="$1" pr="$2" plan_file="$3" before_ids="$4"
+  local state replies
+  state="$(orchestrator_review_threads_state "$worktree" "$pr")" || return 1
+  replies="$(cd "$worktree" && gh api "repos/{owner}/{repo}/pulls/$pr/comments" 2>/dev/null || true)"
+  if [[ -z "$replies" ]]; then
+    return 1
+  fi
+  jq -e --argjson state "$state" --argjson replies "$replies" \
+    --arg footer "_Created by carbotracker's agent skills._" '
+    [.comments[] | select(.type == "implement" and .path != null) | .commentId as $cid |
+      ($state[($cid | tostring)] == true) and
+      any($replies[]; (.in_reply_to_id == $cid) and ((.body // "") | contains($footer)))]
+    | all' "$plan_file" >/dev/null 2>&1 || return 1
+  if jq -e '[.comments[] | select(.type == "implement" and .path == null)] | length > 0' "$plan_file" >/dev/null 2>&1; then
+    if ! orchestrator_pr_has_new_agent_general_comment "$worktree" "$pr" "$before_ids"; then
+      return 1
+    fi
+  fi
+  return 0
+}
+
+# Read the PR's inline threads and their comments via a read-only GraphQL
+# query, emitting a JSON object mapping review-comment databaseId to whether
+# its thread is resolved. Runs from the worktree, which is a git clone with the
+# repo's remote (so gh can infer owner/repo); reads never resolve threads — the
+# resolveReviewThread mutation never runs here.
+orchestrator_review_threads_state() {
+  local worktree="$1" pr="$2"
+  local owner_repo owner repo out
+  owner_repo="$(cd "$worktree" && gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)"
+  if [[ -z "$owner_repo" || "$owner_repo" == "null" ]]; then
+    return 1
+  fi
+  owner="${owner_repo%%/*}"
+  repo="${owner_repo#*/}"
+  out="$(cd "$worktree" && gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+    repository(owner:$owner,name:$repo){
+      pullRequest(number:$pr){
+        reviewThreads(first:100){
+          nodes{ id isResolved comments(first:100){ nodes{ databaseId } } }
+        }
+      }
+    }
+  }' -f owner="$owner" -f repo="$repo" -F pr="$pr" 2>/dev/null)" || return 1
+  printf '%s' "$out" | jq -c 'reduce .data.repository.pullRequest.reviewThreads.nodes[] as $t ({};
+    reduce $t.comments.nodes[] as $c (.;
+      .[($c.databaseId | tostring)] = $t.isResolved))' 2>/dev/null || return 1
+}
+
+# The set of agent-authored PR-conversation comment ids (a comma-joined list).
+# Used to verify a general implement comment gained a reply during the run.
+orchestrator_pr_agent_general_comment_ids() {
+  local worktree="$1" pr="$2"
+  (cd "$worktree" && gh api "repos/{owner}/{repo}/issues/$pr/comments" 2>/dev/null \
+    | jq -r --arg me "_Created by carbotracker's agent skills._" \
+        '[.[] | select((.body // "") | contains($me)) | .id] | join(",")' 2>/dev/null || true)
+}
+
+# True when the run posted a new agent reply on the PR conversation: some id in
+# $after that was not in $before.
+orchestrator_pr_has_new_agent_general_comment() {
+  local worktree="$1" pr="$2" before="$3" after new
+  after="$(orchestrator_pr_agent_general_comment_ids "$worktree" "$pr")"
+  new="$(comm -13 <(printf '%s\n' "$before" | tr ',' '\n' | grep -v '^$' | sort -u) \
+                   <(printf '%s\n' "$after" | tr ',' '\n' | grep -v '^$' | sort -u) || true)"
+  [[ -n "$new" ]]
+}
+
 orchestrator_review_round() {
   local number="$1" session_id="$2" pr_number="$3" worktree="$4"
   local failures retries latest body plan_file temp_plan
@@ -315,7 +458,7 @@ orchestrator_review_round() {
     plan_file="$temp_plan"
   fi
   if orchestrator_review_analyze "$number" "$session_id" "$pr_number" "$worktree" "$plan_file" \
-      && orchestrator_review_act "$number" "$pr_number" "$plan_file"; then
+      && orchestrator_review_act "$number" "$pr_number" "$plan_file" "$session_id" "$worktree"; then
     rm -f "$temp_plan"
     orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" 0
     orchestrator_log "review #$number: round succeeded on PR #$pr_number"

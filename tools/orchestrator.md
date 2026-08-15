@@ -141,10 +141,18 @@ Each poll, after claiming work, the orchestrator walks every state entry in
     output is a plan file written to `ORCHESTRATOR_REVIEW_PLAN_FILE`; it never
     posts and never implements. Analyze success only means opencode exited 0.
   - **Act** — read the plan, validate it against the review-comments plan
-    schema, and apply it: every comment gets its reply posted on the thread
-    with the AI-source footer (a general comment — a null `path` — gets a
-    plain PR-conversation reply). When the plan has a `pushback` or `question`
-    comment (or an `implement` comment, until ticket #250 lands), the entry's
+    schema, and apply it. A comment classified `implement` is applied by
+    resuming the original opencode session with a comment-scoped `/implement`
+    prompt: the agent makes the change (one commit per comment), pushes,
+    replies on the thread citing the commit, and resolves each inline thread
+    via the `resolveReviewThread` GraphQL mutation — resolution never happens
+    in bash. The act step then verifies (read-only GraphQL + the REST comment
+    listing) that every implement comment was resolved and replied to before
+    advancing the watermark; a failed or unverifiable implement step keeps the
+    watermark and retries. The remaining
+    comments get their reply posted on the thread with the AI-source footer (a
+    general comment — a null `path` — gets a plain PR-conversation reply).
+    When the plan has a `pushback` or `question` comment, the entry's
     `reviewNeedsHuman` flag is set, polling pauses for the PR, and a
     maintainer notice is posted on the PR.
 - The watermark advances **only in the act step**, after the plan is applied.
@@ -254,8 +262,13 @@ flowchart TD
     P --> Q{newer than lastCommentAt? or paused PR with a new comment?}
     Q -- no --> O
     Q -- yes --> R[ANALYZE: opencode run --auto --session S /review-comments headless → plan file]
-    R -- success --> R1[ACT: validate plan, post each reply with footer]
-    R1 --> R2{plan needsHuman?}
+    R -- success --> R1[ACT: validate plan]
+    R1 --> R1a{plan has implement comments?}
+    R1a -- yes --> R1b[resume session /implement → commit/push/reply/resolve, verify threads resolved]
+    R1b -- fail --> T
+    R1b -- ok --> R1c[post replies for the remaining comments with footer]
+    R1a -- no --> R1c
+    R1c --> R2{plan needsHuman?}
     R2 -- no --> S[watermark = newest comment, failures = 0]
     R2 -- yes --> U1[set reviewNeedsHuman, post maintainer notice, watermark = newest comment]
     R -- failure or empty/malformed plan --> T[failures++, post PR notice attempt N/R]
@@ -263,8 +276,9 @@ flowchart TD
     T -- failures = R --> U[watermark advanced, polling pauses for human]
 ```
 
-The orchestrator never resolves review threads or merges — after the PR is
-opened it hands off to a human, and on merge (or close without merge) the
+The orchestrator never resolves review threads or merges from bash — an
+`implement` comment is resolved by the agent inside the resumed opencode
+session via `resolveReviewThread`, and on merge (or close without merge) the
 merge poll prunes the worktree and closes the issue.
 
 ## Configuration

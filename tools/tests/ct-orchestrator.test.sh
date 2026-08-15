@@ -213,6 +213,118 @@ write_answer_plan() {
   printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 3788850731, "path": "README.md", "line": 4, "type": "answer", "reply": "The ratio is stored per meal type.", "confidence": 0.9}]}' > "$1"
 }
 
+# Like fake_review_act_gh, but also answers the implement step's verification
+# queries: `repo view` returns the owner/repo, `api graphql` returns the PR's
+# thread state with implement comment 3788850732 resolved ($2) or not, the
+# pulls listing carries a footer-bearing reply on that comment (in_reply_to_id
+# 3788850732), and the issues GET returns the agent's footer-bearing reply once
+# $FAKE_IMPLEMENT_RAN (touched by the fake opencode) exists — so a general
+# implement comment is only seen as replied-to after the run.
+fake_review_implement_gh() {
+  local latest="${1:-2026-08-13T00:07:00Z}"
+  local resolved="${2:-true}"
+  local footer="_Created by carbotracker's agent skills._"
+  fake_command gh "if [[ \"\$1\" == \"repo\" && \"\$2\" == \"view\" ]]; then
+  printf \"{\\\"nameWithOwner\\\":\\\"bemerkenswert/carbotracker\\\"}\n\"
+elif [[ \"\$1\" == \"api\" ]]; then
+  case \"\$2\" in
+    graphql) printf \"{\\\"data\\\":{\\\"repository\\\":{\\\"pullRequest\\\":{\\\"reviewThreads\\\":{\\\"nodes\\\":[{\\\"id\\\":\\\"PRRT_1\\\",\\\"isResolved\\\":$resolved,\\\"comments\\\":{\\\"nodes\\\":[{\\\"databaseId\\\":3788850732}]}}]}}}}}\n\" ;;
+    *reviews*) printf \"[]\n\" ;;
+    *replies*)
+      printf \"%s\n\" \"\$*\" >> \"\${FAKE_THREAD_REPLY_ARGS:-/dev/null}\"
+      ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"body\\\":\\\"human inline comment\\\",\\\"id\\\":1,\\\"in_reply_to_id\\\":null},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\",\\\"id\\\":9001,\\\"in_reply_to_id\\\":3788850732}]\n\" ;;
+    *issues/*comments*)
+      if [[ \"\$*\" == *\"-f body=\"* ]]; then
+        printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
+        exit 0
+      fi
+      if [[ -f \"\${FAKE_IMPLEMENT_RAN:-/nonexistent}\" ]]; then
+        printf \"[{\\\"id\\\":9001,\\\"body\\\":\\\"$footer\\\"}]\n\"
+      else
+        printf \"[]\n\"
+      fi
+      ;;
+  esac
+fi
+exit 0"
+}
+
+# Like fake_review_implement_gh, but the issues GET never shows an agent reply,
+# so a general implement comment can never satisfy the reply check.
+fake_review_implement_gh_no_general_reply() {
+  local latest="${1:-2026-08-13T00:07:00Z}"
+  local footer="_Created by carbotracker's agent skills._"
+  fake_command gh "if [[ \"\$1\" == \"repo\" && \"\$2\" == \"view\" ]]; then
+  printf \"{\\\"nameWithOwner\\\":\\\"bemerkenswert/carbotracker\\\"}\n\"
+elif [[ \"\$1\" == \"api\" ]]; then
+  case \"\$2\" in
+    graphql) printf \"{\\\"data\\\":{\\\"repository\\\":{\\\"pullRequest\\\":{\\\"reviewThreads\\\":{\\\"nodes\\\":[{\\\"id\\\":\\\"PRRT_1\\\",\\\"isResolved\\\":true,\\\"comments\\\":{\\\"nodes\\\":[{\\\"databaseId\\\":3788850732}]}}]}}}}}\n\" ;;
+    *reviews*) printf \"[]\n\" ;;
+    *replies*)
+      printf \"%s\n\" \"\$*\" >> \"\${FAKE_THREAD_REPLY_ARGS:-/dev/null}\"
+      ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"body\\\":\\\"human inline comment\\\",\\\"id\\\":1,\\\"in_reply_to_id\\\":null}]\n\" ;;
+    *issues/*comments*)
+      if [[ \"\$*\" == *\"-f body=\"* ]]; then
+        printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
+        exit 0
+      fi
+      printf \"[]\n\"
+      ;;
+  esac
+fi
+exit 0"
+}
+
+# Like fake_review_implement_gh, but the pulls listing never carries a reply on
+# implement comment 3788850732, so a resolved-but-unreplied thread fails the
+# verification.
+fake_review_implement_gh_no_reply() {
+  local latest="${1:-2026-08-13T00:07:00Z}"
+  local footer="_Created by carbotracker's agent skills._"
+  fake_command gh "if [[ \"\$1\" == \"repo\" && \"\$2\" == \"view\" ]]; then
+  printf \"{\\\"nameWithOwner\\\":\\\"bemerkenswert/carbotracker\\\"}\n\"
+elif [[ \"\$1\" == \"api\" ]]; then
+  case \"\$2\" in
+    graphql) printf \"{\\\"data\\\":{\\\"repository\\\":{\\\"pullRequest\\\":{\\\"reviewThreads\\\":{\\\"nodes\\\":[{\\\"id\\\":\\\"PRRT_1\\\",\\\"isResolved\\\":true,\\\"comments\\\":{\\\"nodes\\\":[{\\\"databaseId\\\":3788850732}]}}]}}}}}\n\" ;;
+    *reviews*) printf \"[]\n\" ;;
+    *replies*)
+      printf \"%s\n\" \"\$*\" >> \"\${FAKE_THREAD_REPLY_ARGS:-/dev/null}\"
+      ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"body\\\":\\\"human inline comment\\\",\\\"id\\\":1,\\\"in_reply_to_id\\\":null},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\",\\\"id\\\":9001,\\\"in_reply_to_id\\\":null}]\n\" ;;
+    *issues/*comments*)
+      if [[ \"\$*\" == *\"-f body=\"* ]]; then
+        printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
+        exit 0
+      fi
+      printf \"[]\n\"
+      ;;
+  esac
+fi
+exit 0"
+}
+
+# Fake opencode for a full implement round: the analyze run writes the plan
+# (copied from $1, only once), every run is appended to $2 — the analyze
+# prompt first, then the comment-scoped /implement prompt — and the implement
+# run (recognised by /implement in its args) marks $FAKE_IMPLEMENT_RAN so the
+# fake gh knows the implement session ran.
+fake_review_opencode_implement_round() {
+  local plan_src="$1" log="${2:-}"
+  fake_command opencode "if [[ \"\$1\" == \"run\" ]]; then
+  ${log:+printf \"%s\n\" \"\$*\" >> \"$log\"}
+  if [[ \"\$*\" == *\"/implement\"* ]]; then
+    touch \"\${FAKE_IMPLEMENT_RAN:-/dev/null}\"
+  fi
+  if [[ ! -f \"\${ORCHESTRATOR_REVIEW_PLAN_FILE:-}\" ]]; then
+    ${plan_src:+cp \"$plan_src\" \"\$ORCHESTRATOR_REVIEW_PLAN_FILE\"}
+  fi
+  exit 0
+fi
+exit 1"
+}
+
 # Fake opencode run that exits 1, optionally appending a marker per launch.
 fake_review_opencode_fail() {
   local log="${1:-}"
@@ -1313,24 +1425,146 @@ test_review_round_question_sets_needs_human() {
   state_teardown
 }
 
-test_review_round_implement_needs_human_until_implement_lands() {
+test_review_round_implement_resumes_session_and_resolves() {
   state_setup
   local plan="$STATE_DIR/plan.json"
   printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 3788850732, "path": "apps/carbotracker/src/app/app.component.ts", "line": 42, "type": "implement", "reply": "Will rename the selector.", "confidence": 0.9}]}' > "$plan"
-  fake_review_act_gh
-  fake_review_opencode_success "" "$plan"
+  fake_review_implement_gh
+  fake_review_opencode_implement_round "$plan" "$STATE_DIR/opencode_log"
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
+  export FAKE_IMPLEMENT_RAN="$STATE_DIR/implement_ran"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  assert_contains "implement run resumes the original session" "--session ses_abc" "$(cat "$FAKE_OPENCODE_LOG")"
+  assert_contains "implement run is scoped to the comment" "comment 3788850732" "$(cat "$FAKE_OPENCODE_LOG")"
+  assert_contains "implement run cites the path and line" "app.component.ts:42" "$(cat "$FAKE_OPENCODE_LOG")"
+  assert_contains "implement run asks for one commit per comment" "one commit per comment" "$(cat "$FAKE_OPENCODE_LOG")"
+  assert_contains "implement run mandates the AI-source footer" "_Created by carbotracker's agent skills._" "$(cat "$FAKE_OPENCODE_LOG")"
+  assert_eq "implement round advances the watermark" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  assert_eq "implement round leaves needsHuman false" "false" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
+  assert_eq "implement round posts no maintainer notice" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
+  assert_eq "implement round resets failure counter" "0" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  unset FAKE_IMPLEMENT_RAN FAKE_OPENCODE_LOG FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_implement_unresolved_keeps_watermark() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 3788850732, "path": "apps/carbotracker/src/app/app.component.ts", "line": 42, "type": "implement", "reply": "Will rename the selector.", "confidence": 0.9}]}' > "$plan"
+  fake_review_implement_gh "2026-08-13T00:07:00Z" false
+  fake_review_opencode_implement_round "$plan" "$STATE_DIR/opencode_log"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_IMPLEMENT_RAN="$STATE_DIR/implement_ran"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "unresolved implement fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "unresolved implement keeps the watermark" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  assert_eq "unresolved implement increments the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  assert_contains "unresolved implement posts a failure notice" "attempt 1/3" "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  unset FAKE_IMPLEMENT_RAN FAKE_OPENCODE_LOG FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_implement_with_answer_posts_reply_and_resolves() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments": [
+    {"commentId": 3788850731, "path": "README.md", "line": 4, "type": "answer", "reply": "The ratio is stored per meal type.", "confidence": 0.9},
+    {"commentId": 3788850732, "path": "apps/carbotracker/src/app/app.component.ts", "line": 42, "type": "implement", "reply": "Will rename the selector.", "confidence": 0.9}
+  ]}' > "$plan"
+  fake_review_implement_gh
+  fake_review_opencode_implement_round "$plan" "$STATE_DIR/opencode_log"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_IMPLEMENT_RAN="$STATE_DIR/implement_ran"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
   export FAKE_THREAD_REPLY_ARGS="$STATE_DIR/thread_reply"
   export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
-  assert_contains "implement reply posted to the thread" "pulls/456/comments/3788850732/replies" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
-  assert_eq "implement comment sets needsHuman until #250 lands" "true" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
-  assert_contains "implement comment posts a maintainer notice" "need a human decision" "$(cat "$FAKE_PR_COMMENT_ARGS")"
-  assert_eq "implement round advances the watermark" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
-  unset FAKE_THREAD_REPLY_ARGS FAKE_PR_COMMENT_ARGS
+  assert_contains "mixed round launches the implement run" "comment 3788850732" "$(cat "$FAKE_OPENCODE_LOG")"
+  assert_contains "answer reply still posted on the thread" "The ratio is stored per meal type." "$(cat "$FAKE_THREAD_REPLY_ARGS")"
+  assert_contains "implement comment gets no bash reply" "no" "$([[ -f "$FAKE_THREAD_REPLY_ARGS" ]] && grep -q 'Will rename' "$FAKE_THREAD_REPLY_ARGS" && echo yes || echo no)"
+  assert_eq "mixed round advances the watermark" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  assert_eq "mixed round leaves needsHuman false" "false" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
+  unset FAKE_IMPLEMENT_RAN FAKE_OPENCODE_LOG FAKE_THREAD_REPLY_ARGS FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_implement_general_comment_resolves_without_thread() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 3788850749, "path": null, "line": null, "type": "implement", "reply": "Will fix the login flow.", "confidence": 0.9}]}' > "$plan"
+  fake_review_implement_gh
+  fake_review_opencode_implement_round "$plan" "$STATE_DIR/opencode_log"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_IMPLEMENT_RAN="$STATE_DIR/implement_ran"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  assert_contains "general implement run is scoped to the comment" "comment 3788850749" "$(cat "$FAKE_OPENCODE_LOG")"
+  assert_contains "general implement run names the general comment" "general PR comment" "$(cat "$FAKE_OPENCODE_LOG")"
+  assert_eq "general implement round advances the watermark" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  unset FAKE_IMPLEMENT_RAN FAKE_OPENCODE_LOG
+  state_teardown
+}
+
+# A general implement comment whose run posts no reply must fail the round —
+# never a bare exit-0 trust.
+test_review_round_implement_general_comment_without_reply_keeps_watermark() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 3788850749, "path": null, "line": null, "type": "implement", "reply": "Will fix the login flow.", "confidence": 0.9}]}' > "$plan"
+  fake_review_implement_gh_no_general_reply
+  fake_review_opencode_implement_round "$plan" "$STATE_DIR/opencode_log"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_IMPLEMENT_RAN="$STATE_DIR/implement_ran"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "general implement without a reply fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "general implement without a reply keeps the watermark" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  assert_eq "general implement without a reply increments failures" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  unset FAKE_IMPLEMENT_RAN FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+# An inline implement comment that is resolved but never got a footer-bearing
+# reply must fail the round too.
+test_review_round_implement_resolved_without_reply_keeps_watermark() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 3788850732, "path": "apps/carbotracker/src/app/app.component.ts", "line": 42, "type": "implement", "reply": "Will rename the selector.", "confidence": 0.9}]}' > "$plan"
+  fake_review_implement_gh_no_reply
+  fake_review_opencode_implement_round "$plan" "$STATE_DIR/opencode_log"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_IMPLEMENT_RAN="$STATE_DIR/implement_ran"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "resolved implement without a reply fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "resolved implement without a reply keeps the watermark" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  assert_eq "resolved implement without a reply increments failures" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  unset FAKE_IMPLEMENT_RAN FAKE_PR_COMMENT_ARGS
   state_teardown
 }
 
@@ -2278,7 +2512,12 @@ test_review_round_answer_posts_reply_and_does_not_resolve
 test_review_round_general_comment_reply_posts_on_pr
 test_review_round_pushback_sets_needs_human
 test_review_round_question_sets_needs_human
-test_review_round_implement_needs_human_until_implement_lands
+test_review_round_implement_resumes_session_and_resolves
+test_review_round_implement_unresolved_keeps_watermark
+test_review_round_implement_with_answer_posts_reply_and_resolves
+test_review_round_implement_general_comment_resolves_without_thread
+test_review_round_implement_general_comment_without_reply_keeps_watermark
+test_review_round_implement_resolved_without_reply_keeps_watermark
 test_review_round_empty_plan_keeps_watermark_and_retries
 test_review_round_malformed_plan_keeps_watermark_and_retries
 test_review_round_schema_invalid_plan_keeps_watermark
