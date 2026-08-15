@@ -6,6 +6,7 @@ import {
   EditMealEntryPageComponentActions,
   CreateMealEntryPageComponentActions,
 } from '../actions/component.actions';
+import { CurrentMealRouterEffectsActions } from '../actions/routing.actions';
 import { navigateToCurrentMeal$ } from './routing.effects';
 
 const buildRouter = (): Router =>
@@ -17,12 +18,18 @@ describe('navigateToCurrentMeal$', () => {
   it('navigates to the current meal page after a meal entry is added successfully', () => {
     const router = buildRouter();
     const actions$ = new Subject<Action>();
+    const results: Action[] = [];
 
-    navigateToCurrentMeal$(actions$.asObservable(), router).subscribe();
+    navigateToCurrentMeal$(actions$.asObservable(), router).subscribe(
+      (action) => results.push(action),
+    );
 
     actions$.next(CurrentMealApiActions.addMealEntrySuccessful());
 
     expect(router.navigate).toHaveBeenCalledWith(['app', 'current-meal']);
+    expect(results).toEqual([
+      CurrentMealRouterEffectsActions.navigationToCurrentMealPageSuccessful(),
+    ]);
   });
 
   it('does not navigate on the create meal entry page save click', () => {
@@ -49,11 +56,17 @@ describe('navigateToCurrentMeal$', () => {
   it('navigates to the current meal page on edit meal entry page actions', () => {
     const router = buildRouter();
     const actions$ = new Subject<Action>();
+    const results: Action[] = [];
 
-    navigateToCurrentMeal$(actions$.asObservable(), router).subscribe();
+    navigateToCurrentMeal$(actions$.asObservable(), router).subscribe(
+      (action) => results.push(action),
+    );
 
     actions$.next(EditMealEntryPageComponentActions.goBackIconClicked());
 
     expect(router.navigate).toHaveBeenCalledWith(['app', 'current-meal']);
+    expect(results).toEqual([
+      CurrentMealRouterEffectsActions.navigationToCurrentMealPageSuccessful(),
+    ]);
   });
 });

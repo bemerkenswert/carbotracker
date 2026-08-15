@@ -1,10 +1,8 @@
 import { Routes } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
 import { provideState } from '@ngrx/store';
-import * as apiEffects from './+state/effects/api.effects';
-import * as routingEffects from './+state/effects/routing.effects';
-import * as snackbarEffects from './+state/effects/snackbar.effects';
-import { currentMealFeature } from './+state/current-meal.feature';
+import { apiEffects, routingEffects, snackbarEffects } from './+state';
+import { currentMealFeature } from './+state';
 
 const CURRENT_MEAL_ROUTES: Routes = [
   {

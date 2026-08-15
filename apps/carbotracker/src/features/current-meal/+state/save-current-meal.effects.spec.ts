@@ -1,13 +1,13 @@
 import { Action, Store } from '@ngrx/store';
 import { of, Subject, throwError } from 'rxjs';
-import { authFeature } from '../../features/auth/+state/auth.store';
-import { SavedMealNameDialogService } from '../../saved-meals-feature/saved-meal-name-dialog/saved-meal-name-dialog.service';
-import { SavedMealsService } from '../../saved-meals-feature/services/saved-meals.service';
+import { authFeature } from '../../../features/auth/+state/auth.store';
+import { SavedMealNameDialogService } from '../../../saved-meals-feature/saved-meal-name-dialog/saved-meal-name-dialog.service';
+import { SavedMealsService } from '../../../saved-meals-feature/services/saved-meals.service';
 import { CurrentMeal } from '../current-meal.model';
 import { CurrentMealApiActions } from './actions/api.actions';
 import { CurrentMealPageComponentActions } from './actions/component.actions';
 import { saveCurrentMealAsSavedMeal } from './effects/api.effects';
-import { currentMealFeature } from './current-meal.feature';
+import { currentMealFeature } from './current-meal.store';
 
 describe('saveCurrentMealAsSavedMeal', () => {
   const currentMeal: CurrentMeal = {

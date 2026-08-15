@@ -1,10 +1,10 @@
-import { Product } from '../../features/products/product.model';
+import { Product } from '../../../features/products/product.model';
 import { MealEntry } from '../current-meal.model';
 import {
   CurrentMealApiActions,
   ProductsApiActions,
 } from './actions/api.actions';
-import { currentMealFeature, getInitialState } from './current-meal.feature';
+import { currentMealFeature, getInitialState } from './current-meal.store';
 
 describe('currentMealFeature', () => {
   const createMealEntry = (productId: string, amount: number): MealEntry => ({

@@ -1,5 +1,5 @@
 import { selectInsulinUnits } from './current-meal-page.selectors';
-import { ThemePreference } from '../../../features/settings/theme-preference.model';
+import { ThemePreference } from '../../../../features/settings/theme-preference.model';
 
 interface InsulinToCarbRatios {
   showInsulinUnits: boolean;
