@@ -1,10 +1,13 @@
 # Merge gate for carbotracker PRs.
 #
-# Required status check (branch protection on main): the job fails iff the PR
-# carries the suspect-diff label without the human-approved label, and passes
-# otherwise. Re-evaluated on every PR open/sync/re-label event, so a flagged
-# PR stays unmergeable until a maintainer adds human-approved (or removes
-# suspect-diff), and un-flagging flips the gate green immediately.
+# Two required status checks (branch protection on main):
+#   - merge-gate: fails iff the PR carries the suspect-diff label without the
+#     human-approved label, and passes otherwise.
+#   - rules-gate: fails iff the PR modifies apps/carbotracker/firestore.rules
+#     without the security-rule-approved label, and passes otherwise.
+# Both re-evaluate on every PR open/sync/re-label event, so a flagged PR stays
+# unmergeable until a maintainer adds the required label (or removes the
+# triggering condition), and un-flagging flips the gate green immediately.
 name: Merge gate
 permissions: {}
 on:
@@ -36,3 +39,41 @@ jobs:
             exit 1
           fi
           echo "Merge gate: ok"
+  rules-gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: detect rules change
+        id: rules
+        run: |
+          if git diff --quiet "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" -- apps/carbotracker/firestore.rules; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: check rules approval label
+        if: steps.rules.outputs.changed == 'true'
+        env:
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels) }}
+        run: |
+          # Fail closed: a jq error (exit > 1) is treated as a gate failure,
+          # never as a pass, so a tooling hiccup cannot green-light a rules change.
+          set +e
+          printf '%s' "$PR_LABELS" | jq -e 'any(.[]; .name == "security-rule-approved")' >/dev/null 2>&1
+          approved=$?
+          set -e
+          if [[ "$approved" -gt 1 ]]; then
+            echo "Rules gate: could not read the PR's labels; failing closed." >&2
+            exit 1
+          fi
+          if [[ "$approved" -ne 0 ]]; then
+            echo "Rules gate: PR modifies firestore.rules without security-rule-approved." >&2
+            echo "Rules gate: a maintainer must review the rules diff and add security-rule-approved before this can merge." >&2
+            exit 1
+          fi
+          echo "Rules gate: ok"

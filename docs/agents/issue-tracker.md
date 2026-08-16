@@ -24,6 +24,15 @@ Use both — the label is the filterable signal for `gh issue list --label ai-cr
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
+## Rule-first tickets
+
+Firestore rules are project-global and deploy only on merge to main, so a collection's rules must be merged before any feature code that touches it goes live. See `docs/adr/0006-rule-first-tickets.md`.
+
+- **New collection:** a new collection path (top-level or subcollection) gets a standalone **rules ticket** that ships the collection's owner-pattern rules _ready_ — not a deny placeholder (the rules file's top-level `allow read, write: if false` already denies unmatched collections).
+- **Ordering:** the rules ticket must be merged/closed before any feature ticket that reads _or_ writes that collection. Enforce it with native blocker links — the feature ticket is `blocked_by` the rules ticket.
+- **Existing collections:** relaxing an existing collection (granting a new access shape) follows the same rule-first gate; tightening (restricting access) needs no gate.
+- **Review:** a PR that modifies `firestore.rules` must carry the `security-rule-approved` label (applied by a human, like `human-approved`) to merge — enforced by the `rules-gate` job in the merge-gate workflow.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
