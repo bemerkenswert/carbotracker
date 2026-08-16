@@ -375,7 +375,9 @@ exit 0'
 
 fake_behind_merge_gh() {
   fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
-  if [[ "$*" == *"--json mergeStateStatus"* ]]; then printf "BEHIND\n"; else printf "OPEN\n"; fi
+  if [[ "$*" == *"--json mergeStateStatus"* ]]; then printf "BEHIND\n";
+  elif [[ "$*" == *"--json labels"* ]]; then printf "\n";
+  else printf "OPEN\n"; fi
 fi
 exit 0'
 }
@@ -400,6 +402,58 @@ printf \"%s %s\n\" \"\$worktree\" \"\$*\" >> \"\$FAKE_MERGE_GIT_ARGS\"
 if [[ \"\$1\" == \"merge\" && \"\$*\" == *\"--no-ff\"* && \"$conflict\" == \"yes\" ]]; then exit 1; fi
 if [[ \"\$1\" == \"merge-base\" && \"\${FAKE_MERGE_ANCESTOR:-yes}\" != \"yes\" ]]; then exit 1; fi
 exit 0"
+}
+
+# Fake gh for the agent-driven conflict-resolution path: `pr view` reports an
+# OPEN PR whose mergeStateStatus is $1 (default DIRTY) and whose labels are $2
+# (one per line, as `--jq '.[].name'` emits), and an `api` call (the comment
+# POST) is appended to $FAKE_PR_COMMENT_ARGS.
+fake_conflict_merge_gh() {
+  local status="${1:-DIRTY}" labels="${2:-}"
+  fake_command gh "if [[ \"\$1\" == \"pr\" && \"\$2\" == \"view\" ]]; then
+  if [[ \"\$*\" == *\"--json mergeStateStatus\"* ]]; then printf \"$status\n\";
+  elif [[ \"\$*\" == *\"--json labels\"* ]]; then printf \"$labels\n\";
+  else printf \"OPEN\n\"; fi
+elif [[ \"\$1\" == \"api\" ]]; then
+  printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
+fi
+exit 0"
+}
+
+# Fake git for the conflict-resolution path: fetch, merge-base, and push are
+# recorded to $FAKE_MERGE_GIT_ARGS; when $1 is not "yes" the ancestry check
+# fails (verify-before-push).
+fake_conflict_merge_git() {
+  local ancestor="${1:-yes}"
+  fake_command git "if [[ \"\$1\" == \"-C\" ]]; then
+  worktree=\"\$2\"
+  shift 2
+fi
+printf \"%s %s\n\" \"\$worktree\" \"\$*\" >> \"\$FAKE_MERGE_GIT_ARGS\"
+if [[ \"\$1\" == \"merge-base\" && \"$ancestor\" != \"yes\" ]]; then exit 1; fi
+exit 0"
+}
+
+# Fake opencode for the conflict-resolution path: the run is captured to $1
+# and exits with $2 (default 0).
+fake_merge_opencode() {
+  local capture="$1" exit_code="${2:-0}"
+  fake_command opencode "if [[ \"\$1\" == \"run\" ]]; then
+  ${capture:+printf \"%s\n\" \"\$*\" > \"$capture\"}
+  exit $exit_code
+fi
+exit 1"
+}
+
+# Fake opencode for the conflict-resolution path that appends every run to $1
+# (so tests can count attempts) and exits with $2 (default 0).
+fake_merge_opencode_log() {
+  local log="$1" exit_code="${2:-0}"
+  fake_command opencode "if [[ \"\$1\" == \"run\" ]]; then
+  printf \"%s\n\" \"\$*\" >> \"$log\"
+  exit $exit_code
+fi
+exit 1"
 }
 
 # Fake gh for a closed-without-merge PR: `pr view` reports CLOSED, and the
@@ -2416,6 +2470,254 @@ test_merge_poll_does_not_push_unverified_behind_pr() {
   state_teardown
 }
 
+test_merge_poll_delegates_conflict_to_agent() {
+  state_setup
+  fake_conflict_merge_gh DIRTY ""
+  fake_conflict_merge_git
+  fake_merge_opencode "$STATE_DIR/opencode_args"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_contains "conflict resumes the ticket session" "--session ses_abc" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_contains "conflict run carries a merge prompt" "resolve the merge conflicts" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_contains "conflict run tells the agent not to push" "Do NOT push" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_contains "conflict resolution fetches origin main" "fetch origin main" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_contains "conflict resolution verifies ancestry before pushing" "merge-base --is-ancestor origin/main HEAD" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_contains "conflict resolution pushes the branch" "push origin ticket/123-foo" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_eq "conflict resolution verifies again after the push" "2" "$(grep -c 'merge-base --is-ancestor origin/main HEAD' "$FAKE_MERGE_GIT_ARGS")"
+  assert_eq "successful conflict resolution resets failures" "0" "$(jq -r '.[0].mergeFailures' "$TEST_STATE")"
+  assert_contains "conflict resolution logs the verified push" "agent resolved conflicts" "$output"
+  assert_eq "entry remains in state after conflict resolution" "1" "$(jq 'length' "$TEST_STATE")"
+  unset FAKE_MERGE_GIT_ARGS FAKE_OPENCODE_ARGS
+  state_teardown
+}
+
+test_merge_poll_does_not_trust_exit_zero() {
+  state_setup
+  fake_conflict_merge_gh DIRTY ""
+  fake_conflict_merge_git no
+  fake_merge_opencode "$STATE_DIR/opencode_args"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "an exit-0 run without ancestry is not pushed" "0" "$(grep -c 'push origin' "$FAKE_MERGE_GIT_ARGS" || true)"
+  assert_contains "an exit-0 run without ancestry is not trusted" "not trusting exit 0" "$output"
+  assert_eq "an exit-0 run without ancestry counts a failure" "1" "$(jq -r '.[0].mergeFailures' "$TEST_STATE")"
+  assert_contains "an exit-0 run without ancestry is retained" "keeping entry to retry next poll" "$output"
+  unset FAKE_MERGE_GIT_ARGS FAKE_OPENCODE_ARGS
+  state_teardown
+}
+
+test_merge_poll_bounds_agent_merges() {
+  state_setup
+  fake_conflict_merge_gh DIRTY ""
+  fake_conflict_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  fake_merge_opencode_log "$STATE_DIR/opencode_log" 1
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_MERGE_RETRIES=2 orchestrator_merge_poll 2>/dev/null
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_MERGE_RETRIES=2 orchestrator_merge_poll 2>/dev/null
+  assert_eq "each failed agent merge is counted" "2" "$(jq -r '.[0].mergeFailures' "$TEST_STATE")"
+  assert_eq "one agent run per failed attempt" "2" "$(wc -l < "$FAKE_OPENCODE_LOG")"
+  assert_eq "no needs-human comment below the cap" "no" "$([[ -s "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_MERGE_RETRIES=2 orchestrator_merge_poll 2>&1)"
+  assert_eq "at the cap the agent is not run again" "2" "$(wc -l < "$FAKE_OPENCODE_LOG")"
+  assert_contains "at the cap a needs-human comment is posted" "needs a human" "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  assert_contains "the needs-human comment names the attempts" "2/2" "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  assert_eq "the needs-human comment is posted once" "1" "$(grep -c -- '-f body=' "$FAKE_PR_COMMENT_ARGS" || true)"
+  assert_contains "at the cap the pr is left for a human" "leaving for a human" "$output"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_MERGE_RETRIES=2 orchestrator_merge_poll 2>/dev/null
+  assert_eq "the needs-human comment is not repeated" "1" "$(grep -c -- '-f body=' "$FAKE_PR_COMMENT_ARGS" || true)"
+  unset FAKE_MERGE_GIT_ARGS FAKE_PR_COMMENT_ARGS FAKE_OPENCODE_LOG
+  state_teardown
+}
+
+test_merge_poll_retries_needs_human_comment() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  if [[ "$*" == *"--json mergeStateStatus"* ]]; then printf "DIRTY\n";
+  elif [[ "$*" == *"--json labels"* ]]; then printf "\n";
+  else printf "OPEN\n"; fi
+elif [[ "$1" == "api" ]]; then
+  if [[ ! -f "$FAKE_COMMENT_FAILED" ]]; then
+    touch "$FAKE_COMMENT_FAILED"
+    exit 1
+  fi
+  printf "%s\n" "$*" >> "$FAKE_PR_COMMENT_ARGS"
+fi
+exit 0'
+  fake_conflict_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  export FAKE_COMMENT_FAILED="$STATE_DIR/comment_failed"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  fake_merge_opencode_log "$STATE_DIR/opencode_log" 1
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_MERGE_RETRIES=1 orchestrator_merge_poll 2>/dev/null
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_MERGE_RETRIES=1 orchestrator_merge_poll 2>/dev/null
+  assert_eq "a failed comment post is not recorded as posted" "0" "$(cat "$FAKE_PR_COMMENT_ARGS" 2>/dev/null | grep -c -- '-f body=' || true)"
+  assert_eq "the notice flag stays false after a failed post" "false" "$(jq -r '.[0].mergeNoticePosted' "$TEST_STATE")"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_MERGE_RETRIES=1 orchestrator_merge_poll 2>/dev/null
+  assert_eq "the needs-human comment lands on a later poll" "1" "$(grep -c -- '-f body=' "$FAKE_PR_COMMENT_ARGS" || true)"
+  assert_eq "the notice flag is set once it lands" "true" "$(jq -r '.[0].mergeNoticePosted' "$TEST_STATE")"
+  unset FAKE_MERGE_GIT_ARGS FAKE_PR_COMMENT_ARGS FAKE_COMMENT_FAILED
+  state_teardown
+}
+
+test_merge_poll_skips_suspect_behind_pr() {
+  state_setup
+  fake_conflict_merge_gh BEHIND "suspect-diff"
+  fake_conflict_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "a suspect behind pr is not merged" "0" "$(cat "$FAKE_MERGE_GIT_ARGS" 2>/dev/null | wc -l)"
+  assert_contains "a suspect behind pr logs the skip" "skipped until approved" "$output"
+  unset FAKE_MERGE_GIT_ARGS
+  state_teardown
+}
+
+test_merge_poll_skips_suspect_pr() {
+  state_setup
+  fake_conflict_merge_gh DIRTY "suspect-diff"
+  fake_conflict_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  fake_merge_opencode_log "$STATE_DIR/opencode_log"
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "suspect pr without approval does not run the agent" "0" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null | wc -l)"
+  assert_eq "suspect pr without approval does not fetch" "0" "$(cat "$FAKE_MERGE_GIT_ARGS" 2>/dev/null | wc -l)"
+  assert_contains "suspect pr logs the skip" "suspect-diff without human-approved" "$output"
+  assert_eq "suspect pr is not counted as a failure" "0" "$(jq -r '.[0].mergeFailures' "$TEST_STATE")"
+  fake_conflict_merge_gh DIRTY $'suspect-diff\nhuman-approved'
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>/dev/null
+  assert_eq "approved suspect pr is attempted" "1" "$(wc -l < "$FAKE_OPENCODE_LOG")"
+  assert_contains "approved suspect pr fetches origin main" "fetch origin main" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  unset FAKE_MERGE_GIT_ARGS FAKE_OPENCODE_LOG
+  state_teardown
+}
+
+test_merge_poll_fails_closed_when_labels_unreadable() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  if [[ "$*" == *"--json mergeStateStatus"* ]]; then printf "DIRTY\n";
+  elif [[ "$*" == *"--json labels"* ]]; then exit 1;
+  else printf "OPEN\n"; fi
+fi
+exit 0'
+  fake_conflict_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  fake_merge_opencode_log "$STATE_DIR/opencode_log"
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "unreadable labels do not run the agent" "0" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null | wc -l)"
+  assert_contains "unreadable labels are retained for the next poll" "could not read labels" "$output"
+  assert_eq "unreadable labels are not counted as a failure" "0" "$(jq -r '.[0].mergeFailures' "$TEST_STATE")"
+  unset FAKE_MERGE_GIT_ARGS FAKE_OPENCODE_LOG
+  state_teardown
+}
+
+test_labels_are_suspect_pure_helper() {
+  if orchestrator_labels_are_suspect "suspect-diff"; then
+    pass "suspect-diff without approval is suspect"
+  else
+    fail "suspect-diff without approval is suspect"
+  fi
+  if orchestrator_labels_are_suspect $'suspect-diff\nhuman-approved'; then
+    fail "suspect-diff with approval is not suspect"
+  else
+    pass "suspect-diff with approval is not suspect"
+  fi
+  if orchestrator_labels_are_suspect "human-approved"; then
+    fail "approval without suspect-diff is not suspect"
+  else
+    pass "approval without suspect-diff is not suspect"
+  fi
+  if orchestrator_labels_are_suspect ""; then
+    fail "empty labels are not suspect"
+  else
+    pass "empty labels are not suspect"
+  fi
+}
+
+test_merge_poll_delegation_requires_a_session() {
+  state_setup
+  fake_conflict_merge_gh DIRTY ""
+  fake_conflict_merge_git
+  fake_merge_opencode "$STATE_DIR/opencode_args"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 "" 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "missing session means no agent run" "no" "$([[ -f "$FAKE_OPENCODE_ARGS" ]] && echo yes || echo no)"
+  assert_contains "missing session logs the block" "no opencode session" "$output"
+  assert_eq "missing session counts a failure" "1" "$(jq -r '.[0].mergeFailures' "$TEST_STATE")"
+  unset FAKE_MERGE_GIT_ARGS FAKE_OPENCODE_ARGS
+  state_teardown
+}
+
+test_state_merge_failures_updates() {
+  state_setup
+  orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$WT_PARENT/123-foo"
+  assert_eq "new entry tracks merge failures as zero" "0" "$(jq -r '.[0].mergeFailures' "$TEST_STATE")"
+  assert_eq "read merge failures defaults to zero" "0" "$(orchestrator_state_merge_failures "$TEST_STATE" 123)"
+  orchestrator_state_set_merge_failures "$TEST_STATE" 123 2
+  assert_eq "set merge failures stores the count" "2" "$(orchestrator_state_merge_failures "$TEST_STATE" 123)"
+  orchestrator_state_set_merge_failures "$TEST_STATE" 123 0
+  assert_eq "set merge failures resets to zero" "0" "$(orchestrator_state_merge_failures "$TEST_STATE" 123)"
+  assert_eq "unknown ticket reads zero" "0" "$(orchestrator_state_merge_failures "$TEST_STATE" 999)"
+  state_teardown
+}
+
+test_state_merge_notice_posted_updates() {
+  state_setup
+  orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$WT_PARENT/123-foo"
+  assert_eq "new entry tracks merge notice as false" "false" "$(jq -r '.[0].mergeNoticePosted' "$TEST_STATE")"
+  assert_eq "read merge notice defaults to false" "false" "$(orchestrator_state_merge_notice_posted "$TEST_STATE" 123)"
+  orchestrator_state_set_merge_notice_posted "$TEST_STATE" 123 true
+  assert_eq "set merge notice stores true" "true" "$(orchestrator_state_merge_notice_posted "$TEST_STATE" 123)"
+  orchestrator_state_set_merge_notice_posted "$TEST_STATE" 999 true
+  assert_eq "unknown ticket reads false" "false" "$(orchestrator_state_merge_notice_posted "$TEST_STATE" 999)"
+  assert_eq "unknown ticket leaves other entries untouched" "true" "$(orchestrator_state_merge_notice_posted "$TEST_STATE" 123)"
+  state_teardown
+}
+
 test_merge_poll_skips_entry_without_pr() {
   state_setup
   fake_command gh 'exit 0'
@@ -2536,28 +2838,28 @@ exit 0'
 
 test_config_defaults() {
   local out
-  out="$(env CT_ORCHESTRATOR_CONF=/nonexistent bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s %s %s\n" "$ORCHESTRATOR_CONCURRENCY_CAP" "$ORCHESTRATOR_POLL_INTERVAL_SECONDS" "$ORCHESTRATOR_REVIEW_RETRIES"' _ "$ROOT")"
-  assert_eq "defaults apply when no conf exists" "3 300 3" "$out"
+  out="$(env CT_ORCHESTRATOR_CONF=/nonexistent bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s %s %s %s\n" "$ORCHESTRATOR_CONCURRENCY_CAP" "$ORCHESTRATOR_POLL_INTERVAL_SECONDS" "$ORCHESTRATOR_REVIEW_RETRIES" "$ORCHESTRATOR_MERGE_RETRIES"' _ "$ROOT")"
+  assert_eq "defaults apply when no conf exists" "3 300 3 3" "$out"
 }
 
 test_config_file_parsing() {
   state_setup
   local conf="$STATE_DIR/custom.conf"
-  printf 'ORCHESTRATOR_CONCURRENCY_CAP=1\nORCHESTRATOR_POLL_INTERVAL_SECONDS=7\nORCHESTRATOR_REVIEW_RETRIES=5\n' > "$conf"
+  printf 'ORCHESTRATOR_CONCURRENCY_CAP=1\nORCHESTRATOR_POLL_INTERVAL_SECONDS=7\nORCHESTRATOR_REVIEW_RETRIES=5\nORCHESTRATOR_MERGE_RETRIES=2\n' > "$conf"
   local out
-  out="$(env CT_ORCHESTRATOR_CONF="$conf" bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s %s %s\n" "$ORCHESTRATOR_CONCURRENCY_CAP" "$ORCHESTRATOR_POLL_INTERVAL_SECONDS" "$ORCHESTRATOR_REVIEW_RETRIES"' _ "$ROOT")"
-  assert_eq "conf overrides cap interval and retries" "1 7 5" "$out"
+  out="$(env CT_ORCHESTRATOR_CONF="$conf" bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s %s %s %s\n" "$ORCHESTRATOR_CONCURRENCY_CAP" "$ORCHESTRATOR_POLL_INTERVAL_SECONDS" "$ORCHESTRATOR_REVIEW_RETRIES" "$ORCHESTRATOR_MERGE_RETRIES"' _ "$ROOT")"
+  assert_eq "conf overrides cap interval and retries" "1 7 5 2" "$out"
   state_teardown
 }
 
 test_config_env_beats_conf() {
   state_setup
   local conf="$STATE_DIR/custom.conf"
-  printf 'ORCHESTRATOR_CONCURRENCY_CAP=1\nORCHESTRATOR_POLL_INTERVAL_SECONDS=7\nORCHESTRATOR_REVIEW_RETRIES=5\n' > "$conf"
+  printf 'ORCHESTRATOR_CONCURRENCY_CAP=1\nORCHESTRATOR_POLL_INTERVAL_SECONDS=7\nORCHESTRATOR_REVIEW_RETRIES=5\nORCHESTRATOR_MERGE_RETRIES=2\n' > "$conf"
   local out
-  out="$(env CT_ORCHESTRATOR_CONF="$conf" ORCHESTRATOR_CONCURRENCY_CAP=9 ORCHESTRATOR_POLL_INTERVAL_SECONDS=11 ORCHESTRATOR_REVIEW_RETRIES=1 \
-    bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s %s %s\n" "$ORCHESTRATOR_CONCURRENCY_CAP" "$ORCHESTRATOR_POLL_INTERVAL_SECONDS" "$ORCHESTRATOR_REVIEW_RETRIES"' _ "$ROOT")"
-  assert_eq "environment beats conf file" "9 11 1" "$out"
+  out="$(env CT_ORCHESTRATOR_CONF="$conf" ORCHESTRATOR_CONCURRENCY_CAP=9 ORCHESTRATOR_POLL_INTERVAL_SECONDS=11 ORCHESTRATOR_REVIEW_RETRIES=1 ORCHESTRATOR_MERGE_RETRIES=8 \
+    bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s %s %s %s\n" "$ORCHESTRATOR_CONCURRENCY_CAP" "$ORCHESTRATOR_POLL_INTERVAL_SECONDS" "$ORCHESTRATOR_REVIEW_RETRIES" "$ORCHESTRATOR_MERGE_RETRIES"' _ "$ROOT")"
+  assert_eq "environment beats conf file" "9 11 1 8" "$out"
   state_teardown
 }
 
@@ -3045,6 +3347,17 @@ test_merge_poll_updates_behind_pr
 test_merge_poll_leaves_clean_open_pr_alone
 test_merge_poll_aborts_conflicted_merge
 test_merge_poll_does_not_push_unverified_behind_pr
+test_merge_poll_delegates_conflict_to_agent
+test_merge_poll_does_not_trust_exit_zero
+test_merge_poll_bounds_agent_merges
+test_merge_poll_skips_suspect_pr
+test_merge_poll_skips_suspect_behind_pr
+test_merge_poll_fails_closed_when_labels_unreadable
+test_labels_are_suspect_pure_helper
+test_merge_poll_delegation_requires_a_session
+test_merge_poll_retries_needs_human_comment
+test_state_merge_failures_updates
+test_state_merge_notice_posted_updates
 test_merge_poll_skips_entry_without_pr
 test_merge_poll_gh_error_keeps_entry
 test_merge_poll_ignores_implementing_phase
