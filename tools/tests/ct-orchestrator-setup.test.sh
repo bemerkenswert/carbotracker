@@ -223,6 +223,7 @@ test_whole_script_idempotent() {
   fake_npm
   fake_command jq 'exit 0'
   fake_command opencode 'exit 0'
+  fake_command rg 'exit 0'
   fake_systemctl
   fake_loginctl
 
