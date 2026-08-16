@@ -92,6 +92,18 @@ never blocks or queues, and a PR that shares no files gets no comment. Any
 `gh`/`git` failure skips the check (non-fatal), and the new PR itself is never
 compared against itself.
 
+## Merge gate
+
+The merge gate is a required status check — the `merge-gate` job in
+`.github/workflows/merge-gate.yml` — that runs on every PR open/sync/re-label
+event. It fails iff the PR carries `suspect-diff` without `human-approved`, and
+passes otherwise, so a flagged (off-task) PR cannot be merged by accident:
+branch protection on `main` requires it. A maintainer who has eyeballed a
+suspect PR adds `human-approved` to unblock it (the `suspect-diff` label may
+remain as an audit trail); removing `suspect-diff` also flips the gate green.
+The gate reads only the PR's labels from the event payload, so it needs no
+permissions and no checkout.
+
 ## Crash recovery
 
 The state file is the orchestrator's memory, never the source of truth. On
