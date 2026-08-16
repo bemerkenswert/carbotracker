@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCHEMA="$ROOT/.agents/skills/review-comments/review-plan.schema.json"
-VALIDATOR="$ROOT/tools/ct-json-validate.js"
+VALIDATOR="$ROOT/tools/ct-review-plan-validate.js"
 
 failures=0
 tests=0

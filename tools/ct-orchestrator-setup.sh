@@ -16,9 +16,6 @@
 #   - jq          JSON processor used by the daemon scripts
 #   - opencode    The agent that implements tickets
 #   - rg          ripgrep, used by opencode's code-search tool
-#   - java        A JRE (11+) for the Firebase emulators
-#   - Xvfb        Virtual framebuffer for Cypress headless e2e runs
-#   - xkbcomp     XKB keymap compiler Xvfb spawns (package x11-xkb-utils)
 #   - systemctl, loginctl (systemd user session)
 #
 # node/npm are installed by this script (via tools/ct-node-sync.sh) rather than
@@ -40,7 +37,7 @@ NODE_SYNC_SERVICE_NAME="carbotracker-node-sync"
 SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 
 # Prerequisites that must be installed and on PATH (also documented above).
-PREREQ_TOOLS=(gh git node npm jq opencode rg systemctl loginctl java Xvfb xkbcomp)
+PREREQ_TOOLS=(gh git node npm jq opencode rg systemctl loginctl)
 
 setup_log() {
   printf '[ct-orchestrator-setup] %s\n' "$*"

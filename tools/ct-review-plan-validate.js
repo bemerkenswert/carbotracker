@@ -2,7 +2,7 @@
 'use strict';
 
 // Validate a JSON file against a JSON schema (draft-07, ajv).
-// Usage: node tools/ct-json-validate.js <schema> <file>
+// Usage: node tools/ct-review-plan-validate.js <schema> <file>
 // Exit codes: 0 the file is valid; 1 the file is invalid or unreadable;
 // 2 the invocation or the schema itself is wrong.
 
@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 if (process.argv.length !== 4) {
-  console.error('usage: ct-json-validate.js <schema> <file>');
+  console.error('usage: ct-review-plan-validate.js <schema> <file>');
   process.exit(2);
 }
 

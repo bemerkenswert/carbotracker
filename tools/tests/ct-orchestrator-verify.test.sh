@@ -63,7 +63,6 @@ fake_command() {
 install_fakes() {
   fake_command gh 'echo carbotracker'
   fake_command rg 'echo ripgrep 15.2.0'
-  fake_command java 'echo "openjdk version \"21.0.11\" 2026-04-21"'
   fake_command systemctl 'exit 0'
   fake_command loginctl 'echo Linger=yes'
   fake_command sudo 'echo "Status: active"
@@ -132,21 +131,12 @@ HandleLidSwitch=ignore
 HandleLidSwitchExternalPower=ignore
 CONF
 
-  # The prereq tools check asserts executables at the system /usr/bin paths;
-  # the sandbox points those paths at its own stubs.
-  : > "$SB_DIR/Xvfb"
-  chmod +x "$SB_DIR/Xvfb"
-  : > "$SB_DIR/xkbcomp"
-  chmod +x "$SB_DIR/xkbcomp"
-
   REPO_DIR="$SB_HOME/git/carbotracker"
   NVM_DIR="$SB_HOME/.nvm"
   SYSTEMD_USER_DIR="$SB_HOME/.config/systemd/user"
   ENV_FILE="$SB_HOME/.config/carbotracker/orchestrator.env"
   UNATTENDED_CONF="$SB_DIR/unattended.conf"
   LOGIND_CONF="$SB_DIR/logind.conf"
-  XVFB_BIN="$SB_DIR/Xvfb"
-  XKBCOMP_BIN="$SB_DIR/xkbcomp"
 }
 
 cleanup_sandbox() {
@@ -193,7 +183,7 @@ test_green_main() {
     rc=$?
   fi
   assert_eq "green main exits 0" 0 "$rc"
-  assert_contains "green summary has no failures" "SUMMARY: 35 ok, 0 fail, 0 skip" "$out"
+  assert_contains "green summary has no failures" "SUMMARY: 32 ok, 0 fail, 0 skip" "$out"
   cleanup_sandbox
 }
 
@@ -211,27 +201,7 @@ test_gap_main() {
     rc=$?
   fi
   assert_eq "gap main exits non-zero" 1 "$rc"
-  assert_contains "gap summary reports one failure" "SUMMARY: 34 ok, 1 fail, 0 skip" "$out"
-  cleanup_sandbox
-}
-
-test_gap_prereq_tools() {
-  make_sandbox
-  PASS=0
-  FAIL=0
-  SKIP=0
-  local out rc
-  rc=0
-  if out="$(HOME="$SB_HOME" JAVA_BIN="no-such-java" XVFB_BIN="$SB_DIR/missing-Xvfb" XKBCOMP_BIN="$SB_DIR/missing-xkbcomp" main 2>&1)"; then
-    rc=0
-  else
-    rc=$?
-  fi
-  assert_eq "prereq-tools gap main exits non-zero" 1 "$rc"
-  assert_contains "prereq-tools gap reports three failures" "SUMMARY: 32 ok, 3 fail, 0 skip" "$out"
-  assert_contains "missing java is named" "java not on PATH" "$out"
-  assert_contains "missing Xvfb is named" "missing-Xvfb missing" "$out"
-  assert_contains "missing xkbcomp is named" "missing-xkbcomp missing" "$out"
+  assert_contains "gap summary reports one failure" "SUMMARY: 31 ok, 1 fail, 0 skip" "$out"
   cleanup_sandbox
 }
 
@@ -245,7 +215,6 @@ run_test() {
 run_test test_helpers
 run_test test_green_main
 run_test test_gap_main
-run_test test_gap_prereq_tools
 
 printf '1..%d\n' "$tests"
 if [[ $failures -gt 0 ]]; then

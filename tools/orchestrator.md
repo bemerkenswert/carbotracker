@@ -170,28 +170,6 @@ the entry from state. The ticket is now a human problem, not a pipeline
 retry-loop. If the escalation itself fails, the entry stays in state and the
 poll loop's normal un-claim/cleanup path removes it.
 
-## Typed aborts (missing dependencies)
-
-The implement skill never installs anything (see ADR-0005). A headless run that
-cannot proceed because a required tool is missing (e.g. `java` for the Firebase
-emulators, `Xvfb`/`xkbcomp` for Cypress headless runs) writes a structured
-abort artifact to the per-run `ORCHESTRATOR_IMPLEMENT_ABORT_FILE` and exits
-non-zero. On failure the orchestrator validates the artifact against the
-implement-abort schema:
-
-- **`missing-dependency`** — the `--continue` retry is skipped (a retry cannot
-  fix a missing system tool), and the ticket escalates immediately with a
-  comment naming the missing tools: install them on the host and re-tag the
-  ticket `ready-for-agent`. The failure is reported to the poll loop with its
-  own failure kind, so it never falls onto the generic bounded-retry path.
-- **absent, malformed, or schema-invalid** — the generic retry/escalate path
-  above, unchanged.
-
-The resume path (crash recovery) applies the same contract. The host-side
-counterpart is `tools/ct-orchestrator-verify.sh` (`verify_prereq_tools`), which
-checks java, `/usr/bin/Xvfb`, and `/usr/bin/xkbcomp` — Xvfb spawns xkbcomp at
-a compiled-in absolute path, so a bare PATH check is not enough.
-
 ## Review loop
 
 Each poll, after claiming work, the orchestrator walks every state entry in
@@ -313,9 +291,7 @@ flowchart TD
     E --> F[opencode run --auto --title carbotracker-ticket-N /implement the issue is N]
     F --> F1{non-zero exit?}
     F1 -- no --> G
-    F1 -- yes --> F1a{typed abort artifact?}
-    F1a -- missing-dependency --> F4
-    F1a -- no --> F2[retry: opencode run --auto --continue /implement the issue is N]
+    F1 -- yes --> F2[retry: opencode run --auto --continue /implement the issue is N]
     F2 --> F3{non-zero again?}
     F3 -- no --> G
     F3 -- yes --> F4[escalate: needs-triage, comment with output, prune, remove from state]
@@ -387,30 +363,6 @@ file, which wins over defaults):
 - `ct-orchestrator.sh help` — show usage.
 
 Follow the daemon with `journalctl --user -u carbotracker-orchestrator -f`.
-
-## Host prerequisites
-
-The daemon host must provide, on the unit's PATH (or under the pinned nvm
-path):
-
-| Tool      | Used by                                           |
-| --------- | ------------------------------------------------- |
-| node, npm | build/test pipeline (major pinned by `.nvmrc`)    |
-| gh        | GitHub API calls (issue/PR labels, comments, PRs) |
-| jq        | state file and JSON handling                      |
-| opencode  | the agent that implements tickets                 |
-| rg        | opencode's code search                            |
-| java      | Firebase emulators (Firestore/Auth, JRE 11+)      |
-| Xvfb      | Cypress headless e2e runs                         |
-| xkbcomp   | Xvfb keyboard init (package `x11-xkb-utils`)      |
-| git       | worktrees, branches, pushes                       |
-| systemctl | running the daemon as a systemd user service      |
-| loginctl  | lingering so the daemon survives logout           |
-
-Check the host with `tools/ct-orchestrator-verify.sh` (the `prereq tools`
-section asserts java on PATH and Xvfb/xkbcomp at their `/usr/bin` locations).
-The bootstrap script `tools/ct-orchestrator-setup.sh` refuses to run when any
-of them is missing.
 
 ## Design notes
 
