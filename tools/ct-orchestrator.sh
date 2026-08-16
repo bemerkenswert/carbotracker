@@ -31,6 +31,13 @@ ORCHESTRATOR_REVIEW_RETRIES="${ENV_ORCHESTRATOR_REVIEW_RETRIES:-${ORCHESTRATOR_R
 # never drifts to opencode's default (which can be a pricier model).
 ORCHESTRATOR_MODEL="${ENV_ORCHESTRATOR_MODEL:-${ORCHESTRATOR_MODEL:-opencode-go/deepseek-v4-flash}}"
 
+orchestrator_ensure_labels() {
+  gh label create suspect-diff --description "The implementation changed a feature other than the one declared by the ticket" --color D93F0B --force >/dev/null 2>&1 \
+    || orchestrator_log "WARNING: could not create or update suspect-diff label"
+  gh label create human-approved --description "A human has approved an orchestrator warning" --color 0E8A16 --force >/dev/null 2>&1 \
+    || orchestrator_log "WARNING: could not create or update human-approved label"
+}
+
 orchestrator_log() {
   # Logs go to stderr so functions that print a value on stdout (e.g. the
   # state helpers or push_and_open_pr) never pollute it with log lines.
@@ -223,6 +230,27 @@ orchestrator_pr_latest_comment_at() {
 orchestrator_pr_post_comment() {
   local pr="$1" body="$2"
   gh api "repos/{owner}/{repo}/issues/$pr/comments" -f body="$body" >/dev/null 2>&1
+}
+
+orchestrator_check_suspect_diff() {
+  local number="$1" pr_number="$2" worktree="$3" body features declared
+  body="$(ct_issue_body "$number")"
+  declared="$(ct_issue_feature "$body")"
+  [[ -n "$declared" && -n "$pr_number" ]] || return 0
+  if ! ct_feature_diff_is_suspect "$worktree" "$body"; then
+    return 0
+  fi
+  features="$(ct_changed_features "$worktree" | tr '\n' ',' | sed 's/,$//')"
+  if gh pr edit "$pr_number" --add-label suspect-diff; then
+    orchestrator_log "flagged #$number / PR #$pr_number as suspect-diff (declared $declared; changed $features)"
+  else
+    orchestrator_log "WARNING: failed to add suspect-diff label to PR #$pr_number"
+  fi
+  if ! gh pr comment "$pr_number" --body "Warning: ticket #$number declares feature \`$declared\`, but its diff changes feature folder(s) \`$features\` without touching \`$declared\`. The PR remains open for human review.
+---
+_Created by carbotracker's agent skills._"; then
+    orchestrator_log "WARNING: failed to post suspect-diff warning on PR #$pr_number"
+  fi
 }
 
 orchestrator_pr_reply_to_thread() {
@@ -657,6 +685,7 @@ orchestrator_push_and_open_pr() {
     fi
     pr_number="$(orchestrator_pr_number_for_branch "$branch")"
   fi
+  orchestrator_check_suspect_diff "$number" "$pr_number" "$worktree"
   printf '%s' "$pr_number"
 }
 
@@ -855,6 +884,7 @@ orchestrator_recover_pushed_branch() {
     fi
     pr_number="$(orchestrator_pr_number_for_branch "$branch")"
   fi
+  orchestrator_check_suspect_diff "$number" "$pr_number" "$worktree"
   orchestrator_state_complete_and_comment "$number" "$session_id" "$pr_number"
 }
 
@@ -1018,6 +1048,7 @@ main() {
   fi
   case "${1:-}" in
     once | --once)
+      orchestrator_ensure_labels
       orchestrator_reconcile
       orchestrator_poll_once
       ;;
@@ -1025,6 +1056,7 @@ main() {
       orchestrator_help
       ;;
     "")
+      orchestrator_ensure_labels
       orchestrator_daemon
       ;;
     *)

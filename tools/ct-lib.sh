@@ -16,6 +16,30 @@ ct_issue_body() {
   gh issue view "$1" --json body --jq .body 2>/dev/null || true
 }
 
+ct_issue_feature() {
+  local body="$1"
+  printf '%s\n' "$body" \
+    | sed -nE 's/^[[:space:]]*[Ff]eature:[[:space:]]*([a-z0-9]+(-[a-z0-9]+)*)[[:space:]]*$/\1/p' \
+    | head -n 1
+}
+
+ct_changed_features() {
+  local worktree="$1"
+  git -C "$worktree" diff --name-only origin/main...HEAD 2>/dev/null \
+    | sed -nE 's#^(.*/)?features/([a-z0-9]+(-[a-z0-9]+)*)/.*#\2#p' \
+    | sort -u
+}
+
+ct_feature_diff_is_suspect() {
+  local worktree="$1" body="$2" declared features
+  declared="$(ct_issue_feature "$body")"
+  [[ -n "$declared" ]] || return 1
+  features="$(ct_changed_features "$worktree")"
+  [[ -n "$features" ]] || return 1
+  ! printf '%s\n' "$features" | grep -Fxq "$declared" \
+    && [[ "$(printf '%s\n' "$features" | wc -l)" -gt 0 ]]
+}
+
 ct_body_blocker_numbers() {
   local body="$1"
   {
