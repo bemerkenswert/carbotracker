@@ -13,6 +13,7 @@ ENV_ORCHESTRATOR_WORKTREE_PARENT="${ORCHESTRATOR_WORKTREE_PARENT-}"
 ENV_ORCHESTRATOR_ISSUE_LABELS="${ORCHESTRATOR_ISSUE_LABELS-}"
 ENV_ORCHESTRATOR_IN_PROGRESS_LABEL="${ORCHESTRATOR_IN_PROGRESS_LABEL-}"
 ENV_ORCHESTRATOR_REVIEW_RETRIES="${ORCHESTRATOR_REVIEW_RETRIES-}"
+ENV_ORCHESTRATOR_MODEL="${ORCHESTRATOR_MODEL-}"
 
 CONF_FILE="${CT_ORCHESTRATOR_CONF:-$SCRIPT_DIR/ct-orchestrator.conf}"
 if [[ -f "$CONF_FILE" ]]; then
@@ -26,6 +27,9 @@ ORCHESTRATOR_WORKTREE_PARENT="${ENV_ORCHESTRATOR_WORKTREE_PARENT:-${ORCHESTRATOR
 ORCHESTRATOR_ISSUE_LABELS="${ENV_ORCHESTRATOR_ISSUE_LABELS:-${ORCHESTRATOR_ISSUE_LABELS:-ready-for-agent,ticket}}"
 ORCHESTRATOR_IN_PROGRESS_LABEL="${ENV_ORCHESTRATOR_IN_PROGRESS_LABEL:-${ORCHESTRATOR_IN_PROGRESS_LABEL:-in-progress}}"
 ORCHESTRATOR_REVIEW_RETRIES="${ENV_ORCHESTRATOR_REVIEW_RETRIES:-${ORCHESTRATOR_REVIEW_RETRIES:-3}}"
+# The model every headless opencode run uses, pinned so the agent pipeline
+# never drifts to opencode's default (which can be a pricier model).
+ORCHESTRATOR_MODEL="${ENV_ORCHESTRATOR_MODEL:-${ORCHESTRATOR_MODEL:-opencode-go/deepseek-v4-flash}}"
 
 orchestrator_log() {
   # Logs go to stderr so functions that print a value on stdout (e.g. the
@@ -234,7 +238,7 @@ orchestrator_review_run_session() {
   orchestrator_log "review #$number: launching $prompt (session $session_id)"
   # Same stdin isolation as the implement run: a review run must never drain a
   # caller's pipe (review_poll streams its entries from a process substitution).
-  (cd "$worktree" && opencode run --auto --session "$session_id" "$prompt" < /dev/null)
+  (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" --session "$session_id" "$prompt" < /dev/null)
 }
 
 # Analyze phase of the review round: run the headless /review-comments skill in
@@ -670,11 +674,11 @@ orchestrator_run_opencode() {
   # poll_once streams candidates from a process substitution, an opencode run
   # that reads stdin would consume the remaining candidate lines and silently
   # cap the poll at one ticket.
-  if (cd "$worktree" && opencode run --auto "$@" "$prompt" < /dev/null) 2>&1 | tee "$log_file"; then
+  if (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" "$@" "$prompt" < /dev/null) 2>&1 | tee "$log_file"; then
     return 0
   fi
   orchestrator_log "ERROR: opencode run failed for #$number (attempt 1); retrying with --continue"
-  if (cd "$worktree" && opencode run --auto --continue "$prompt" < /dev/null) 2>&1 | tee -a "$log_file"; then
+  if (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" --continue "$prompt" < /dev/null) 2>&1 | tee -a "$log_file"; then
     return 0
   fi
   orchestrator_log "ERROR: opencode run failed for #$number on the retry as well"
@@ -991,7 +995,7 @@ orchestrator_poll_once() {
 }
 
 orchestrator_daemon() {
-  orchestrator_log "orchestrator started: poll every ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s, concurrency cap $ORCHESTRATOR_CONCURRENCY_CAP, state $ORCHESTRATOR_STATE_FILE"
+  orchestrator_log "orchestrator started: poll every ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s, concurrency cap $ORCHESTRATOR_CONCURRENCY_CAP, model $ORCHESTRATOR_MODEL, state $ORCHESTRATOR_STATE_FILE"
   orchestrator_reconcile
   while true; do
     orchestrator_poll_once

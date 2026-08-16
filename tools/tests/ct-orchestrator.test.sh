@@ -895,7 +895,7 @@ exit 0'
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree"
   assert_eq "worktree dir created" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
-  assert_eq "opencode run invoked with title and issue prompt" "run --auto --title carbotracker-ticket-10 /implement the issue is 10" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "opencode run invoked with title and issue prompt" "run --auto --model $ORCHESTRATOR_MODEL --title carbotracker-ticket-10 /implement the issue is 10" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_contains "branch pushed to origin" "push -u origin ticket/10-alpha" "$(cat "$FAKE_GIT_PUSH_FILE")"
   assert_eq "state session id stored" "ses_abc" "$(jq -r '.[0].sessionId' "$TEST_STATE")"
   assert_eq "state pr number stored" "42" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
@@ -1061,8 +1061,8 @@ exit 0'
   export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree"
-  assert_eq "first opencode attempt uses fresh title session" "run --auto --title carbotracker-ticket-10 /implement the issue is 10" "$(sed -n '1p' "$FAKE_OPENCODE_LOG")"
-  assert_eq "retry once with --continue" "run --auto --continue /implement the issue is 10" "$(sed -n '2p' "$FAKE_OPENCODE_LOG")"
+  assert_eq "first opencode attempt uses fresh title session" "run --auto --model $ORCHESTRATOR_MODEL --title carbotracker-ticket-10 /implement the issue is 10" "$(sed -n '1p' "$FAKE_OPENCODE_LOG")"
+  assert_eq "retry once with --continue" "run --auto --model $ORCHESTRATOR_MODEL --continue /implement the issue is 10" "$(sed -n '2p' "$FAKE_OPENCODE_LOG")"
   assert_eq "retried run completes the ticket" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
   unset FAKE_OPENCODE_COUNT FAKE_OPENCODE_LOG
   state_teardown
@@ -1476,7 +1476,7 @@ test_review_round_success_updates_state() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 2
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
-  assert_eq "opencode run resumes the session headless" "run --auto --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "opencode run resumes the session headless" "run --auto --model $ORCHESTRATOR_MODEL --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "state last comment updated after round" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_eq "successful round resets failure counter" "0" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   assert_eq "no failure notice posted on success" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
@@ -1955,7 +1955,7 @@ test_review_poll_resumes_paused_pr_on_new_comment() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_needs_human "$TEST_STATE" 123 true
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_poll 2>&1)"
-  assert_eq "new comment resumes a paused round" "run --auto --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "new comment resumes a paused round" "run --auto --model $ORCHESTRATOR_MODEL --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "resumed pr clears needsHuman" "false" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
   assert_contains "logs the resume" "resumes paused PR #456" "$output"
   unset FAKE_OPENCODE_ARGS
@@ -1975,7 +1975,7 @@ test_review_poll_launches_round_on_new_comment() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_poll 2>&1)"
-  assert_eq "poll launches review round on new comment" "run --auto --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "poll launches review round on new comment" "run --auto --model $ORCHESTRATOR_MODEL --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "poll updates last comment in state" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_contains "logs new comment detection" "new comment on PR #456" "$output"
   unset FAKE_OPENCODE_ARGS
@@ -2137,7 +2137,7 @@ test_poll_once_runs_review_loop() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_poll_once 2>&1)"
-  assert_eq "poll once runs review round for awaiting-review pr" "run --auto --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "poll once runs review round for awaiting-review pr" "run --auto --model $ORCHESTRATOR_MODEL --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "poll once updates last comment in state" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_contains "logs review round" "review #123: launching /review-comments" "$output"
   unset FAKE_OPENCODE_ARGS
