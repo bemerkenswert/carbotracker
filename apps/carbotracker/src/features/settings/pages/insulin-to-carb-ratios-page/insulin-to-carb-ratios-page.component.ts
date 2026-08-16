@@ -15,7 +15,7 @@ import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { filterNull } from '@carbotracker/utility';
 import { Store } from '@ngrx/store';
 import { InsulinToCarbRatiosPageActions } from '../../+state/actions/component.actions';
-import { settingsFeature } from '../../../../app/app.reducer';
+import { settingsFeature } from '../../+state/settings.store';
 
 interface InsulinToCarbRatioPerMeal {
   mealType: 'Breakfast ratio' | 'Lunch ratio' | 'Dinner ratio' | 'Night ratio';

@@ -4,7 +4,11 @@ import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { concatLatestFrom } from '@ngrx/operators';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { catchError, from, map, of, switchMap, tap } from 'rxjs';
-import { LoginApiActions, LogoutApiActions } from '../actions/api.actions';
+import {
+  LoginApiActions,
+  LogoutApiActions,
+  SignUpApiActions,
+} from '../actions/api.actions';
 import {
   LoginFormComponentActions,
   SignUpFormComponentActions,
@@ -64,4 +68,29 @@ export const reloadApp$ = createEffect(
       tap(() => document.location.reload()),
     ),
   { functional: true, dispatch: false },
+);
+
+export const navigateToProducts$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(LoginApiActions.loginSuccessful),
+      switchMap(() => from(router.navigate(['app', 'products']))),
+    ),
+  { functional: true, dispatch: false },
+);
+
+export const navigateToApp$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(SignUpApiActions.signUpSuccessful),
+      switchMap(() =>
+        from(router.navigate(['app'])).pipe(
+          map(() => RoutingActions.navigationToAppSuccessful()),
+          catchError((error) =>
+            of(RoutingActions.navigationToAppFailed({ error })),
+          ),
+        ),
+      ),
+    ),
+  { functional: true },
 );
