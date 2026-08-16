@@ -1,4 +1,7 @@
-import { Action, Store } from '@ngrx/store';
+import { TestBed } from '@angular/core/testing';
+import { Action } from '@ngrx/store';
+import { provideMockActions } from '@ngrx/effects/testing';
+import { MockStore, provideMockStore } from '@ngrx/store/testing';
 import { of, Subject, throwError } from 'rxjs';
 import { ProductsService } from '../../services/products.service';
 import { ProductsApiActions } from '../actions/api.actions';
@@ -13,29 +16,41 @@ const selectedProduct = {
   carbs: 25,
 };
 
-const buildStore = (): Store =>
-  ({
-    select: jest.fn((selector) => {
-      if (selector === productsFeature.selectCurrentProduct) {
-        return of(selectedProduct);
-      }
-      return of(null);
-    }),
-  }) as unknown as Store;
-
 describe('updateProduct$', () => {
-  it('merges the existing product with the changed product and updates it', () => {
-    const productsService = {
-      updateProduct: jest.fn(() => of(undefined)),
-    } as unknown as ProductsService;
+  let actions$: Subject<Action>;
+  let store: MockStore;
+  let productsService: jest.Mocked<ProductsService>;
 
-    const actions$ = new Subject<Action>();
+  beforeEach(() => {
+    actions$ = new Subject<Action>();
+    productsService = {
+      updateProduct: jest.fn(() => of(undefined)),
+    } as unknown as jest.Mocked<ProductsService>;
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideMockActions(() => actions$),
+        provideMockStore({
+          selectors: [
+            {
+              selector: productsFeature.selectCurrentProduct,
+              value: selectedProduct,
+            },
+          ],
+        }),
+        { provide: ProductsService, useValue: productsService },
+      ],
+    });
+
+    store = TestBed.inject(MockStore);
+  });
+
+  it('merges the existing product with the changed product and updates it', () => {
     const results: Action[] = [];
-    updateProduct$(
-      actions$.asObservable(),
-      productsService,
-      buildStore(),
-    ).subscribe((action) => results.push(action));
+
+    TestBed.runInInjectionContext(() =>
+      updateProduct$().subscribe((action) => results.push(action)),
+    );
 
     actions$.next(
       EditProductPageComponentActions.saveProductClicked({
@@ -50,41 +65,15 @@ describe('updateProduct$', () => {
     expect(results).toEqual([ProductsApiActions.updatingProductSuccessful()]);
   });
 
-  it('does nothing when there is no selected product', () => {
-    const productsService = {
-      updateProduct: jest.fn(() => of(undefined)),
-    } as unknown as ProductsService;
-
-    const actions$ = new Subject<Action>();
-    const results: Action[] = [];
-    updateProduct$(
-      actions$.asObservable(),
-      productsService,
-      buildStoreWithNoProduct(),
-    ).subscribe((action) => results.push(action));
-
-    actions$.next(
-      EditProductPageComponentActions.saveProductClicked({
-        changedProduct: { name: 'rigatoni', carbs: 30 },
-      }),
-    );
-
-    expect(productsService.updateProduct).not.toHaveBeenCalled();
-    expect(results).toEqual([]);
-  });
-
   it('dispatches updatingProductFailed when the update fails', () => {
-    const productsService = {
-      updateProduct: jest.fn(() => throwError(() => new Error('boom'))),
-    } as unknown as ProductsService;
-
-    const actions$ = new Subject<Action>();
+    productsService.updateProduct.mockReturnValue(
+      throwError(() => new Error('boom')),
+    );
     const results: Action[] = [];
-    updateProduct$(
-      actions$.asObservable(),
-      productsService,
-      buildStore(),
-    ).subscribe((action) => results.push(action));
+
+    TestBed.runInInjectionContext(() =>
+      updateProduct$().subscribe((action) => results.push(action)),
+    );
 
     actions$.next(
       EditProductPageComponentActions.saveProductClicked({
@@ -96,9 +85,22 @@ describe('updateProduct$', () => {
       ProductsApiActions.updatingProductFailed({ error: expect.any(Error) }),
     ]);
   });
-});
 
-const buildStoreWithNoProduct = (): Store =>
-  ({
-    select: jest.fn(() => of(null)),
-  }) as unknown as Store;
+  it('does nothing when there is no selected product', () => {
+    store.overrideSelector(productsFeature.selectCurrentProduct, null);
+    const results: Action[] = [];
+
+    TestBed.runInInjectionContext(() =>
+      updateProduct$().subscribe((action) => results.push(action)),
+    );
+
+    actions$.next(
+      EditProductPageComponentActions.saveProductClicked({
+        changedProduct: { name: 'rigatoni', carbs: 30 },
+      }),
+    );
+
+    expect(productsService.updateProduct).not.toHaveBeenCalled();
+    expect(results).toEqual([]);
+  });
+});
