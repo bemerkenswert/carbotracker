@@ -79,6 +79,19 @@ Each poll, before the review loop, the orchestrator walks every state entry in
 - **anything else / gh failure** — the state query failed; the entry is kept
   so the merge is retried on the next poll.
 
+## Overlap warning
+
+When a PR is opened (the normal push-and-open path and the crash-recovery
+path alike), the orchestrator compares the branch's changed files (read from
+the worktree with `git diff --name-only origin/main...HEAD`, so the check does
+not depend on the freshly created PR's file list having propagated to the API)
+against every open PR's changed files (`gh pr view <n> --json files`). On
+overlap it posts a warning comment on the new PR naming each overlapping PR and
+the shared files. Overlap is expected during migrations, so it only warns — it
+never blocks or queues, and a PR that shares no files gets no comment. Any
+`gh`/`git` failure skips the check (non-fatal), and the new PR itself is never
+compared against itself.
+
 ## Crash recovery
 
 The state file is the orchestrator's memory, never the source of truth. On

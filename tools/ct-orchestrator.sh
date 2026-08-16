@@ -261,6 +261,49 @@ _Created by carbotracker's agent skills._"; then
   fi
 }
 
+# The changed file paths of an existing open PR (its diff against the base).
+orchestrator_pr_files() {
+  local pr="$1"
+  gh pr view "$pr" --json files --jq '.[].path' 2>/dev/null || true
+}
+
+# Compare the new PR's changed files against every open PR's and, on overlap,
+# post a warning naming the overlapping PR(s) and the shared files. Overlap is
+# expected during migrations, so it only warns — it never blocks or queues.
+# Non-fatal: any gh/git failure leaves the PR alone for the next observer.
+orchestrator_check_overlap() {
+  local number="$1" pr_number="$2" worktree="$3"
+  local files pr candidate shared overlaps count shared_list
+  # The branch's own files are read from the worktree so the check does not
+  # depend on the just-created PR's file list having propagated to the API.
+  files="$(ct_changed_files "$worktree")"
+  [[ -n "$files" ]] || return 0
+  count=0
+  overlaps=""
+  while IFS= read -r pr; do
+    [[ -n "$pr" && "$pr" != "$pr_number" ]] || continue
+    candidate="$(orchestrator_pr_files "$pr")"
+    [[ -n "$candidate" ]] || continue
+    shared="$(ct_shared_files "$files" "$candidate")"
+    [[ -n "$shared" ]] || continue
+    count=$((count + 1))
+    shared_list="$(printf '%s\n' "$shared" | awk 'NF {printf "%s`%s`", sep, $0; sep=", "}')"
+    overlaps="${overlaps}
+- PR #$pr: $shared_list"
+  done < <(gh pr list --state open --json number --jq '.[].number' 2>/dev/null || true)
+  if [[ "$count" -eq 0 ]]; then
+    return 0
+  fi
+  if orchestrator_pr_post_comment "$pr_number" "Warning: PR #$pr_number changes files that overlap with other open PR(s), so the merges may conflict:
+$overlaps
+---
+_Created by carbotracker's agent skills._"; then
+    orchestrator_log "warned overlap on #$number / PR #$pr_number: $count other open PR(s) share changed files"
+  else
+    orchestrator_log "WARNING: failed to post overlap warning on PR #$pr_number"
+  fi
+}
+
 orchestrator_pr_reply_to_thread() {
   local pr="$1" comment_id="$2" body="$3"
   gh api "repos/{owner}/{repo}/pulls/$pr/comments/$comment_id/replies" -f body="$body" >/dev/null 2>&1
@@ -742,6 +785,7 @@ orchestrator_push_and_open_pr() {
     pr_number="$(orchestrator_pr_number_for_branch "$branch")"
   fi
   orchestrator_check_suspect_diff "$number" "$pr_number" "$worktree"
+  orchestrator_check_overlap "$number" "$pr_number" "$worktree"
   printf '%s' "$pr_number"
 }
 
@@ -941,6 +985,7 @@ orchestrator_recover_pushed_branch() {
     pr_number="$(orchestrator_pr_number_for_branch "$branch")"
   fi
   orchestrator_check_suspect_diff "$number" "$pr_number" "$worktree"
+  orchestrator_check_overlap "$number" "$pr_number" "$worktree"
   orchestrator_state_complete_and_comment "$number" "$session_id" "$pr_number"
 }
 

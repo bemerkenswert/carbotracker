@@ -23,9 +23,15 @@ ct_issue_feature() {
     | head -n 1
 }
 
+ct_changed_files() {
+  # The changed file paths of a branch worktree against main (non-fatal).
+  local worktree="$1"
+  git -C "$worktree" diff --name-only origin/main...HEAD 2>/dev/null || true
+}
+
 ct_changed_features() {
   local worktree="$1"
-  git -C "$worktree" diff --name-only origin/main...HEAD 2>/dev/null \
+  ct_changed_files "$worktree" \
     | sed -nE 's#^(.*/)?features/([a-z0-9]+(-[a-z0-9]+)*)/.*#\2#p' \
     | sort -u
 }
@@ -38,6 +44,19 @@ ct_feature_diff_is_suspect() {
   [[ -n "$features" ]] || return 1
   ! printf '%s\n' "$features" | grep -Fxq "$declared" \
     && [[ "$(printf '%s\n' "$features" | wc -l)" -gt 0 ]]
+}
+
+ct_shared_files() {
+  # The exact intersection of two newline-separated file lists: every path in
+  # $1 that also appears verbatim in $2 (whole-line match, so a path is never
+  # mistaken for one of its prefixes). Emits the matches in $1's order.
+  local a="$1" b="$2" f
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    if printf '%s\n' "$b" | grep -Fxq "$f"; then
+      printf '%s\n' "$f"
+    fi
+  done <<< "$a"
 }
 
 ct_body_blocker_numbers() {
