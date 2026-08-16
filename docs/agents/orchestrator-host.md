@@ -175,6 +175,10 @@ Expect startup reconcile, a poll line (`poll: 0 candidate(s), 0 active`), then
   comment with the run's output tail.
 - **Reboots**: `enable` + `enable-linger` bring the daemon back automatically;
   the node-sync oneshot re-checks the Node major first (`Before=` the daemon).
+- **Health check**: `~/git/carbotracker/tools/ct-orchestrator-verify.sh` runs
+  read-only checks over node/nvm, gh, the systemd units, the env file, the
+  repo, network and hardening, and exits non-zero on any failure. It never
+  prints secrets.
 
 ### Why not CI / a VPS that boots on a timer
 
