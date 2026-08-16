@@ -2405,6 +2405,67 @@ test_config_env_beats_conf() {
   state_teardown
 }
 
+test_issue_feature_parses_valid_declaration() {
+  assert_eq "parses Feature declaration" "current-meal" "$(ct_issue_feature $'Summary\n\nFeature: current-meal\n')"
+}
+
+test_issue_feature_rejects_invalid_declaration() {
+  assert_eq "rejects invalid feature name" "" "$(ct_issue_feature 'Feature: current meal')"
+}
+
+test_changed_features_maps_feature_folders() {
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts" "apps/carbotracker/src/features/current-meal/b.ts" "README.md"; fi'
+  assert_eq "maps changed files to unique feature folders" $'current-meal\nproducts' "$(ct_changed_features /tmp/worktree)"
+}
+
+test_suspect_diff_requires_declared_feature_to_be_untouched() {
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts"; fi'
+  if ct_feature_diff_is_suspect /tmp/worktree "Feature: current-meal"; then
+    pass "flags a diff in a different feature"
+  else
+    fail "flags a diff in a different feature"
+  fi
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts" "apps/carbotracker/src/features/current-meal/b.ts"; fi'
+  if ct_feature_diff_is_suspect /tmp/worktree "Feature: current-meal"; then
+    fail "does not flag legitimate cross-feature edit"
+  else
+    pass "does not flag legitimate cross-feature edit"
+  fi
+}
+
+test_suspect_diff_skips_undeclared_ticket() {
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts"; fi'
+  if ct_feature_diff_is_suspect /tmp/worktree "No feature declared"; then
+    fail "skips suspect diff check when feature is undeclared"
+  else
+    pass "skips suspect diff check when feature is undeclared"
+  fi
+}
+
+test_suspect_diff_flags_pr_without_failing_pipeline() {
+  state_setup
+  local args_file="$STATE_DIR/suspect_args"
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  printf "Feature: current-meal\n"
+elif [[ "$1" == "pr" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_SUSPECT_ARGS"
+elif [[ "$1" == "pr" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_SUSPECT_ARGS"
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts"; fi'
+  export FAKE_SUSPECT_ARGS="$args_file"
+  if orchestrator_check_suspect_diff 279 456 /tmp/worktree; then
+    pass "suspect diff check is non-fatal"
+  else
+    fail "suspect diff check is non-fatal"
+  fi
+  assert_contains "suspect diff adds pr label" "pr edit 456 --add-label suspect-diff" "$(sed -n '1p' "$args_file")"
+  assert_contains "suspect diff posts warning comment" "pr comment 456" "$(sed -n '2p' "$args_file")"
+  unset FAKE_SUSPECT_ARGS
+  state_teardown
+}
+
 test_cli_help() {
   local output
   output="$(bash "$ROOT/tools/ct-orchestrator.sh" help)"
@@ -2632,6 +2693,12 @@ test_config_file_parsing
 test_config_env_beats_conf
 
 fake_setup
+test_issue_feature_parses_valid_declaration
+test_issue_feature_rejects_invalid_declaration
+test_changed_features_maps_feature_folders
+test_suspect_diff_requires_declared_feature_to_be_untouched
+test_suspect_diff_skips_undeclared_ticket
+test_suspect_diff_flags_pr_without_failing_pipeline
 test_candidate_issues_sorted_fifo
 test_candidate_issues_passes_both_labels
 test_candidate_issues_gh_error
