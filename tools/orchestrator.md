@@ -67,7 +67,15 @@ Each poll, before the review loop, the orchestrator walks every state entry in
   naming the closed PR. The entry is removed only once the escalation lands,
   so a transient `gh` failure retries next poll instead of stranding an
   un-labelled issue.
-- **`OPEN`** — still awaiting review, nothing to do.
+- **`OPEN`** — the merge status is checked. A PR with status **`BEHIND`** is
+  updated by fetching `origin/main`, merging it with `--no-ff`, and pushing the
+  branch normally (never a rebase or force-push). The daemon verifies that
+  `origin/main` is an ancestor of the branch tip before the push, then re-fetches
+  and verifies again after the push, so the remote is confirmed to contain the
+  merged branch — an unverified push is never trusted. A conflicting merge is
+  aborted (`git merge --abort`) so the worktree is left clean for a retry;
+  conflicts, push failures, and failed verification keep the entry for the next
+  poll. Other merge statuses remain awaiting review.
 - **anything else / gh failure** — the state query failed; the entry is kept
   so the merge is retried on the next poll.
 

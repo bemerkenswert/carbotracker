@@ -373,6 +373,35 @@ fi
 exit 0'
 }
 
+fake_behind_merge_gh() {
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  if [[ "$*" == *"--json mergeStateStatus"* ]]; then printf "BEHIND\n"; else printf "OPEN\n"; fi
+fi
+exit 0'
+}
+
+# Like fake_behind_merge_gh, but the merge status is the passed value — used to
+# pin that only BEHIND triggers the update.
+fake_merge_state_gh() {
+  local status="$1"
+  fake_command gh "if [[ \"\$1\" == \"pr\" && \"\$2\" == \"view\" ]]; then
+  if [[ \"\$*\" == *\"--json mergeStateStatus\"* ]]; then printf \"$status\n\"; else printf \"OPEN\n\"; fi
+fi
+exit 0"
+}
+
+fake_behind_merge_git() {
+  local conflict="${1:-no}"
+  fake_command git "if [[ \"\$1\" == \"-C\" ]]; then
+  worktree=\"\$2\"
+  shift 2
+fi
+printf \"%s %s\n\" \"\$worktree\" \"\$*\" >> \"\$FAKE_MERGE_GIT_ARGS\"
+if [[ \"\$1\" == \"merge\" && \"\$*\" == *\"--no-ff\"* && \"$conflict\" == \"yes\" ]]; then exit 1; fi
+if [[ \"\$1\" == \"merge-base\" && \"\${FAKE_MERGE_ANCESTOR:-yes}\" != \"yes\" ]]; then exit 1; fi
+exit 0"
+}
+
 # Fake gh for a closed-without-merge PR: `pr view` reports CLOSED, and the
 # escalation `issue edit` + `issue comment` invocations are captured to
 # $FAKE_ESCALATE_ARGS (appended).
@@ -2164,6 +2193,16 @@ test_pr_state_gh_error() {
   assert_eq "pr state empty on gh error" "" "$(orchestrator_pr_state 456)"
 }
 
+test_pr_merge_state_returns_behind() {
+  fake_merge_gh "BEHIND"
+  assert_eq "pr merge state returns BEHIND" "BEHIND" "$(orchestrator_pr_merge_state 456)"
+}
+
+test_pr_merge_state_gh_error() {
+  fake_command gh 'exit 1'
+  assert_eq "pr merge state empty on gh error" "" "$(orchestrator_pr_merge_state 456)"
+}
+
 test_merge_poll_prunes_merged_pr() {
   state_setup
   fake_merge_gh "MERGED"
@@ -2257,6 +2296,84 @@ test_merge_poll_keeps_open_pr() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>/dev/null
   assert_eq "open pr kept in state" "1" "$(jq 'length' "$TEST_STATE")"
   assert_eq "open pr worktree kept" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  state_teardown
+}
+
+test_merge_poll_updates_behind_pr() {
+  state_setup
+  fake_behind_merge_gh
+  fake_behind_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_contains "behind pr fetches origin main" "fetch origin main" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_contains "behind pr creates a merge commit" "merge --no-ff --no-edit origin/main" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_contains "behind pr uses a normal push" "push origin ticket/123-foo" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_eq "behind pr is verified twice" "2" "$(grep -c 'merge-base --is-ancestor origin/main HEAD' "$FAKE_MERGE_GIT_ARGS")"
+  assert_eq "behind pr re-fetches origin main after the push" "2" "$(grep -c 'fetch origin main' "$FAKE_MERGE_GIT_ARGS")"
+  assert_contains "behind pr logs verified update" "merged origin/main into ticket/123-foo and verified ancestry against the remote" "$output"
+  assert_eq "behind pr remains in state" "1" "$(jq 'length' "$TEST_STATE")"
+  unset FAKE_MERGE_GIT_ARGS
+  state_teardown
+}
+
+test_merge_poll_leaves_clean_open_pr_alone() {
+  state_setup
+  fake_merge_state_gh "CLEAN"
+  fake_behind_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "clean open pr is not merged" "0" "$(cat "$FAKE_MERGE_GIT_ARGS" 2>/dev/null | wc -l)"
+  assert_contains "clean open pr logs its merge status" "merge status CLEAN" "$output"
+  assert_eq "clean open pr remains in state" "1" "$(jq 'length' "$TEST_STATE")"
+  unset FAKE_MERGE_GIT_ARGS
+  state_teardown
+}
+
+test_merge_poll_aborts_conflicted_merge() {
+  state_setup
+  fake_behind_merge_gh
+  fake_behind_merge_git yes
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_contains "conflicted merge is aborted" "merge --abort" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_eq "conflicted merge is not pushed" "0" "$(grep -c 'push origin' "$FAKE_MERGE_GIT_ARGS" || true)"
+  assert_contains "conflicted merge is retained for retry" "keeping entry to retry next poll" "$output"
+  assert_eq "conflicted merge remains in state" "1" "$(jq 'length' "$TEST_STATE")"
+  unset FAKE_MERGE_GIT_ARGS
+  state_teardown
+}
+
+test_merge_poll_does_not_push_unverified_behind_pr() {
+  state_setup
+  fake_behind_merge_gh
+  fake_behind_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  export FAKE_MERGE_ANCESTOR=no
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "unverified behind pr is not pushed" "0" "$(grep -c 'push origin' "$FAKE_MERGE_GIT_ARGS" || true)"
+  assert_contains "unverified behind pr is retained for retry" "keeping entry to retry next poll" "$output"
+  assert_eq "unverified behind pr remains in state" "1" "$(jq 'length' "$TEST_STATE")"
+  unset FAKE_MERGE_GIT_ARGS FAKE_MERGE_ANCESTOR
   state_teardown
 }
 
@@ -2767,11 +2884,17 @@ test_pr_state_returns_merged
 test_pr_state_returns_closed
 test_pr_state_returns_open
 test_pr_state_gh_error
+test_pr_merge_state_returns_behind
+test_pr_merge_state_gh_error
 test_merge_poll_prunes_merged_pr
 test_merge_poll_prunes_closed_pr
 test_merge_poll_keeps_entry_when_escalate_fails
 test_merge_poll_keeps_entry_when_close_fails
 test_merge_poll_keeps_open_pr
+test_merge_poll_updates_behind_pr
+test_merge_poll_leaves_clean_open_pr_alone
+test_merge_poll_aborts_conflicted_merge
+test_merge_poll_does_not_push_unverified_behind_pr
 test_merge_poll_skips_entry_without_pr
 test_merge_poll_gh_error_keeps_entry
 test_merge_poll_ignores_implementing_phase

@@ -198,9 +198,17 @@ orchestrator_pr_number_for_branch() {
     | jq -r 'sort_by(.number) | reverse | .[0].number // empty' 2>/dev/null || true
 }
 
+orchestrator_pr_field() {
+  local pr="$1" field="$2"
+  gh pr view "$pr" --json "$field" --jq ".$field" 2>/dev/null || true
+}
+
 orchestrator_pr_state() {
-  local pr="$1"
-  gh pr view "$pr" --json state --jq .state 2>/dev/null || true
+  orchestrator_pr_field "$1" state
+}
+
+orchestrator_pr_merge_state() {
+  orchestrator_pr_field "$1" mergeStateStatus
 }
 
 orchestrator_pr_latest_comment_at() {
@@ -602,8 +610,46 @@ orchestrator_prune_ticket() {
   orchestrator_log "pruned #$number: worktree removed, branch deleted, removed from state"
 }
 
+orchestrator_merge_behind_pr() {
+  local pr_number="$1" branch="$2" worktree="$3"
+
+  if [[ ! -d "$worktree" ]]; then
+    orchestrator_log "WARNING: cannot update PR #$pr_number: worktree $worktree is missing"
+    return 1
+  fi
+  if ! git -C "$worktree" fetch origin main; then
+    orchestrator_log "WARNING: failed to fetch origin/main for PR #$pr_number"
+    return 1
+  fi
+  if ! git -C "$worktree" merge --no-ff --no-edit origin/main; then
+    orchestrator_log "WARNING: origin/main conflicts with branch $branch for PR #$pr_number; aborting the merge"
+    git -C "$worktree" merge --abort 2>/dev/null || true
+    return 1
+  fi
+  if ! git -C "$worktree" merge-base --is-ancestor origin/main HEAD; then
+    orchestrator_log "WARNING: could not verify origin/main is an ancestor of branch $branch after merge"
+    return 1
+  fi
+  if ! git -C "$worktree" push origin "$branch"; then
+    orchestrator_log "WARNING: failed to push merged branch $branch for PR #$pr_number"
+    return 1
+  fi
+  # The push proves nothing about the remote's current main: re-fetch so
+  # origin/main reflects the remote, then re-verify the branch tip contains it.
+  if ! git -C "$worktree" fetch origin main; then
+    orchestrator_log "WARNING: failed to re-fetch origin/main to verify the push of PR #$pr_number"
+    return 1
+  fi
+  if ! git -C "$worktree" merge-base --is-ancestor origin/main HEAD; then
+    orchestrator_log "WARNING: could not verify origin/main is an ancestor of branch $branch after push"
+    return 1
+  fi
+  orchestrator_log "merge #$pr_number: merged origin/main into $branch and verified ancestry against the remote"
+  return 0
+}
+
 orchestrator_merge_poll() {
-  local line number pr_number branch worktree state
+  local line number pr_number branch worktree state merge_state
   while IFS= read -r line; do
     number="$(printf '%s' "$line" | jq -r '.ticket')"
     pr_number="$(printf '%s' "$line" | jq -r '.prNumber')"
@@ -646,7 +692,17 @@ _Created by carbotracker's agent skills._"; then
         fi
         ;;
       OPEN)
-        orchestrator_log "merge #$number: PR #$pr_number still open"
+        merge_state="$(orchestrator_pr_merge_state "$pr_number")"
+        if [[ -z "$merge_state" ]]; then
+          orchestrator_log "WARNING: could not determine the merge status of PR #$pr_number; keeping entry to retry next poll"
+        elif [[ "$merge_state" == "BEHIND" ]]; then
+          orchestrator_log "merge #$number: PR #$pr_number is behind main; updating branch $branch"
+          if ! orchestrator_merge_behind_pr "$pr_number" "$branch" "$worktree"; then
+            orchestrator_log "WARNING: could not update behind PR #$pr_number; keeping entry to retry next poll"
+          fi
+        else
+          orchestrator_log "merge #$number: PR #$pr_number still open (merge status $merge_state)"
+        fi
         ;;
       *)
         orchestrator_log "WARNING: could not determine state of PR #$pr_number for #$number"
