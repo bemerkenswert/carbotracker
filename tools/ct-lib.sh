@@ -40,6 +40,19 @@ ct_feature_diff_is_suspect() {
     && [[ "$(printf '%s\n' "$features" | wc -l)" -gt 0 ]]
 }
 
+ct_shared_files() {
+  # The exact intersection of two newline-separated file lists: every path in
+  # $1 that also appears verbatim in $2 (whole-line match, so a path is never
+  # mistaken for one of its prefixes). Emits the matches in $1's order.
+  local a="$1" b="$2" f
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    if printf '%s\n' "$b" | grep -Fxq "$f"; then
+      printf '%s\n' "$f"
+    fi
+  done <<< "$a"
+}
+
 ct_body_blocker_numbers() {
   local body="$1"
   {

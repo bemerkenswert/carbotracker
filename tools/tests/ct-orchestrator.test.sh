@@ -2583,6 +2583,110 @@ exit 0'
   state_teardown
 }
 
+test_shared_files_returns_intersection() {
+  local a b
+  a=$'apps/carbotracker/src/features/products/a.ts\napps/carbotracker/src/features/current-meal/b.ts'
+  b=$'apps/carbotracker/src/features/products/a.ts\nREADME.md'
+  assert_eq "shared files are the exact intersection" "apps/carbotracker/src/features/products/a.ts" "$(ct_shared_files "$a" "$b")"
+}
+
+test_shared_files_empty_without_overlap() {
+  local a b
+  a=$'apps/carbotracker/src/features/products/a.ts'
+  b=$'apps/carbotracker/src/features/current-meal/b.ts'
+  assert_eq "no overlap yields no shared files" "" "$(ct_shared_files "$a" "$b")"
+}
+
+test_shared_files_matches_whole_paths_only() {
+  local a b
+  a=$'libs/foo/bar.ts'
+  b=$'libs/foo/bar.tsx'
+  assert_eq "a path prefix is not a match" "" "$(ct_shared_files "$a" "$b")"
+}
+
+test_overlap_warns_on_shared_files() {
+  state_setup
+  local args_file="$STATE_DIR/overlap_args"
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "456\n789\n"
+elif [[ "$1" == "pr" && "$2" == "view" ]]; then
+  if [[ "$3" == "789" ]]; then
+    printf "apps/carbotracker/src/features/products/a.ts\nREADME.md\n"
+  else
+    printf "apps/carbotracker/src/features/current-meal/b.ts\n"
+  fi
+elif [[ "$1" == "api" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_OVERLAP_ARGS"
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts" "apps/carbotracker/src/features/current-meal/b.ts"; fi'
+  export FAKE_OVERLAP_ARGS="$args_file"
+  if orchestrator_check_overlap 280 456 /tmp/worktree; then
+    pass "overlap check is non-fatal"
+  else
+    fail "overlap check is non-fatal"
+  fi
+  assert_contains "overlap warning posts a comment on the new PR" "issues/456/comments" "$(cat "$args_file")"
+  assert_contains "overlap warning names the overlapping PR" "PR #789" "$(cat "$args_file")"
+  assert_contains "overlap warning names the shared file" "products/a.ts" "$(cat "$args_file")"
+  unset FAKE_OVERLAP_ARGS
+  state_teardown
+}
+
+test_overlap_no_warning_without_overlap() {
+  state_setup
+  local args_file="$STATE_DIR/overlap_args"
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "456\n789\n"
+elif [[ "$1" == "pr" && "$2" == "view" ]]; then
+  printf "apps/carbotracker/src/features/products/a.ts\n"
+elif [[ "$1" == "api" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_OVERLAP_ARGS"
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/current-meal/b.ts"; fi'
+  export FAKE_OVERLAP_ARGS="$args_file"
+  orchestrator_check_overlap 280 456 /tmp/worktree
+  assert_eq "no overlap posts no warning" "" "$(cat "$args_file" 2>/dev/null || true)"
+  unset FAKE_OVERLAP_ARGS
+  state_teardown
+}
+
+test_overlap_excludes_own_pr() {
+  state_setup
+  local args_file="$STATE_DIR/overlap_args"
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "456\n"
+elif [[ "$1" == "pr" && "$2" == "view" ]]; then
+  printf "apps/carbotracker/src/features/products/a.ts\n"
+elif [[ "$1" == "api" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_OVERLAP_ARGS"
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts"; fi'
+  export FAKE_OVERLAP_ARGS="$args_file"
+  orchestrator_check_overlap 280 456 /tmp/worktree
+  assert_eq "own pr never overlaps itself" "" "$(cat "$args_file" 2>/dev/null || true)"
+  unset FAKE_OVERLAP_ARGS
+  state_teardown
+}
+
+test_overlap_survives_gh_error() {
+  state_setup
+  local args_file="$STATE_DIR/overlap_args"
+  fake_command gh 'exit 1'
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts"; fi'
+  export FAKE_OVERLAP_ARGS="$args_file"
+  if orchestrator_check_overlap 280 456 /tmp/worktree; then
+    pass "overlap check survives a gh failure"
+  else
+    fail "overlap check survives a gh failure"
+  fi
+  assert_eq "no warning posted after gh failure" "" "$(cat "$args_file" 2>/dev/null || true)"
+  unset FAKE_OVERLAP_ARGS
+  state_teardown
+}
+
 test_cli_help() {
   local output
   output="$(bash "$ROOT/tools/ct-orchestrator.sh" help)"
@@ -2816,6 +2920,13 @@ test_changed_features_maps_feature_folders
 test_suspect_diff_requires_declared_feature_to_be_untouched
 test_suspect_diff_skips_undeclared_ticket
 test_suspect_diff_flags_pr_without_failing_pipeline
+test_shared_files_returns_intersection
+test_shared_files_empty_without_overlap
+test_shared_files_matches_whole_paths_only
+test_overlap_warns_on_shared_files
+test_overlap_no_warning_without_overlap
+test_overlap_excludes_own_pr
+test_overlap_survives_gh_error
 test_candidate_issues_sorted_fifo
 test_candidate_issues_passes_both_labels
 test_candidate_issues_gh_error
