@@ -232,7 +232,9 @@ orchestrator_pr_reply_to_thread() {
 orchestrator_review_run_session() {
   local number="$1" session_id="$2" worktree="$3" prompt="$4"
   orchestrator_log "review #$number: launching $prompt (session $session_id)"
-  (cd "$worktree" && opencode run --auto --session "$session_id" "$prompt")
+  # Same stdin isolation as the implement run: a review run must never drain a
+  # caller's pipe (review_poll streams its entries from a process substitution).
+  (cd "$worktree" && opencode run --auto --session "$session_id" "$prompt" < /dev/null)
 }
 
 # Analyze phase of the review round: run the headless /review-comments skill in
@@ -243,7 +245,10 @@ orchestrator_review_run_session() {
 orchestrator_review_analyze() {
   local number="$1" session_id="$2" pr_number="$3" worktree="$4" plan_file="$5"
   local prompt
-  prompt="/review-comments on PR #$pr_number headless: do not ask, do not post, do not implement — write the plan file"
+  # The prompt names both the PR and its ticket so the resumed session's own
+  # context (its original "implement issue N" history and any prior PR
+  # references) cannot be misread as the review's subject.
+  prompt="/review-comments on PR #$pr_number (ticket #$number) headless: do not ask, do not post, do not implement — write the plan file"
   ORCHESTRATOR_REVIEW_PLAN_FILE="$plan_file" orchestrator_review_run_session "$number" "$session_id" "$worktree" "$prompt"
 }
 
@@ -355,7 +360,7 @@ orchestrator_review_implement() {
   local number="$1" session_id="$2" pr_number="$3" worktree="$4" plan_file="$5"
   local descriptions prompt before_general_ids
   descriptions="$(orchestrator_review_implement_descriptions "$plan_file")"
-  prompt="/implement the review comments on PR #$pr_number: $descriptions. Apply ONLY the changes these comments request — one commit per comment — then push the branch, reply on each thread citing the commit that implements it (append the AI-source footer '_Created by carbotracker's agent skills._' to every reply), and resolve each inline thread via the resolveReviewThread GraphQL mutation."
+  prompt="/implement the review comments on PR #$pr_number (ticket #$number): $descriptions. Apply ONLY the changes these comments request — one commit per comment — then push the branch, reply on each thread citing the commit that implements it (append the AI-source footer '_Created by carbotracker's agent skills._' to every reply), and resolve each inline thread via the resolveReviewThread GraphQL mutation."
   before_general_ids="$(orchestrator_pr_agent_general_comment_ids "$worktree" "$pr_number")"
   if ! orchestrator_review_run_session "$number" "$session_id" "$worktree" "$prompt"; then
     orchestrator_log "ERROR: review implement run failed on PR #$pr_number; keeping the watermark"
@@ -661,11 +666,15 @@ orchestrator_run_opencode() {
   local worktree="$1" number="$2" log_file="$3"
   shift 3
   local prompt="/implement the issue is $number"
-  if (cd "$worktree" && opencode run --auto "$@" "$prompt") 2>&1 | tee "$log_file"; then
+  # Redirect stdin from /dev/null so the run cannot drain a caller's pipe: when
+  # poll_once streams candidates from a process substitution, an opencode run
+  # that reads stdin would consume the remaining candidate lines and silently
+  # cap the poll at one ticket.
+  if (cd "$worktree" && opencode run --auto "$@" "$prompt" < /dev/null) 2>&1 | tee "$log_file"; then
     return 0
   fi
   orchestrator_log "ERROR: opencode run failed for #$number (attempt 1); retrying with --continue"
-  if (cd "$worktree" && opencode run --auto --continue "$prompt") 2>&1 | tee -a "$log_file"; then
+  if (cd "$worktree" && opencode run --auto --continue "$prompt" < /dev/null) 2>&1 | tee -a "$log_file"; then
     return 0
   fi
   orchestrator_log "ERROR: opencode run failed for #$number on the retry as well"
@@ -744,6 +753,16 @@ orchestrator_implement() {
     rm -f "$log_file"
     return 1
   fi
+  if ! orchestrator_branch_has_commits "$worktree" "$branch"; then
+    # opencode exited 0 but the branch tip is still at origin/main: the agent
+    # went off-task or committed nothing, so no PR can be opened. Escalate as an
+    # opencode failure rather than letting gh pr create fail with a misleading
+    # "No commits between main and ..." error.
+    orchestrator_log "ERROR: implement #$number: opencode exited 0 but produced no commits (zero diff vs origin/main)"
+    orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "no commits produced"
+    rm -f "$log_file"
+    return 1
+  fi
   rm -f "$log_file"
 
   orchestrator_finish_implementation "$number" "$title" "$branch" "$worktree" "$session_title"
@@ -763,6 +782,15 @@ orchestrator_unpushed_commit_count() {
     base="refs/remotes/origin/$branch"
   fi
   git -C "$worktree" rev-list --count "$base..HEAD" 2>/dev/null || echo 0
+}
+
+# True when the worktree's branch has at least one unpushed commit, i.e. the
+# implement session actually produced a commit to open a PR from. A zero-count
+# (branch tip still at origin/main) means the agent did nothing and a PR cannot
+# be created, so the caller escalates it as an opencode failure.
+orchestrator_branch_has_commits() {
+  local worktree="$1" branch="$2"
+  [[ "$(orchestrator_unpushed_commit_count "$worktree" "$branch")" -gt 0 ]]
 }
 
 orchestrator_worktree_has_work() {
@@ -796,6 +824,12 @@ orchestrator_resume_implementation() {
   log_file="$(mktemp "${TMPDIR:-/tmp}/carbotracker-opencode.XXXXXX")"
   if ! orchestrator_run_opencode "$worktree" "$number" "$log_file" "${run_flags[@]}"; then
     orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "opencode exited non-zero twice while resuming"
+    rm -f "$log_file"
+    return 1
+  fi
+  if ! orchestrator_branch_has_commits "$worktree" "$branch"; then
+    orchestrator_log "ERROR: resume #$number: opencode exited 0 but produced no commits (zero diff vs origin/main)"
+    orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "no commits produced while resuming"
     rm -f "$log_file"
     return 1
   fi
@@ -929,10 +963,16 @@ orchestrator_poll_once() {
 
     if ! orchestrator_implement "$number" "$title" "$branch" "$worktree"; then
       if orchestrator_state_has_ticket "$ORCHESTRATOR_STATE_FILE" "$number"; then
-        # Non-opencode failure (worktree/npm/push/PR): un-claim and clean up,
-        # the next poll starts the ticket over. When opencode failed twice the
-        # implementation already escalated and pruned, so the entry is gone.
+        # Non-opencode failure (worktree/npm/push/PR): un-claim, restore the
+        # candidate label so the next poll re-claims the ticket, and clean up.
+        # When opencode failed twice (or produced no commits) the implementation
+        # already escalated and pruned, so the entry is gone.
         orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
+        if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --add-label ready-for-agent; then
+          orchestrator_log "restored #$number to ready-for-agent after failed implementation"
+        else
+          orchestrator_log "WARNING: failed to restore ready-for-agent on #$number; it will need manual re-labelling"
+        fi
         orchestrator_log "removed #$number from state after failed implementation"
         if [[ "${CT_WORKTREE_CREATED:-0}" == "1" ]]; then
           orchestrator_cleanup_worktree "$worktree" "$branch"

@@ -66,10 +66,16 @@ fake_teardown() {
 # Fake a successful worktree-add (creates the dir) and npm ci. When
 # FAKE_GIT_PUSH_FILE is set, the push invocation is captured to it.
 fake_worktree_npm() {
-  fake_command git 'if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  fake_command git 'full_args="$*"
+if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "worktree" && "$2" == "add" ]]; then
   mkdir -p "$3"
 elif [[ "$1" == "push" && -n "${FAKE_GIT_PUSH_FILE:-}" ]]; then
-  printf "%s\n" "$*" > "$FAKE_GIT_PUSH_FILE"
+  printf "%s\n" "$full_args" > "$FAKE_GIT_PUSH_FILE"
+elif [[ "$1" == "rev-parse" ]]; then
+  exit 1
+elif [[ "$1" == "rev-list" ]]; then
+  printf "1\n"
 fi
 exit 0'
   fake_command npm 'exit 0'
@@ -88,8 +94,13 @@ else
   $gh_body
 fi
 exit 0"
-  fake_command git 'if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "worktree" && "$2" == "add" ]]; then
   mkdir -p "$3"
+elif [[ "$1" == "rev-parse" ]]; then
+  exit 1
+elif [[ "$1" == "rev-list" ]]; then
+  printf "1\n"
 fi
 exit 0'
   fake_command npm 'exit 0'
@@ -734,6 +745,34 @@ fi'
   state_teardown
 }
 
+test_poll_once_implements_all_candidates_when_opencode_drains_stdin() {
+  state_setup
+  fake_pipeline 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
+  printf "[{\"number\":10,\"title\":\"Alpha\"},{\"number\":42,\"title\":\"Beta\"}]\n"
+elif [[ "$1" == "api" ]]; then
+  printf "no native dependencies\n" >&2
+  exit 1
+elif [[ "$1" == "issue" && "$2" == "view" ]]; then
+  case "$3" in
+    10) printf "Alpha body\n" ;;
+    42) printf "Beta body\n" ;;
+  esac
+fi'
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  cat > /dev/null
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"ses_10\",\"title\":\"carbotracker-ticket-10\",\"created\":1},{\"id\":\"ses_42\",\"title\":\"carbotracker-ticket-42\",\"created\":2}]\n"
+fi
+exit 0'
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
+  assert_eq "claims both candidates despite opencode draining stdin" "2" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "first ticket claimed" "10" "$(jq -r '.[0].ticket' "$TEST_STATE")"
+  assert_eq "second ticket claimed" "42" "$(jq -r '.[1].ticket' "$TEST_STATE")"
+  state_teardown
+}
+
 test_poll_once_skips_claimed() {
   state_setup
   fake_pipeline 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
@@ -910,10 +949,15 @@ test_implement_fails_when_push_fails() {
   printf "[]\n"
 fi
 exit 0'
-  fake_command git 'if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "worktree" && "$2" == "add" ]]; then
   mkdir -p "$3"
 elif [[ "$1" == "push" ]]; then
   exit 1
+elif [[ "$1" == "rev-parse" ]]; then
+  exit 1
+elif [[ "$1" == "rev-list" ]]; then
+  printf "1\n"
 fi
 exit 0'
   fake_command npm 'exit 0'
@@ -1062,6 +1106,51 @@ exit 0'
   state_teardown
 }
 
+test_implement_escalates_when_no_commits_produced() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
+  exit 0
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_COMMENT"
+  exit 0
+fi
+exit 1'
+  fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  mkdir -p "$3"
+elif [[ "$1" == "worktree" && "$2" == "remove" ]]; then
+  rm -rf "$3" "$4"
+elif [[ "$1" == "rev-parse" ]]; then
+  exit 1
+elif [[ "$1" == "rev-list" ]]; then
+  printf "0\n"
+elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
+  exit 0
+fi
+exit 0'
+  fake_command npm 'exit 0'
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[]\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
+  export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "implement fails when no commits produced" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_contains "zero-commit escalation adds needs-triage" "--add-label needs-triage" "$(cat "$FAKE_ESCALATE_EDIT")"
+  assert_contains "zero-commit escalation names the real cause" "no commits produced" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_eq "zero-commit escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "logs the real cause" "produced no commits" "$output"
+  unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  state_teardown
+}
+
 test_implement_no_pr_skips_comment() {
   state_setup
   fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
@@ -1128,6 +1217,32 @@ exit 0'
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "failed implementation leaves no state entry" "0" "$(jq 'length' "$TEST_STATE")"
   assert_contains "logs removal of failed ticket" "removed #10 from state" "$output"
+  state_teardown
+}
+
+test_poll_once_restores_ready_for_agent_on_failed_implement() {
+  state_setup
+  local edits_file="$STATE_DIR/edits"
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
+  printf "[{\"number\":10,\"title\":\"Alpha\"}]\n"
+elif [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_EDITS_FILE"
+elif [[ "$1" == "api" ]]; then
+  printf "0\n"
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "worktree" ]]; then
+  exit 1
+fi
+exit 0'
+  export FAKE_EDITS_FILE="$edits_file"
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
+  assert_eq "failed implementation leaves no state entry" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "restores ready-for-agent after non-opencode failure" "--add-label ready-for-agent" "$(cat "$edits_file")"
+  assert_contains "drops in-progress after non-opencode failure" "--remove-label in-progress" "$(cat "$edits_file")"
+  assert_contains "logs the label restore" "restored #10 to ready-for-agent" "$output"
+  unset FAKE_EDITS_FILE
   state_teardown
 }
 
@@ -1361,7 +1476,7 @@ test_review_round_success_updates_state() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 2
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
-  assert_eq "opencode run resumes the session headless" "run --auto --session ses_abc /review-comments on PR #456 headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "opencode run resumes the session headless" "run --auto --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "state last comment updated after round" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_eq "successful round resets failure counter" "0" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   assert_eq "no failure notice posted on success" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
@@ -1840,7 +1955,7 @@ test_review_poll_resumes_paused_pr_on_new_comment() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_needs_human "$TEST_STATE" 123 true
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_poll 2>&1)"
-  assert_eq "new comment resumes a paused round" "run --auto --session ses_abc /review-comments on PR #456 headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "new comment resumes a paused round" "run --auto --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "resumed pr clears needsHuman" "false" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
   assert_contains "logs the resume" "resumes paused PR #456" "$output"
   unset FAKE_OPENCODE_ARGS
@@ -1860,7 +1975,7 @@ test_review_poll_launches_round_on_new_comment() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_poll 2>&1)"
-  assert_eq "poll launches review round on new comment" "run --auto --session ses_abc /review-comments on PR #456 headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "poll launches review round on new comment" "run --auto --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "poll updates last comment in state" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_contains "logs new comment detection" "new comment on PR #456" "$output"
   unset FAKE_OPENCODE_ARGS
@@ -2022,7 +2137,7 @@ test_poll_once_runs_review_loop() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_poll_once 2>&1)"
-  assert_eq "poll once runs review round for awaiting-review pr" "run --auto --session ses_abc /review-comments on PR #456 headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "poll once runs review round for awaiting-review pr" "run --auto --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "poll once updates last comment in state" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_contains "logs review round" "review #123: launching /review-comments" "$output"
   unset FAKE_OPENCODE_ARGS
@@ -2595,17 +2710,20 @@ test_implement_fails_when_worktree_fails
 test_implement_fails_when_npm_ci_fails
 test_implement_retries_opencode_with_continue
 test_implement_escalates_after_two_opencode_failures
+test_implement_escalates_when_no_commits_produced
 test_implement_no_pr_skips_comment
 test_implement_no_session_stores_null
 test_implement_opens_pr_when_none_exists
 test_implement_fails_when_push_fails
 test_implement_fails_when_pr_create_fails
 test_poll_once_claims_candidates
+test_poll_once_implements_all_candidates_when_opencode_drains_stdin
 test_poll_once_skips_claimed
 test_poll_once_skips_blocked
 test_poll_once_respects_concurrency_cap
 test_poll_once_skips_when_cap_full
 test_poll_once_removes_entry_on_failed_implement
+test_poll_once_restores_ready_for_agent_on_failed_implement
 test_poll_once_cleans_up_worktree_after_failed_implement
 test_poll_once_does_not_cleanup_preexisting_worktree
 test_claim_marks_issue_in_progress
