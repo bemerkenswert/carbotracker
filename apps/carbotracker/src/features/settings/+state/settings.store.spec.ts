@@ -1,11 +1,20 @@
-import { getInitialState, settingsFeature } from './app.reducer';
-import { SettingsApiActions } from '../features/settings/+state/actions/api.actions';
+import { getInitialState, settingsFeature } from './settings.store';
+import { SettingsApiActions } from './actions/api.actions';
 import {
   InsulinToCarbRatiosPageActions,
   SettingsPageActions,
-} from '../features/settings/+state/actions/component.actions';
+} from './actions/component.actions';
 
 describe('settingsFeature', () => {
+  it('returns the initial state for an unknown action', () => {
+    const initialState = getInitialState();
+    const action = { type: 'Unknown' };
+
+    const state = settingsFeature.reducer(initialState, action);
+
+    expect(state).toBe(initialState);
+  });
+
   it('defaults the night ratio to null', () => {
     const state = getInitialState();
 

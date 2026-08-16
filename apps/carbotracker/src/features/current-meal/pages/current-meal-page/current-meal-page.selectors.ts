@@ -1,6 +1,6 @@
 import { createSelector } from '@ngrx/store';
 import { currentMealFeature } from '../../+state/current-meal.store';
-import { settingsFeature } from '../../../../app/app.reducer';
+import { settingsFeature } from '../../../settings/+state/settings.store';
 
 export const selectSumOfCurrentMealCarbs = createSelector(
   currentMealFeature.selectAllMealEntries,

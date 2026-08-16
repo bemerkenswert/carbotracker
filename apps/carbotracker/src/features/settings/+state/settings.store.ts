@@ -1,10 +1,10 @@
 import { createFeature, createReducer, on } from '@ngrx/store';
-import { SettingsApiActions } from '../features/settings/+state/actions/api.actions';
+import { ThemePreference } from '../theme-preference.model';
+import { SettingsApiActions } from './actions/api.actions';
 import {
   InsulinToCarbRatiosPageActions,
   SettingsPageActions,
-} from '../features/settings/+state/actions/component.actions';
-import { ThemePreference } from '../features/settings/theme-preference.model';
+} from './actions/component.actions';
 
 interface SettingsState {
   insulinToCarbRatios: {
