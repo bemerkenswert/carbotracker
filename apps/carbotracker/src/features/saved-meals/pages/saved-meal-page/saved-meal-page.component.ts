@@ -5,7 +5,7 @@ import { MatListModule } from '@angular/material/list';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
-import { SavedMealPageComponentActions as ComponentActions } from '../../+state/saved-meals.actions';
+import { SavedMealPageComponentActions as ComponentActions } from '../../+state';
 import { SavedMeal } from '../../saved-meal.model';
 import { selectSavedMealPageViewModel } from './saved-meal-page.selectors';
 

@@ -1,10 +1,8 @@
 import { EntityState, createEntityAdapter } from '@ngrx/entity';
 import { createFeature, createReducer, createSelector, on } from '@ngrx/store';
 import { SavedMeal } from '../saved-meal.model';
-import {
-  SavedMealPageComponentActions,
-  SavedMealsApiActions,
-} from './saved-meals.actions';
+import { SavedMealsApiActions } from './actions/api.actions';
+import { SavedMealPageComponentActions } from './actions/component.actions';
 
 interface SavedMealsState {
   savedMeals: EntityState<SavedMeal>;

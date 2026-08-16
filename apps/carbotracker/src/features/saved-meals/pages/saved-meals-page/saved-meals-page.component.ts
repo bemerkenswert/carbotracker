@@ -3,7 +3,7 @@ import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { MatListModule } from '@angular/material/list';
 import { CtuiToolbarComponent } from '@carbotracker/ui';
 import { Store } from '@ngrx/store';
-import { SavedMealsPageComponentActions } from '../../+state/saved-meals.actions';
+import { SavedMealsPageComponentActions } from '../../+state';
 import { SavedMeal } from '../../saved-meal.model';
 import { selectSavedMealsViewModel } from './saved-meals-page.selectors';
 

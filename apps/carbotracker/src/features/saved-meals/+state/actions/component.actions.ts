@@ -1,5 +1,5 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
-import { SavedMeal } from '../saved-meal.model';
+import { SavedMeal } from '../../saved-meal.model';
 
 export const SavedMealsPageComponentActions = createActionGroup({
   source: 'Saved Meals | Saved Meals Page Component',
@@ -15,14 +15,5 @@ export const SavedMealPageComponentActions = createActionGroup({
   events: {
     'Selected Saved Meal Changed': props<{ selectedSavedMealId: string }>(),
     'Delete Clicked': props<{ savedMeal: SavedMeal }>(),
-  },
-});
-
-export const SavedMealsApiActions = createActionGroup({
-  source: 'Saved Meals | Saved Meals Api',
-  events: {
-    'Saved Meals Collection Changed': props<{ savedMeals: SavedMeal[] }>(),
-    'Unknown Error': props<{ error: unknown }>(),
-    'Unsubscribed From Saved Meals Stream': emptyProps(),
   },
 });

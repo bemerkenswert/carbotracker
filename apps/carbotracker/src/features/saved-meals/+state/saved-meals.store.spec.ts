@@ -1,9 +1,7 @@
 import { SavedMeal } from '../saved-meal.model';
-import {
-  SavedMealPageComponentActions,
-  SavedMealsApiActions,
-} from './saved-meals.actions';
-import { getInitialState, savedMealsFeature } from './saved-meals.feature';
+import { SavedMealsApiActions } from './actions/api.actions';
+import { SavedMealPageComponentActions } from './actions/component.actions';
+import { getInitialState, savedMealsFeature } from './saved-meals.store';
 
 describe('savedMealsFeature', () => {
   const createSavedMeal = (

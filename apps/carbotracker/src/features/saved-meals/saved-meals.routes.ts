@@ -1,23 +1,23 @@
 import { Routes } from '@angular/router';
 import { provideEffects } from '@ngrx/effects';
 import { provideState } from '@ngrx/store';
-import * as savedMealsEffects from './+state/saved-meals.effects';
-import { savedMealsFeature } from './+state/saved-meals.feature';
+import { apiEffects, dialogEffects, routingEffects } from './+state';
+import { savedMealsFeature } from './+state';
 
 const SAVED_MEALS_ROUTES: Routes = [
   {
     path: '',
     loadComponent: () =>
-      import('./pages/SavedMealsPage/saved-meals-page.component'),
+      import('./pages/saved-meals-page/saved-meals-page.component'),
     providers: [
       provideState(savedMealsFeature),
-      provideEffects(savedMealsEffects),
+      provideEffects(apiEffects, dialogEffects, routingEffects),
     ],
   },
   {
     path: ':id',
     loadComponent: () =>
-      import('./pages/SavedMealPage/saved-meal-page.component'),
+      import('./pages/saved-meal-page/saved-meal-page.component'),
   },
 ];
 

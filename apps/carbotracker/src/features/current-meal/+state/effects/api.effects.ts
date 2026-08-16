@@ -4,9 +4,9 @@ import { concatLatestFrom, mapResponse } from '@ngrx/operators';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
 import { concatMap, EMPTY, exhaustMap, filter, of, switchMap, tap } from 'rxjs';
-import { SavedMealsService } from '../../../../saved-meals-feature/services/saved-meals.service';
-import { authFeature } from '../../../../features/auth/+state/auth.store';
-import { SavedMealNameDialogService } from '../../../../saved-meals-feature/saved-meal-name-dialog/saved-meal-name-dialog.service';
+import { SavedMealsService } from '../../../saved-meals/services/saved-meals.service';
+import { authFeature } from '../../../auth/+state/auth.store';
+import { SavedMealNameDialogService } from '../../../saved-meals/saved-meal-name-dialog/saved-meal-name-dialog.service';
 import { CurrentMealService } from '../../services/current-meal.service';
 import {
   CreateMealEntryPageComponentActions,
