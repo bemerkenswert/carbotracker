@@ -14,6 +14,7 @@ ENV_ORCHESTRATOR_ISSUE_LABELS="${ORCHESTRATOR_ISSUE_LABELS-}"
 ENV_ORCHESTRATOR_IN_PROGRESS_LABEL="${ORCHESTRATOR_IN_PROGRESS_LABEL-}"
 ENV_ORCHESTRATOR_REVIEW_RETRIES="${ORCHESTRATOR_REVIEW_RETRIES-}"
 ENV_ORCHESTRATOR_IMPLEMENTATION_RETRIES="${ORCHESTRATOR_IMPLEMENTATION_RETRIES-}"
+ENV_ORCHESTRATOR_MODEL="${ORCHESTRATOR_MODEL-}"
 
 CONF_FILE="${CT_ORCHESTRATOR_CONF:-$SCRIPT_DIR/ct-orchestrator.conf}"
 if [[ -f "$CONF_FILE" ]]; then
@@ -28,6 +29,16 @@ ORCHESTRATOR_ISSUE_LABELS="${ENV_ORCHESTRATOR_ISSUE_LABELS:-${ORCHESTRATOR_ISSUE
 ORCHESTRATOR_IN_PROGRESS_LABEL="${ENV_ORCHESTRATOR_IN_PROGRESS_LABEL:-${ORCHESTRATOR_IN_PROGRESS_LABEL:-in-progress}}"
 ORCHESTRATOR_REVIEW_RETRIES="${ENV_ORCHESTRATOR_REVIEW_RETRIES:-${ORCHESTRATOR_REVIEW_RETRIES:-3}}"
 ORCHESTRATOR_IMPLEMENTATION_RETRIES="${ENV_ORCHESTRATOR_IMPLEMENTATION_RETRIES:-${ORCHESTRATOR_IMPLEMENTATION_RETRIES:-3}}"
+# The model every headless opencode run uses, pinned so the agent pipeline
+# never drifts to opencode's default (which can be a pricier model).
+ORCHESTRATOR_MODEL="${ENV_ORCHESTRATOR_MODEL:-${ORCHESTRATOR_MODEL:-opencode-go/deepseek-v4-flash}}"
+
+orchestrator_ensure_labels() {
+  gh label create suspect-diff --description "The implementation changed a feature other than the one declared by the ticket" --color D93F0B --force >/dev/null 2>&1 \
+    || orchestrator_log "WARNING: could not create or update suspect-diff label"
+  gh label create human-approved --description "A human has approved an orchestrator warning" --color 0E8A16 --force >/dev/null 2>&1 \
+    || orchestrator_log "WARNING: could not create or update human-approved label"
+}
 
 orchestrator_log() {
   # Logs go to stderr so functions that print a value on stdout (e.g. the
@@ -222,9 +233,17 @@ orchestrator_pr_number_for_branch() {
     | jq -r 'sort_by(.number) | reverse | .[0].number // empty' 2>/dev/null || true
 }
 
+orchestrator_pr_field() {
+  local pr="$1" field="$2"
+  gh pr view "$pr" --json "$field" --jq ".$field" 2>/dev/null || true
+}
+
 orchestrator_pr_state() {
-  local pr="$1"
-  gh pr view "$pr" --json state --jq .state 2>/dev/null || true
+  orchestrator_pr_field "$1" state
+}
+
+orchestrator_pr_merge_state() {
+  orchestrator_pr_field "$1" mergeStateStatus
 }
 
 orchestrator_pr_latest_comment_at() {
@@ -256,6 +275,70 @@ orchestrator_pr_post_comment() {
   gh api "repos/{owner}/{repo}/issues/$pr/comments" -f body="$body" >/dev/null 2>&1
 }
 
+orchestrator_check_suspect_diff() {
+  local number="$1" pr_number="$2" worktree="$3" body features declared
+  body="$(ct_issue_body "$number")"
+  declared="$(ct_issue_feature "$body")"
+  [[ -n "$declared" && -n "$pr_number" ]] || return 0
+  if ! ct_feature_diff_is_suspect "$worktree" "$body"; then
+    return 0
+  fi
+  features="$(ct_changed_features "$worktree" | tr '\n' ',' | sed 's/,$//')"
+  if gh pr edit "$pr_number" --add-label suspect-diff; then
+    orchestrator_log "flagged #$number / PR #$pr_number as suspect-diff (declared $declared; changed $features)"
+  else
+    orchestrator_log "WARNING: failed to add suspect-diff label to PR #$pr_number"
+  fi
+  if ! gh pr comment "$pr_number" --body "Warning: ticket #$number declares feature \`$declared\`, but its diff changes feature folder(s) \`$features\` without touching \`$declared\`. The PR remains open for human review.
+---
+_Created by carbotracker's agent skills._"; then
+    orchestrator_log "WARNING: failed to post suspect-diff warning on PR #$pr_number"
+  fi
+}
+
+# The changed file paths of an existing open PR (its diff against the base).
+orchestrator_pr_files() {
+  local pr="$1"
+  gh pr view "$pr" --json files --jq '.[].path' 2>/dev/null || true
+}
+
+# Compare the new PR's changed files against every open PR's and, on overlap,
+# post a warning naming the overlapping PR(s) and the shared files. Overlap is
+# expected during migrations, so it only warns — it never blocks or queues.
+# Non-fatal: any gh/git failure leaves the PR alone for the next observer.
+orchestrator_check_overlap() {
+  local number="$1" pr_number="$2" worktree="$3"
+  local files pr candidate shared overlaps count shared_list
+  # The branch's own files are read from the worktree so the check does not
+  # depend on the just-created PR's file list having propagated to the API.
+  files="$(ct_changed_files "$worktree")"
+  [[ -n "$files" ]] || return 0
+  count=0
+  overlaps=""
+  while IFS= read -r pr; do
+    [[ -n "$pr" && "$pr" != "$pr_number" ]] || continue
+    candidate="$(orchestrator_pr_files "$pr")"
+    [[ -n "$candidate" ]] || continue
+    shared="$(ct_shared_files "$files" "$candidate")"
+    [[ -n "$shared" ]] || continue
+    count=$((count + 1))
+    shared_list="$(printf '%s\n' "$shared" | awk 'NF {printf "%s`%s`", sep, $0; sep=", "}')"
+    overlaps="${overlaps}
+- PR #$pr: $shared_list"
+  done < <(gh pr list --state open --json number --jq '.[].number' 2>/dev/null || true)
+  if [[ "$count" -eq 0 ]]; then
+    return 0
+  fi
+  if orchestrator_pr_post_comment "$pr_number" "Warning: PR #$pr_number changes files that overlap with other open PR(s), so the merges may conflict:
+$overlaps
+---
+_Created by carbotracker's agent skills._"; then
+    orchestrator_log "warned overlap on #$number / PR #$pr_number: $count other open PR(s) share changed files"
+  else
+    orchestrator_log "WARNING: failed to post overlap warning on PR #$pr_number"
+  fi
+}
+
 orchestrator_pr_reply_to_thread() {
   local pr="$1" comment_id="$2" body="$3"
   gh api "repos/{owner}/{repo}/pulls/$pr/comments/$comment_id/replies" -f body="$body" >/dev/null 2>&1
@@ -269,7 +352,7 @@ orchestrator_review_run_session() {
   orchestrator_log "review #$number: launching $prompt (session $session_id)"
   # Same stdin isolation as the implement run: a review run must never drain a
   # caller's pipe (review_poll streams its entries from a process substitution).
-  (cd "$worktree" && opencode run --auto --session "$session_id" "$prompt" < /dev/null)
+  (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" --session "$session_id" "$prompt" < /dev/null)
 }
 
 # Analyze phase of the review round: run the headless /review-comments skill in
@@ -605,8 +688,46 @@ orchestrator_prune_ticket() {
   orchestrator_log "pruned #$number: worktree removed, branch deleted, removed from state"
 }
 
+orchestrator_merge_behind_pr() {
+  local pr_number="$1" branch="$2" worktree="$3"
+
+  if [[ ! -d "$worktree" ]]; then
+    orchestrator_log "WARNING: cannot update PR #$pr_number: worktree $worktree is missing"
+    return 1
+  fi
+  if ! git -C "$worktree" fetch origin main; then
+    orchestrator_log "WARNING: failed to fetch origin/main for PR #$pr_number"
+    return 1
+  fi
+  if ! git -C "$worktree" merge --no-ff --no-edit origin/main; then
+    orchestrator_log "WARNING: origin/main conflicts with branch $branch for PR #$pr_number; aborting the merge"
+    git -C "$worktree" merge --abort 2>/dev/null || true
+    return 1
+  fi
+  if ! git -C "$worktree" merge-base --is-ancestor origin/main HEAD; then
+    orchestrator_log "WARNING: could not verify origin/main is an ancestor of branch $branch after merge"
+    return 1
+  fi
+  if ! git -C "$worktree" push origin "$branch"; then
+    orchestrator_log "WARNING: failed to push merged branch $branch for PR #$pr_number"
+    return 1
+  fi
+  # The push proves nothing about the remote's current main: re-fetch so
+  # origin/main reflects the remote, then re-verify the branch tip contains it.
+  if ! git -C "$worktree" fetch origin main; then
+    orchestrator_log "WARNING: failed to re-fetch origin/main to verify the push of PR #$pr_number"
+    return 1
+  fi
+  if ! git -C "$worktree" merge-base --is-ancestor origin/main HEAD; then
+    orchestrator_log "WARNING: could not verify origin/main is an ancestor of branch $branch after push"
+    return 1
+  fi
+  orchestrator_log "merge #$pr_number: merged origin/main into $branch and verified ancestry against the remote"
+  return 0
+}
+
 orchestrator_merge_poll() {
-  local line number pr_number branch worktree state
+  local line number pr_number branch worktree state merge_state
   while IFS= read -r line; do
     number="$(printf '%s' "$line" | jq -r '.ticket')"
     pr_number="$(printf '%s' "$line" | jq -r '.prNumber')"
@@ -649,7 +770,17 @@ _Created by carbotracker's agent skills._"; then
         fi
         ;;
       OPEN)
-        orchestrator_log "merge #$number: PR #$pr_number still open"
+        merge_state="$(orchestrator_pr_merge_state "$pr_number")"
+        if [[ -z "$merge_state" ]]; then
+          orchestrator_log "WARNING: could not determine the merge status of PR #$pr_number; keeping entry to retry next poll"
+        elif [[ "$merge_state" == "BEHIND" ]]; then
+          orchestrator_log "merge #$number: PR #$pr_number is behind main; updating branch $branch"
+          if ! orchestrator_merge_behind_pr "$pr_number" "$branch" "$worktree"; then
+            orchestrator_log "WARNING: could not update behind PR #$pr_number; keeping entry to retry next poll"
+          fi
+        else
+          orchestrator_log "merge #$number: PR #$pr_number still open (merge status $merge_state)"
+        fi
         ;;
       *)
         orchestrator_log "WARNING: could not determine state of PR #$pr_number for #$number"
@@ -688,6 +819,8 @@ orchestrator_push_and_open_pr() {
     fi
     pr_number="$(orchestrator_pr_number_for_branch "$branch")"
   fi
+  orchestrator_check_suspect_diff "$number" "$pr_number" "$worktree"
+  orchestrator_check_overlap "$number" "$pr_number" "$worktree"
   printf '%s' "$pr_number"
 }
 
@@ -705,11 +838,11 @@ orchestrator_run_opencode() {
   # poll_once streams candidates from a process substitution, an opencode run
   # that reads stdin would consume the remaining candidate lines and silently
   # cap the poll at one ticket.
-  if (cd "$worktree" && opencode run --auto "$@" "$prompt" < /dev/null) 2>&1 | tee "$log_file"; then
+  if (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" "$@" "$prompt" < /dev/null) 2>&1 | tee "$log_file"; then
     return 0
   fi
   orchestrator_log "ERROR: opencode run failed for #$number (attempt 1); retrying with --continue"
-  if (cd "$worktree" && opencode run --auto --continue "$prompt" < /dev/null) 2>&1 | tee -a "$log_file"; then
+  if (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" --continue "$prompt" < /dev/null) 2>&1 | tee -a "$log_file"; then
     return 0
   fi
   orchestrator_log "ERROR: opencode run failed for #$number on the retry as well"
@@ -926,6 +1059,8 @@ orchestrator_recover_pushed_branch() {
     fi
     pr_number="$(orchestrator_pr_number_for_branch "$branch")"
   fi
+  orchestrator_check_suspect_diff "$number" "$pr_number" "$worktree"
+  orchestrator_check_overlap "$number" "$pr_number" "$worktree"
   orchestrator_state_complete_and_comment "$number" "$session_id" "$pr_number"
 }
 
@@ -1064,7 +1199,7 @@ orchestrator_poll_once() {
 }
 
 orchestrator_daemon() {
-  orchestrator_log "orchestrator started: poll every ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s, concurrency cap $ORCHESTRATOR_CONCURRENCY_CAP, state $ORCHESTRATOR_STATE_FILE"
+  orchestrator_log "orchestrator started: poll every ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s, concurrency cap $ORCHESTRATOR_CONCURRENCY_CAP, model $ORCHESTRATOR_MODEL, state $ORCHESTRATOR_STATE_FILE"
   orchestrator_reconcile
   while true; do
     orchestrator_poll_once
@@ -1087,6 +1222,7 @@ main() {
   fi
   case "${1:-}" in
     once | --once)
+      orchestrator_ensure_labels
       orchestrator_reconcile
       orchestrator_poll_once
       ;;
@@ -1094,6 +1230,7 @@ main() {
       orchestrator_help
       ;;
     "")
+      orchestrator_ensure_labels
       orchestrator_daemon
       ;;
     *)

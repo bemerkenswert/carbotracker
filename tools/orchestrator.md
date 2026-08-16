@@ -70,9 +70,42 @@ Each poll, before the review loop, the orchestrator walks every state entry in
   naming the closed PR. The entry is removed only once the escalation lands,
   so a transient `gh` failure retries next poll instead of stranding an
   un-labelled issue.
-- **`OPEN`** — still awaiting review, nothing to do.
+- **`OPEN`** — the merge status is checked. A PR with status **`BEHIND`** is
+  updated by fetching `origin/main`, merging it with `--no-ff`, and pushing the
+  branch normally (never a rebase or force-push). The daemon verifies that
+  `origin/main` is an ancestor of the branch tip before the push, then re-fetches
+  and verifies again after the push, so the remote is confirmed to contain the
+  merged branch — an unverified push is never trusted. A conflicting merge is
+  aborted (`git merge --abort`) so the worktree is left clean for a retry;
+  conflicts, push failures, and failed verification keep the entry for the next
+  poll. Other merge statuses remain awaiting review.
 - **anything else / gh failure** — the state query failed; the entry is kept
   so the merge is retried on the next poll.
+
+## Overlap warning
+
+When a PR is opened (the normal push-and-open path and the crash-recovery
+path alike), the orchestrator compares the branch's changed files (read from
+the worktree with `git diff --name-only origin/main...HEAD`, so the check does
+not depend on the freshly created PR's file list having propagated to the API)
+against every open PR's changed files (`gh pr view <n> --json files`). On
+overlap it posts a warning comment on the new PR naming each overlapping PR and
+the shared files. Overlap is expected during migrations, so it only warns — it
+never blocks or queues, and a PR that shares no files gets no comment. Any
+`gh`/`git` failure skips the check (non-fatal), and the new PR itself is never
+compared against itself.
+
+## Merge gate
+
+The merge gate is a required status check — the `merge-gate` job in
+`.github/workflows/merge-gate.yml` — that runs on every PR open/sync/re-label
+event. It fails iff the PR carries `suspect-diff` without `human-approved`, and
+passes otherwise, so a flagged (off-task) PR cannot be merged by accident:
+branch protection on `main` requires it. A maintainer who has eyeballed a
+suspect PR adds `human-approved` to unblock it (the `suspect-diff` label may
+remain as an audit trail); removing `suspect-diff` also flips the gate green.
+The gate reads only the PR's labels from the event payload, so it needs no
+permissions and no checkout.
 
 ## Crash recovery
 

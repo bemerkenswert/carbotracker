@@ -373,6 +373,35 @@ fi
 exit 0'
 }
 
+fake_behind_merge_gh() {
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  if [[ "$*" == *"--json mergeStateStatus"* ]]; then printf "BEHIND\n"; else printf "OPEN\n"; fi
+fi
+exit 0'
+}
+
+# Like fake_behind_merge_gh, but the merge status is the passed value — used to
+# pin that only BEHIND triggers the update.
+fake_merge_state_gh() {
+  local status="$1"
+  fake_command gh "if [[ \"\$1\" == \"pr\" && \"\$2\" == \"view\" ]]; then
+  if [[ \"\$*\" == *\"--json mergeStateStatus\"* ]]; then printf \"$status\n\"; else printf \"OPEN\n\"; fi
+fi
+exit 0"
+}
+
+fake_behind_merge_git() {
+  local conflict="${1:-no}"
+  fake_command git "if [[ \"\$1\" == \"-C\" ]]; then
+  worktree=\"\$2\"
+  shift 2
+fi
+printf \"%s %s\n\" \"\$worktree\" \"\$*\" >> \"\$FAKE_MERGE_GIT_ARGS\"
+if [[ \"\$1\" == \"merge\" && \"\$*\" == *\"--no-ff\"* && \"$conflict\" == \"yes\" ]]; then exit 1; fi
+if [[ \"\$1\" == \"merge-base\" && \"\${FAKE_MERGE_ANCESTOR:-yes}\" != \"yes\" ]]; then exit 1; fi
+exit 0"
+}
+
 # Fake gh for a closed-without-merge PR: `pr view` reports CLOSED, and the
 # escalation `issue edit` + `issue comment` invocations are captured to
 # $FAKE_ESCALATE_ARGS (appended).
@@ -896,7 +925,7 @@ exit 0'
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree"
   assert_eq "worktree dir created" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
-  assert_eq "opencode run invoked with title and issue prompt" "run --auto --title carbotracker-ticket-10 /implement the issue is 10" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "opencode run invoked with title and issue prompt" "run --auto --model $ORCHESTRATOR_MODEL --title carbotracker-ticket-10 /implement the issue is 10" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_contains "branch pushed to origin" "push -u origin ticket/10-alpha" "$(cat "$FAKE_GIT_PUSH_FILE")"
   assert_eq "state session id stored" "ses_abc" "$(jq -r '.[0].sessionId' "$TEST_STATE")"
   assert_eq "state pr number stored" "42" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
@@ -1062,8 +1091,8 @@ exit 0'
   export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree"
-  assert_eq "first opencode attempt uses fresh title session" "run --auto --title carbotracker-ticket-10 /implement the issue is 10" "$(sed -n '1p' "$FAKE_OPENCODE_LOG")"
-  assert_eq "retry once with --continue" "run --auto --continue /implement the issue is 10" "$(sed -n '2p' "$FAKE_OPENCODE_LOG")"
+  assert_eq "first opencode attempt uses fresh title session" "run --auto --model $ORCHESTRATOR_MODEL --title carbotracker-ticket-10 /implement the issue is 10" "$(sed -n '1p' "$FAKE_OPENCODE_LOG")"
+  assert_eq "retry once with --continue" "run --auto --model $ORCHESTRATOR_MODEL --continue /implement the issue is 10" "$(sed -n '2p' "$FAKE_OPENCODE_LOG")"
   assert_eq "retried run completes the ticket" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
   unset FAKE_OPENCODE_COUNT FAKE_OPENCODE_LOG
   state_teardown
@@ -1515,7 +1544,7 @@ test_review_round_success_updates_state() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 2
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
-  assert_eq "opencode run resumes the session headless" "run --auto --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "opencode run resumes the session headless" "run --auto --model $ORCHESTRATOR_MODEL --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "state last comment updated after round" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_eq "successful round resets failure counter" "0" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   assert_eq "no failure notice posted on success" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
@@ -1994,7 +2023,7 @@ test_review_poll_resumes_paused_pr_on_new_comment() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_needs_human "$TEST_STATE" 123 true
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_poll 2>&1)"
-  assert_eq "new comment resumes a paused round" "run --auto --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "new comment resumes a paused round" "run --auto --model $ORCHESTRATOR_MODEL --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "resumed pr clears needsHuman" "false" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
   assert_contains "logs the resume" "resumes paused PR #456" "$output"
   unset FAKE_OPENCODE_ARGS
@@ -2014,7 +2043,7 @@ test_review_poll_launches_round_on_new_comment() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_poll 2>&1)"
-  assert_eq "poll launches review round on new comment" "run --auto --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "poll launches review round on new comment" "run --auto --model $ORCHESTRATOR_MODEL --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "poll updates last comment in state" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_contains "logs new comment detection" "new comment on PR #456" "$output"
   unset FAKE_OPENCODE_ARGS
@@ -2176,7 +2205,7 @@ test_poll_once_runs_review_loop() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_poll_once 2>&1)"
-  assert_eq "poll once runs review round for awaiting-review pr" "run --auto --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "poll once runs review round for awaiting-review pr" "run --auto --model $ORCHESTRATOR_MODEL --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "poll once updates last comment in state" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_contains "logs review round" "review #123: launching /review-comments" "$output"
   unset FAKE_OPENCODE_ARGS
@@ -2201,6 +2230,16 @@ test_pr_state_returns_open() {
 test_pr_state_gh_error() {
   fake_command gh 'exit 1'
   assert_eq "pr state empty on gh error" "" "$(orchestrator_pr_state 456)"
+}
+
+test_pr_merge_state_returns_behind() {
+  fake_merge_gh "BEHIND"
+  assert_eq "pr merge state returns BEHIND" "BEHIND" "$(orchestrator_pr_merge_state 456)"
+}
+
+test_pr_merge_state_gh_error() {
+  fake_command gh 'exit 1'
+  assert_eq "pr merge state empty on gh error" "" "$(orchestrator_pr_merge_state 456)"
 }
 
 test_merge_poll_prunes_merged_pr() {
@@ -2296,6 +2335,84 @@ test_merge_poll_keeps_open_pr() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>/dev/null
   assert_eq "open pr kept in state" "1" "$(jq 'length' "$TEST_STATE")"
   assert_eq "open pr worktree kept" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  state_teardown
+}
+
+test_merge_poll_updates_behind_pr() {
+  state_setup
+  fake_behind_merge_gh
+  fake_behind_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_contains "behind pr fetches origin main" "fetch origin main" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_contains "behind pr creates a merge commit" "merge --no-ff --no-edit origin/main" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_contains "behind pr uses a normal push" "push origin ticket/123-foo" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_eq "behind pr is verified twice" "2" "$(grep -c 'merge-base --is-ancestor origin/main HEAD' "$FAKE_MERGE_GIT_ARGS")"
+  assert_eq "behind pr re-fetches origin main after the push" "2" "$(grep -c 'fetch origin main' "$FAKE_MERGE_GIT_ARGS")"
+  assert_contains "behind pr logs verified update" "merged origin/main into ticket/123-foo and verified ancestry against the remote" "$output"
+  assert_eq "behind pr remains in state" "1" "$(jq 'length' "$TEST_STATE")"
+  unset FAKE_MERGE_GIT_ARGS
+  state_teardown
+}
+
+test_merge_poll_leaves_clean_open_pr_alone() {
+  state_setup
+  fake_merge_state_gh "CLEAN"
+  fake_behind_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "clean open pr is not merged" "0" "$(cat "$FAKE_MERGE_GIT_ARGS" 2>/dev/null | wc -l)"
+  assert_contains "clean open pr logs its merge status" "merge status CLEAN" "$output"
+  assert_eq "clean open pr remains in state" "1" "$(jq 'length' "$TEST_STATE")"
+  unset FAKE_MERGE_GIT_ARGS
+  state_teardown
+}
+
+test_merge_poll_aborts_conflicted_merge() {
+  state_setup
+  fake_behind_merge_gh
+  fake_behind_merge_git yes
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_contains "conflicted merge is aborted" "merge --abort" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_eq "conflicted merge is not pushed" "0" "$(grep -c 'push origin' "$FAKE_MERGE_GIT_ARGS" || true)"
+  assert_contains "conflicted merge is retained for retry" "keeping entry to retry next poll" "$output"
+  assert_eq "conflicted merge remains in state" "1" "$(jq 'length' "$TEST_STATE")"
+  unset FAKE_MERGE_GIT_ARGS
+  state_teardown
+}
+
+test_merge_poll_does_not_push_unverified_behind_pr() {
+  state_setup
+  fake_behind_merge_gh
+  fake_behind_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  export FAKE_MERGE_ANCESTOR=no
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "unverified behind pr is not pushed" "0" "$(grep -c 'push origin' "$FAKE_MERGE_GIT_ARGS" || true)"
+  assert_contains "unverified behind pr is retained for retry" "keeping entry to retry next poll" "$output"
+  assert_eq "unverified behind pr remains in state" "1" "$(jq 'length' "$TEST_STATE")"
+  unset FAKE_MERGE_GIT_ARGS FAKE_MERGE_ANCESTOR
   state_teardown
 }
 
@@ -2441,6 +2558,171 @@ test_config_env_beats_conf() {
   out="$(env CT_ORCHESTRATOR_CONF="$conf" ORCHESTRATOR_CONCURRENCY_CAP=9 ORCHESTRATOR_POLL_INTERVAL_SECONDS=11 ORCHESTRATOR_REVIEW_RETRIES=1 \
     bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s %s %s\n" "$ORCHESTRATOR_CONCURRENCY_CAP" "$ORCHESTRATOR_POLL_INTERVAL_SECONDS" "$ORCHESTRATOR_REVIEW_RETRIES"' _ "$ROOT")"
   assert_eq "environment beats conf file" "9 11 1" "$out"
+  state_teardown
+}
+
+test_issue_feature_parses_valid_declaration() {
+  assert_eq "parses Feature declaration" "current-meal" "$(ct_issue_feature $'Summary\n\nFeature: current-meal\n')"
+}
+
+test_issue_feature_rejects_invalid_declaration() {
+  assert_eq "rejects invalid feature name" "" "$(ct_issue_feature 'Feature: current meal')"
+}
+
+test_changed_features_maps_feature_folders() {
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts" "apps/carbotracker/src/features/current-meal/b.ts" "README.md"; fi'
+  assert_eq "maps changed files to unique feature folders" $'current-meal\nproducts' "$(ct_changed_features /tmp/worktree)"
+}
+
+test_suspect_diff_requires_declared_feature_to_be_untouched() {
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts"; fi'
+  if ct_feature_diff_is_suspect /tmp/worktree "Feature: current-meal"; then
+    pass "flags a diff in a different feature"
+  else
+    fail "flags a diff in a different feature"
+  fi
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts" "apps/carbotracker/src/features/current-meal/b.ts"; fi'
+  if ct_feature_diff_is_suspect /tmp/worktree "Feature: current-meal"; then
+    fail "does not flag legitimate cross-feature edit"
+  else
+    pass "does not flag legitimate cross-feature edit"
+  fi
+}
+
+test_suspect_diff_skips_undeclared_ticket() {
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts"; fi'
+  if ct_feature_diff_is_suspect /tmp/worktree "No feature declared"; then
+    fail "skips suspect diff check when feature is undeclared"
+  else
+    pass "skips suspect diff check when feature is undeclared"
+  fi
+}
+
+test_suspect_diff_flags_pr_without_failing_pipeline() {
+  state_setup
+  local args_file="$STATE_DIR/suspect_args"
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "view" ]]; then
+  printf "Feature: current-meal\n"
+elif [[ "$1" == "pr" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_SUSPECT_ARGS"
+elif [[ "$1" == "pr" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_SUSPECT_ARGS"
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts"; fi'
+  export FAKE_SUSPECT_ARGS="$args_file"
+  if orchestrator_check_suspect_diff 279 456 /tmp/worktree; then
+    pass "suspect diff check is non-fatal"
+  else
+    fail "suspect diff check is non-fatal"
+  fi
+  assert_contains "suspect diff adds pr label" "pr edit 456 --add-label suspect-diff" "$(sed -n '1p' "$args_file")"
+  assert_contains "suspect diff posts warning comment" "pr comment 456" "$(sed -n '2p' "$args_file")"
+  unset FAKE_SUSPECT_ARGS
+  state_teardown
+}
+
+test_shared_files_returns_intersection() {
+  local a b
+  a=$'apps/carbotracker/src/features/products/a.ts\napps/carbotracker/src/features/current-meal/b.ts'
+  b=$'apps/carbotracker/src/features/products/a.ts\nREADME.md'
+  assert_eq "shared files are the exact intersection" "apps/carbotracker/src/features/products/a.ts" "$(ct_shared_files "$a" "$b")"
+}
+
+test_shared_files_empty_without_overlap() {
+  local a b
+  a=$'apps/carbotracker/src/features/products/a.ts'
+  b=$'apps/carbotracker/src/features/current-meal/b.ts'
+  assert_eq "no overlap yields no shared files" "" "$(ct_shared_files "$a" "$b")"
+}
+
+test_shared_files_matches_whole_paths_only() {
+  local a b
+  a=$'libs/foo/bar.ts'
+  b=$'libs/foo/bar.tsx'
+  assert_eq "a path prefix is not a match" "" "$(ct_shared_files "$a" "$b")"
+}
+
+test_overlap_warns_on_shared_files() {
+  state_setup
+  local args_file="$STATE_DIR/overlap_args"
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "456\n789\n"
+elif [[ "$1" == "pr" && "$2" == "view" ]]; then
+  if [[ "$3" == "789" ]]; then
+    printf "apps/carbotracker/src/features/products/a.ts\nREADME.md\n"
+  else
+    printf "apps/carbotracker/src/features/current-meal/b.ts\n"
+  fi
+elif [[ "$1" == "api" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_OVERLAP_ARGS"
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts" "apps/carbotracker/src/features/current-meal/b.ts"; fi'
+  export FAKE_OVERLAP_ARGS="$args_file"
+  if orchestrator_check_overlap 280 456 /tmp/worktree; then
+    pass "overlap check is non-fatal"
+  else
+    fail "overlap check is non-fatal"
+  fi
+  assert_contains "overlap warning posts a comment on the new PR" "issues/456/comments" "$(cat "$args_file")"
+  assert_contains "overlap warning names the overlapping PR" "PR #789" "$(cat "$args_file")"
+  assert_contains "overlap warning names the shared file" "products/a.ts" "$(cat "$args_file")"
+  unset FAKE_OVERLAP_ARGS
+  state_teardown
+}
+
+test_overlap_no_warning_without_overlap() {
+  state_setup
+  local args_file="$STATE_DIR/overlap_args"
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "456\n789\n"
+elif [[ "$1" == "pr" && "$2" == "view" ]]; then
+  printf "apps/carbotracker/src/features/products/a.ts\n"
+elif [[ "$1" == "api" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_OVERLAP_ARGS"
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/current-meal/b.ts"; fi'
+  export FAKE_OVERLAP_ARGS="$args_file"
+  orchestrator_check_overlap 280 456 /tmp/worktree
+  assert_eq "no overlap posts no warning" "" "$(cat "$args_file" 2>/dev/null || true)"
+  unset FAKE_OVERLAP_ARGS
+  state_teardown
+}
+
+test_overlap_excludes_own_pr() {
+  state_setup
+  local args_file="$STATE_DIR/overlap_args"
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "456\n"
+elif [[ "$1" == "pr" && "$2" == "view" ]]; then
+  printf "apps/carbotracker/src/features/products/a.ts\n"
+elif [[ "$1" == "api" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_OVERLAP_ARGS"
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts"; fi'
+  export FAKE_OVERLAP_ARGS="$args_file"
+  orchestrator_check_overlap 280 456 /tmp/worktree
+  assert_eq "own pr never overlaps itself" "" "$(cat "$args_file" 2>/dev/null || true)"
+  unset FAKE_OVERLAP_ARGS
+  state_teardown
+}
+
+test_overlap_survives_gh_error() {
+  state_setup
+  local args_file="$STATE_DIR/overlap_args"
+  fake_command gh 'exit 1'
+  fake_command git 'if [[ "$1" == "-C" ]]; then printf "%s\n" "apps/carbotracker/src/features/products/a.ts"; fi'
+  export FAKE_OVERLAP_ARGS="$args_file"
+  if orchestrator_check_overlap 280 456 /tmp/worktree; then
+    pass "overlap check survives a gh failure"
+  else
+    fail "overlap check survives a gh failure"
+  fi
+  assert_eq "no warning posted after gh failure" "" "$(cat "$args_file" 2>/dev/null || true)"
+  unset FAKE_OVERLAP_ARGS
   state_teardown
 }
 
@@ -2671,6 +2953,19 @@ test_config_file_parsing
 test_config_env_beats_conf
 
 fake_setup
+test_issue_feature_parses_valid_declaration
+test_issue_feature_rejects_invalid_declaration
+test_changed_features_maps_feature_folders
+test_suspect_diff_requires_declared_feature_to_be_untouched
+test_suspect_diff_skips_undeclared_ticket
+test_suspect_diff_flags_pr_without_failing_pipeline
+test_shared_files_returns_intersection
+test_shared_files_empty_without_overlap
+test_shared_files_matches_whole_paths_only
+test_overlap_warns_on_shared_files
+test_overlap_no_warning_without_overlap
+test_overlap_excludes_own_pr
+test_overlap_survives_gh_error
 test_candidate_issues_sorted_fifo
 test_candidate_issues_passes_both_labels
 test_candidate_issues_gh_error
@@ -2739,11 +3034,17 @@ test_pr_state_returns_merged
 test_pr_state_returns_closed
 test_pr_state_returns_open
 test_pr_state_gh_error
+test_pr_merge_state_returns_behind
+test_pr_merge_state_gh_error
 test_merge_poll_prunes_merged_pr
 test_merge_poll_prunes_closed_pr
 test_merge_poll_keeps_entry_when_escalate_fails
 test_merge_poll_keeps_entry_when_close_fails
 test_merge_poll_keeps_open_pr
+test_merge_poll_updates_behind_pr
+test_merge_poll_leaves_clean_open_pr_alone
+test_merge_poll_aborts_conflicted_merge
+test_merge_poll_does_not_push_unverified_behind_pr
 test_merge_poll_skips_entry_without_pr
 test_merge_poll_gh_error_keeps_entry
 test_merge_poll_ignores_implementing_phase
