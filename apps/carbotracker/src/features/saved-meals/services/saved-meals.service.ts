@@ -13,8 +13,8 @@ import {
   where,
 } from 'firebase/firestore';
 import { from } from 'rxjs';
-import { SavedMealsApiActions } from '../+state/saved-meals.actions';
-import { CurrentMeal } from '../../features/current-meal/current-meal.model';
+import { SavedMealsApiActions } from '../+state/actions/api.actions';
+import { CurrentMeal } from '../../current-meal/current-meal.model';
 import { SavedMeal } from '../saved-meal.model';
 
 const transformSavedMeal = (id: string, data: unknown): SavedMeal => {

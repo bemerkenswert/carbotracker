@@ -1,5 +1,5 @@
 import { createSelector } from '@ngrx/store';
-import { savedMealsFeature } from '../../+state/saved-meals.feature';
+import { savedMealsFeature } from '../../+state';
 import { SavedMeal } from '../../saved-meal.model';
 
 export const selectSavedMealsViewModel = createSelector(
