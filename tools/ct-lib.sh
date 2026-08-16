@@ -23,9 +23,15 @@ ct_issue_feature() {
     | head -n 1
 }
 
+ct_changed_files() {
+  # The changed file paths of a branch worktree against main (non-fatal).
+  local worktree="$1"
+  git -C "$worktree" diff --name-only origin/main...HEAD 2>/dev/null || true
+}
+
 ct_changed_features() {
   local worktree="$1"
-  git -C "$worktree" diff --name-only origin/main...HEAD 2>/dev/null \
+  ct_changed_files "$worktree" \
     | sed -nE 's#^(.*/)?features/([a-z0-9]+(-[a-z0-9]+)*)/.*#\2#p' \
     | sort -u
 }

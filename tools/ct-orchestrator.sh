@@ -267,14 +267,6 @@ orchestrator_pr_files() {
   gh pr view "$pr" --json files --jq '.[].path' 2>/dev/null || true
 }
 
-# The changed file paths of the branch being opened, read from the worktree so
-# the overlap check does not depend on the just-created PR's file list having
-# propagated to the GitHub API yet.
-orchestrator_new_pr_files() {
-  local worktree="$1"
-  git -C "$worktree" diff --name-only origin/main...HEAD 2>/dev/null || true
-}
-
 # Compare the new PR's changed files against every open PR's and, on overlap,
 # post a warning naming the overlapping PR(s) and the shared files. Overlap is
 # expected during migrations, so it only warns — it never blocks or queues.
@@ -282,7 +274,9 @@ orchestrator_new_pr_files() {
 orchestrator_check_overlap() {
   local number="$1" pr_number="$2" worktree="$3"
   local files pr candidate shared overlaps count shared_list
-  files="$(orchestrator_new_pr_files "$worktree")"
+  # The branch's own files are read from the worktree so the check does not
+  # depend on the just-created PR's file list having propagated to the API.
+  files="$(ct_changed_files "$worktree")"
   [[ -n "$files" ]] || return 0
   count=0
   overlaps=""
