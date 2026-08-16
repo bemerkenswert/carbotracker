@@ -95,3 +95,23 @@ it('tracks the selected product', () => {
 ### Coverage is report-only
 
 CI runs the test suite with coverage reporting enabled (`--codeCoverage=true --coverageReporters=text`) so the number is visible in CI output. No coverage threshold is enforced and coverage never blocks a merge.
+
+## E2E smoke tests
+
+E2E tests are a smoke layer, not a coverage layer (see `docs/adr/0005-e2e-smoke-testing.md`). Write one only when a feature touches a Firestore collection or security rule and you need to prove the flow crosses the Firestore boundary — a write that passes rules, resolves a real collection name, and round-trips through a real query. Unit tests cover the logic; smoke tests cover the wiring.
+
+### When to write one
+
+One smoke flow per collection, covering the cross-boundary write/read/delete round-trip (e.g. save -> list -> open -> delete). Never use e2e for selector, reducer, or effect logic.
+
+### Where it lives
+
+`apps/carbotracker-e2e/src/e2e/<flow>.cy.ts`, with reusable steps in `apps/carbotracker-e2e/src/support/`. Tests log in as the seeded development user and self-clean (delete what they create).
+
+### How to run it
+
+```bash
+npx firebase emulators:exec 'npx nx e2e carbotracker-e2e' -c apps/carbotracker/firebase.json --import=apps/carbotracker/firebase-data/development
+```
+
+E2E is manual only for now; it is not part of CI.
