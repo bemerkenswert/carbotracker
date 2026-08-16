@@ -70,15 +70,28 @@ Each poll, before the review loop, the orchestrator walks every state entry in
   naming the closed PR. The entry is removed only once the escalation lands,
   so a transient `gh` failure retries next poll instead of stranding an
   un-labelled issue.
-- **`OPEN`** — the merge status is checked. A PR with status **`BEHIND`** is
-  updated by fetching `origin/main`, merging it with `--no-ff`, and pushing the
-  branch normally (never a rebase or force-push). The daemon verifies that
-  `origin/main` is an ancestor of the branch tip before the push, then re-fetches
-  and verifies again after the push, so the remote is confirmed to contain the
-  merged branch — an unverified push is never trusted. A conflicting merge is
-  aborted (`git merge --abort`) so the worktree is left clean for a retry;
-  conflicts, push failures, and failed verification keep the entry for the next
-  poll. Other merge statuses remain awaiting review.
+- **`OPEN`** — the merge status is checked. Both auto-merge actions share the
+  merge-gate skip: a PR carrying `suspect-diff` without `human-approved` is
+  skipped entirely — the labels are read fresh from GitHub each poll, so a
+  maintainer adding `human-approved` unblocks the PR automatically on the next
+  poll. A PR with status **`BEHIND`** is updated by fetching `origin/main`,
+  merging it with `--no-ff`, and pushing the branch normally (never a rebase or
+  force-push). The daemon verifies that `origin/main` is an ancestor of the
+  branch tip before the push, then re-fetches and verifies again after the
+  push, so the remote is confirmed to contain the merged branch — an unverified
+  push is never trusted. A conflicting merge is aborted (`git merge --abort`)
+  so the worktree is left clean for a retry; push failures and failed
+  verification keep the entry for the next poll.
+  A PR with status **`DIRTY`** — GitHub's signal that its merge into `main`
+  conflicts — is delegated to the agent: the ticket's opencode session is
+  resumed with a merge prompt, the agent merges `origin/main` and commits
+  (never pushing), and the daemon then verifies `origin/main` became an
+  ancestor of the branch tip, pushes, and re-verifies against the re-fetched
+  remote — never trusting the agent's exit code. Auto-merge attempts are
+  bounded by `ORCHESTRATOR_MERGE_RETRIES` (default 3): a failing attempt is
+  counted in the entry's `mergeFailures`, and at the cap the daemon posts a
+  "needs a human" comment on the PR (retried on later polls until it lands) and
+  stops auto-merging it.
 - **anything else / gh failure** — the state query failed; the entry is kept
   so the merge is retried on the next poll.
 
@@ -229,8 +242,10 @@ Active tickets live in a single JSON array, written atomically
     "lastCommentAt": "2026-08-13T00:07:00Z",
     "reviewFailures": 0,
     "failureCount": 0,
+    "mergeFailures": 0,
     "reviewNoticePosted": false,
     "reviewNeedsHuman": false,
+    "mergeNoticePosted": false,
     "phase": "awaiting review",
     "startedAt": "2026-08-13T00:07:00Z"
   }
@@ -247,8 +262,10 @@ Active tickets live in a single JSON array, written atomically
 | `lastCommentAt`      | Newest human comment timestamp handled on the PR (`null` = never) |
 | `reviewFailures`     | Consecutive failed review rounds (resets on success)              |
 | `failureCount`       | Non-opencode implementation failures before the next retry        |
+| `mergeFailures`      | Failed agent-driven conflict-resolution merges before the cap     |
 | `reviewNoticePosted` | Whether the missing-session notice was already posted on the PR   |
 | `reviewNeedsHuman`   | Whether a review round paused polling for a human decision        |
+| `mergeNoticePosted`  | Whether the needs-a-human merge comment was already posted        |
 | `phase`              | `implementing`, `failed`, or `awaiting review`                    |
 | `startedAt`          | UTC timestamp of the claim                                        |
 
@@ -335,6 +352,7 @@ file, which wins over defaults):
 | `ORCHESTRATOR_IN_PROGRESS_LABEL`      | `in-progress`                                       |
 | `ORCHESTRATOR_REVIEW_RETRIES`         | `3`                                                 |
 | `ORCHESTRATOR_IMPLEMENTATION_RETRIES` | `3`                                                 |
+| `ORCHESTRATOR_MERGE_RETRIES`          | `3`                                                 |
 | `ORCHESTRATOR_STATE_FILE`             | `$HOME/.local/state/carbotracker/orchestrator.json` |
 | `ORCHESTRATOR_WORKTREE_PARENT`        | `$HOME/git/worktrees/carbotracker`                  |
 

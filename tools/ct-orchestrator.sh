@@ -14,6 +14,7 @@ ENV_ORCHESTRATOR_ISSUE_LABELS="${ORCHESTRATOR_ISSUE_LABELS-}"
 ENV_ORCHESTRATOR_IN_PROGRESS_LABEL="${ORCHESTRATOR_IN_PROGRESS_LABEL-}"
 ENV_ORCHESTRATOR_REVIEW_RETRIES="${ORCHESTRATOR_REVIEW_RETRIES-}"
 ENV_ORCHESTRATOR_IMPLEMENTATION_RETRIES="${ORCHESTRATOR_IMPLEMENTATION_RETRIES-}"
+ENV_ORCHESTRATOR_MERGE_RETRIES="${ORCHESTRATOR_MERGE_RETRIES-}"
 ENV_ORCHESTRATOR_MODEL="${ORCHESTRATOR_MODEL-}"
 
 CONF_FILE="${CT_ORCHESTRATOR_CONF:-$SCRIPT_DIR/ct-orchestrator.conf}"
@@ -29,6 +30,10 @@ ORCHESTRATOR_ISSUE_LABELS="${ENV_ORCHESTRATOR_ISSUE_LABELS:-${ORCHESTRATOR_ISSUE
 ORCHESTRATOR_IN_PROGRESS_LABEL="${ENV_ORCHESTRATOR_IN_PROGRESS_LABEL:-${ORCHESTRATOR_IN_PROGRESS_LABEL:-in-progress}}"
 ORCHESTRATOR_REVIEW_RETRIES="${ENV_ORCHESTRATOR_REVIEW_RETRIES:-${ORCHESTRATOR_REVIEW_RETRIES:-3}}"
 ORCHESTRATOR_IMPLEMENTATION_RETRIES="${ENV_ORCHESTRATOR_IMPLEMENTATION_RETRIES:-${ORCHESTRATOR_IMPLEMENTATION_RETRIES:-3}}"
+# The bound on agent-driven conflict-resolution merges in the merge poll. At
+# the cap the daemon posts a "needs a human" comment and stops auto-merging
+# the PR; only a human can unstick it.
+ORCHESTRATOR_MERGE_RETRIES="${ENV_ORCHESTRATOR_MERGE_RETRIES:-${ORCHESTRATOR_MERGE_RETRIES:-3}}"
 # The model every headless opencode run uses, pinned so the agent pipeline
 # never drifts to opencode's default (which can be a pricier model).
 ORCHESTRATOR_MODEL="${ENV_ORCHESTRATOR_MODEL:-${ORCHESTRATOR_MODEL:-opencode-go/deepseek-v4-flash}}"
@@ -107,7 +112,7 @@ orchestrator_state_add() {
   state="$(orchestrator_state_load "$state_file")"
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   entry="$(jq -n --argjson ticket "$number" --arg branch "$branch" --arg worktree "$worktree" --arg started "$now" \
-    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, lastCommentAt: null, reviewFailures: 0, failureCount: 0, reviewNoticePosted: false, reviewNeedsHuman: false, phase: "implementing", startedAt: $started}')"
+    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, lastCommentAt: null, reviewFailures: 0, failureCount: 0, mergeFailures: 0, reviewNoticePosted: false, reviewNeedsHuman: false, mergeNoticePosted: false, phase: "implementing", startedAt: $started}')"
   state="$(printf '%s' "$state" | jq --argjson entry "$entry" '. + [$entry]')"
   orchestrator_state_write "$state_file" "$state"
 }
@@ -200,6 +205,36 @@ orchestrator_state_set_review_needs_human() {
   orchestrator_state_write "$state_file" "$state"
 }
 
+orchestrator_state_merge_failures() {
+  local state_file="$1" number="$2"
+  orchestrator_state_load "$state_file" \
+    | jq -r --argjson n "$number" '[.[] | select(.ticket == $n) | .mergeFailures][0] // 0'
+}
+
+orchestrator_state_set_merge_failures() {
+  local state_file="$1" number="$2" count="$3"
+  local state
+  state="$(orchestrator_state_load "$state_file")"
+  state="$(printf '%s' "$state" | jq --argjson n "$number" --argjson c "$count" \
+    '(.[] | select(.ticket == $n)) |= (.mergeFailures = $c)')"
+  orchestrator_state_write "$state_file" "$state"
+}
+
+orchestrator_state_merge_notice_posted() {
+  local state_file="$1" number="$2"
+  orchestrator_state_load "$state_file" \
+    | jq -r --argjson n "$number" '[.[] | select(.ticket == $n) | .mergeNoticePosted][0] // false'
+}
+
+orchestrator_state_set_merge_notice_posted() {
+  local state_file="$1" number="$2" flag="$3"
+  local state
+  state="$(orchestrator_state_load "$state_file")"
+  state="$(printf '%s' "$state" | jq --argjson n "$number" --argjson f "$flag" \
+    '(.[] | select(.ticket == $n)) |= (.mergeNoticePosted = $f)')"
+  orchestrator_state_write "$state_file" "$state"
+}
+
 orchestrator_claim() {
   local number="$1" branch="$2" worktree="$3"
   # The claim is the GitHub-side label flip: dropping ready-for-agent takes
@@ -244,6 +279,24 @@ orchestrator_pr_state() {
 
 orchestrator_pr_merge_state() {
   orchestrator_pr_field "$1" mergeStateStatus
+}
+
+# The PR's labels, one name per line, read fresh from the live GitHub state on
+# every call — the auto-merge skip condition must never be cached, because a
+# maintainer approving a flagged PR unblocks it on the next poll. A failed read
+# propagates its non-zero exit so callers can fail closed like the merge gate.
+orchestrator_pr_labels() {
+  local pr="$1"
+  gh pr view "$pr" --json labels --jq '.[].name' 2>/dev/null
+}
+
+# True when a newline-separated label list carries the suspect-diff label
+# without human-approved — i.e. the merge gate would block this PR.
+orchestrator_labels_are_suspect() {
+  local labels="$1"
+  printf '%s\n' "$labels" | grep -Fxq "suspect-diff" || return 1
+  printf '%s\n' "$labels" | grep -Fxq "human-approved" && return 1
+  return 0
 }
 
 orchestrator_pr_latest_comment_at() {
@@ -708,12 +761,23 @@ orchestrator_merge_behind_pr() {
     orchestrator_log "WARNING: could not verify origin/main is an ancestor of branch $branch after merge"
     return 1
   fi
+  if ! orchestrator_merge_push_and_verify "$branch" "$worktree" "$pr_number"; then
+    return 1
+  fi
+  orchestrator_log "merge #$pr_number: merged origin/main into $branch and verified ancestry against the remote"
+  return 0
+}
+
+# Push $branch from $worktree and verify the push landed against the remote:
+# the push proves nothing about the remote's current main, so re-fetch
+# origin/main and re-confirm it is still an ancestor of the branch tip. An
+# unverified push is never trusted.
+orchestrator_merge_push_and_verify() {
+  local branch="$1" worktree="$2" pr_number="$3"
   if ! git -C "$worktree" push origin "$branch"; then
     orchestrator_log "WARNING: failed to push merged branch $branch for PR #$pr_number"
     return 1
   fi
-  # The push proves nothing about the remote's current main: re-fetch so
-  # origin/main reflects the remote, then re-verify the branch tip contains it.
   if ! git -C "$worktree" fetch origin main; then
     orchestrator_log "WARNING: failed to re-fetch origin/main to verify the push of PR #$pr_number"
     return 1
@@ -722,17 +786,92 @@ orchestrator_merge_behind_pr() {
     orchestrator_log "WARNING: could not verify origin/main is an ancestor of branch $branch after push"
     return 1
   fi
-  orchestrator_log "merge #$pr_number: merged origin/main into $branch and verified ancestry against the remote"
+  return 0
+}
+
+# Resolve a genuinely conflicting PR by delegating to the ticket's original
+# opencode session. The agent merges origin/main into the branch, resolves the
+# conflicts, and commits — but never pushes. The daemon then verifies that
+# origin/main became an ancestor of the branch tip (never trusting the agent's
+# exit 0), pushes, and re-verifies against the re-fetched remote. Any failure
+# returns non-zero so the caller counts the attempt and keeps the entry.
+orchestrator_merge_via_agent() {
+  local number="$1" session_id="$2" pr_number="$3" branch="$4" worktree="$5"
+  local prompt
+  if [[ -z "$session_id" || "$session_id" == "null" ]]; then
+    orchestrator_log "ERROR: no opencode session recorded for #$number; cannot delegate conflict resolution of PR #$pr_number"
+    return 1
+  fi
+  if [[ ! -d "$worktree" ]]; then
+    orchestrator_log "WARNING: cannot resolve conflicts on PR #$pr_number: worktree $worktree is missing"
+    return 1
+  fi
+  if ! git -C "$worktree" fetch origin main; then
+    orchestrator_log "WARNING: failed to fetch origin/main for PR #$pr_number"
+    return 1
+  fi
+  orchestrator_log "merge #$number: resuming session $session_id to resolve conflicts on PR #$pr_number"
+  prompt="/implement resolve the merge conflicts on PR #$pr_number (ticket #$number): merge origin/main into the current branch, resolve any conflicts, and commit the resolution. Do NOT push — the daemon pushes and verifies."
+  if ! (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" --session "$session_id" "$prompt" < /dev/null); then
+    orchestrator_log "ERROR: opencode conflict-resolution run failed for PR #$pr_number"
+    return 1
+  fi
+  if ! git -C "$worktree" merge-base --is-ancestor origin/main HEAD; then
+    orchestrator_log "WARNING: origin/main is not an ancestor of branch $branch for PR #$pr_number after the agent run; not trusting exit 0"
+    return 1
+  fi
+  if ! orchestrator_merge_push_and_verify "$branch" "$worktree" "$pr_number"; then
+    return 1
+  fi
+  return 0
+}
+
+# The bounded wrapper around the agent-driven conflict resolution. Failed
+# attempts count toward ORCHESTRATOR_MERGE_RETRIES; at the cap a "needs a
+# human" comment is posted (retried on later polls until it lands) and the PR
+# is left alone. The caller has already applied the live-label skip check.
+orchestrator_merge_conflict_pr() {
+  local number="$1" pr_number="$2" branch="$3" worktree="$4" session_id="$5"
+  local cap failures
+  cap="$ORCHESTRATOR_MERGE_RETRIES"
+  failures="$(orchestrator_state_merge_failures "$ORCHESTRATOR_STATE_FILE" "$number")"
+
+  if [[ "$failures" -ge "$cap" ]]; then
+    if [[ "$(orchestrator_state_merge_notice_posted "$ORCHESTRATOR_STATE_FILE" "$number")" != "true" ]]; then
+      if orchestrator_pr_post_comment "$pr_number" "Automated conflict resolution failed $failures/$cap times on PR #$pr_number. This PR needs a human to resolve the merge conflicts.${ORCHESTRATOR_AI_FOOTER}"; then
+        orchestrator_state_set_merge_notice_posted "$ORCHESTRATOR_STATE_FILE" "$number" true
+        orchestrator_log "merge #$number: posted needs-human comment on PR #$pr_number"
+      else
+        orchestrator_log "WARNING: failed to post needs-human comment on PR #$pr_number; retrying next poll"
+      fi
+    fi
+    orchestrator_log "merge #$number: PR #$pr_number exhausted $cap agent-merge attempts; leaving for a human"
+    return 0
+  fi
+
+  if ! orchestrator_merge_via_agent "$number" "$session_id" "$pr_number" "$branch" "$worktree"; then
+    failures=$((failures + 1))
+    orchestrator_state_set_merge_failures "$ORCHESTRATOR_STATE_FILE" "$number" "$failures"
+    orchestrator_log "WARNING: agent merge failed for PR #$pr_number (attempt $failures/$cap); keeping entry to retry next poll"
+    return 1
+  fi
+
+  orchestrator_state_set_merge_failures "$ORCHESTRATOR_STATE_FILE" "$number" 0
+  orchestrator_log "merge #$number: agent resolved conflicts on PR #$pr_number; verified and pushed"
   return 0
 }
 
 orchestrator_merge_poll() {
-  local line number pr_number branch worktree state merge_state
+  local line number pr_number branch worktree session_id state merge_state labels
   while IFS= read -r line; do
     number="$(printf '%s' "$line" | jq -r '.ticket')"
     pr_number="$(printf '%s' "$line" | jq -r '.prNumber')"
     branch="$(printf '%s' "$line" | jq -r '.branch')"
     worktree="$(printf '%s' "$line" | jq -r '.worktree')"
+    session_id="$(printf '%s' "$line" | jq -r '.sessionId // ""')"
+    if [[ "$session_id" == "null" ]]; then
+      session_id=""
+    fi
 
     if [[ -z "$pr_number" || "$pr_number" == "null" ]]; then
       orchestrator_log "skip merge #$number: no PR recorded"
@@ -773,10 +912,30 @@ _Created by carbotracker's agent skills._"; then
         merge_state="$(orchestrator_pr_merge_state "$pr_number")"
         if [[ -z "$merge_state" ]]; then
           orchestrator_log "WARNING: could not determine the merge status of PR #$pr_number; keeping entry to retry next poll"
-        elif [[ "$merge_state" == "BEHIND" ]]; then
-          orchestrator_log "merge #$number: PR #$pr_number is behind main; updating branch $branch"
-          if ! orchestrator_merge_behind_pr "$pr_number" "$branch" "$worktree"; then
-            orchestrator_log "WARNING: could not update behind PR #$pr_number; keeping entry to retry next poll"
+        elif [[ "$merge_state" == "BEHIND" || "$merge_state" == "DIRTY" ]]; then
+          # Both auto-merge actions share the gate check: a flagged PR (suspect
+          # without human-approved) is skipped until a maintainer approves it.
+          # The labels are read live each poll, so an approval unblocks the PR
+          # on the next poll; a labels read that fails (gh transiently down)
+          # fails closed like the merge gate — the PR is left alone rather than
+          # churned on while possibly flagged.
+          if ! labels="$(orchestrator_pr_labels "$pr_number")"; then
+            orchestrator_log "WARNING: could not read labels of PR #$pr_number; keeping entry to retry next poll"
+          elif orchestrator_labels_are_suspect "$labels"; then
+            orchestrator_log "merge skip #$number: PR #$pr_number carries suspect-diff without human-approved; skipped until approved"
+          elif [[ "$merge_state" == "BEHIND" ]]; then
+            orchestrator_log "merge #$number: PR #$pr_number is behind main; updating branch $branch"
+            if ! orchestrator_merge_behind_pr "$pr_number" "$branch" "$worktree"; then
+              orchestrator_log "WARNING: could not update behind PR #$pr_number; keeping entry to retry next poll"
+            fi
+          else
+            # GitHub reports a PR as DIRTY when its merge into main conflicts.
+            # Delegate the conflict to the ticket's session: the agent merges
+            # origin/main and commits, the daemon verifies and pushes.
+            orchestrator_log "merge #$number: PR #$pr_number conflicts with main; delegating resolution to the agent"
+            if ! orchestrator_merge_conflict_pr "$number" "$pr_number" "$branch" "$worktree" "$session_id"; then
+              orchestrator_log "WARNING: conflict resolution failed for PR #$pr_number; keeping entry to retry next poll"
+            fi
           fi
         else
           orchestrator_log "merge #$number: PR #$pr_number still open (merge status $merge_state)"
