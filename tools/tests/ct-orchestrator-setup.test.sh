@@ -44,13 +44,17 @@ ORIG_PATH="$PATH"
 FAKE_GIT_LOG=""
 FAKE_SYSTEMCTL_LOG=""
 FAKE_LOGINCTL_LOG=""
+FAKE_NPM_LOG=""
+FAKE_NVM_LOG=""
 
 fake_setup() {
   FAKE_DIR="$(mktemp -d)"
   FAKE_GIT_LOG="$FAKE_DIR/git.log"
   FAKE_SYSTEMCTL_LOG="$FAKE_DIR/systemctl.log"
   FAKE_LOGINCTL_LOG="$FAKE_DIR/loginctl.log"
-  export FAKE_GIT_LOG FAKE_SYSTEMCTL_LOG FAKE_LOGINCTL_LOG
+  FAKE_NPM_LOG="$FAKE_DIR/npm.log"
+  FAKE_NVM_LOG="$FAKE_DIR/nvm.log"
+  export FAKE_GIT_LOG FAKE_SYSTEMCTL_LOG FAKE_LOGINCTL_LOG FAKE_NPM_LOG FAKE_NVM_LOG
   ORIG_PATH="$PATH"
   PATH="$FAKE_DIR:$PATH"
 }
@@ -68,16 +72,42 @@ fake_teardown() {
 }
 
 # Fake git that logs every invocation. On clone it materialises the target
-# directory (including .git) and seeds tools/carbotracker-orchestrator.service
-# from the real repo, so the idempotent second run exercises the pull path.
+# directory (including .git) and seeds .nvmrc plus the tools the setup script
+# needs to run (both service units and ct-node-sync.sh), so the idempotent
+# second run exercises the pull path.
 fake_git() {
   fake_command git 'printf "%s\n" "$*" >> "$FAKE_GIT_LOG"
 if [[ "$1" == "clone" ]]; then
   mkdir -p "$3/tools"
   cp "$ROOT/tools/carbotracker-orchestrator.service" "$3/tools/carbotracker-orchestrator.service"
+  cp "$ROOT/tools/carbotracker-node-sync.service" "$3/tools/carbotracker-node-sync.service"
+  cp "$ROOT/tools/ct-node-sync.sh" "$3/tools/ct-node-sync.sh"
+  cp "$ROOT/.nvmrc" "$3/.nvmrc"
   mkdir -p "$3/.git"
 fi
 exit 0'
+}
+
+# Fake npm that logs every invocation (so tests can assert `npm ci` ran).
+fake_npm() {
+  fake_command npm 'printf "%s\n" "$*" >> "$FAKE_NPM_LOG"
+exit 0'
+}
+
+# Fake nvm: writes a nvm.sh under $1 whose nvm() logs install/alias/version
+# calls and returns a fixed version for `nvm version`, so the node-sync step
+# runs without a real nvm install.
+fake_nvm() {
+  local nvm_dir="$1"
+  mkdir -p "$nvm_dir/versions/node"
+  cat > "$nvm_dir/nvm.sh" <<'EOF'
+nvm() {
+  printf "nvm %s\n" "$*" >> "$FAKE_NVM_LOG"
+  case "$1" in
+    version) printf 'v22.23.2\n';;
+  esac
+}
+EOF
 }
 
 # Fake systemctl that logs every invocation; status succeeds.
@@ -160,8 +190,10 @@ test_install_unit() {
   sandbox="$(mktemp -d)"
   mkdir -p "$sandbox/git/carbotracker/tools"
   cp "$ROOT/tools/carbotracker-orchestrator.service" "$sandbox/git/carbotracker/tools/"
+  cp "$ROOT/tools/carbotracker-node-sync.service" "$sandbox/git/carbotracker/tools/"
   REPO_DIR="$sandbox/git/carbotracker" SYSTEMD_USER_DIR="$sandbox/systemd/user" setup_install_unit >/dev/null
-  assert_eq "unit installed into systemd user dir" "yes" "$([[ -f "$sandbox/systemd/user/carbotracker-orchestrator.service" ]] && echo yes || echo no)"
+  assert_eq "orchestrator unit installed into systemd user dir" "yes" "$([[ -f "$sandbox/systemd/user/carbotracker-orchestrator.service" ]] && echo yes || echo no)"
+  assert_eq "node-sync unit installed into systemd user dir" "yes" "$([[ -f "$sandbox/systemd/user/carbotracker-node-sync.service" ]] && echo yes || echo no)"
   rm -rf "$sandbox"
 }
 
@@ -171,7 +203,8 @@ test_enable_start() {
   local log
   log="$(cat "$FAKE_SYSTEMCTL_LOG")"
   assert_contains "daemon reload invoked" "--user daemon-reload" "$log"
-  assert_contains "service enabled and started" "--user enable --now carbotracker-orchestrator" "$log"
+  assert_contains "node-sync service enabled" "--user enable carbotracker-node-sync" "$log"
+  assert_contains "orchestrator service enabled and started" "--user enable --now carbotracker-orchestrator" "$log"
 }
 
 test_verify() {
@@ -186,7 +219,7 @@ test_whole_script_idempotent() {
   fake_command gh 'exit 0'
   fake_git
   fake_command node 'exit 0'
-  fake_command npm 'exit 0'
+  fake_npm
   fake_command jq 'exit 0'
   fake_command opencode 'exit 0'
   fake_systemctl
@@ -194,18 +227,22 @@ test_whole_script_idempotent() {
 
   local home="$sandbox/home"
   mkdir -p "$home"
+  fake_nvm "$home/.nvm"
 
-  if HOME="$home" CARBOTRACKER_REPO_URL="https://example.com/fork.git" bash "$ROOT/tools/ct-orchestrator-setup.sh" >/dev/null 2>&1; then
+  if HOME="$home" NVM_DIR="$home/.nvm" CARBOTRACKER_REPO_URL="https://example.com/fork.git" bash "$ROOT/tools/ct-orchestrator-setup.sh" >/dev/null 2>&1; then
     pass "first run succeeds"
   else
     fail "first run succeeds"
   fi
 
   assert_eq "first run cloned the repo" "yes" "$([[ -d "$home/git/carbotracker" ]] && echo yes || echo no)"
-  assert_eq "first run installed the unit" "yes" "$([[ -f "$home/.config/systemd/user/carbotracker-orchestrator.service" ]] && echo yes || echo no)"
+  assert_eq "first run installed the orchestrator unit" "yes" "$([[ -f "$home/.config/systemd/user/carbotracker-orchestrator.service" ]] && echo yes || echo no)"
+  assert_eq "first run installed the node-sync unit" "yes" "$([[ -f "$home/.config/systemd/user/carbotracker-node-sync.service" ]] && echo yes || echo no)"
   assert_contains "first run clones with the URL override" "clone https://example.com/fork.git $home/git/carbotracker" "$(cat "$FAKE_GIT_LOG")"
+  assert_contains "first run installs main-repo deps" "ci --prefer-offline --no-audit --no-fund" "$(cat "$FAKE_NPM_LOG")"
+  assert_contains "first run re-points node-current" "$home/.nvm/versions/node/v22.23.2" "$(readlink "$home/.nvm/node-current")"
 
-  if HOME="$home" CARBOTRACKER_REPO_URL="https://example.com/fork.git" bash "$ROOT/tools/ct-orchestrator-setup.sh" >/dev/null 2>&1; then
+  if HOME="$home" NVM_DIR="$home/.nvm" CARBOTRACKER_REPO_URL="https://example.com/fork.git" bash "$ROOT/tools/ct-orchestrator-setup.sh" >/dev/null 2>&1; then
     pass "second run succeeds"
   else
     fail "second run succeeds"

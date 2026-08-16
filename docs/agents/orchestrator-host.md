@@ -89,28 +89,45 @@ so set the local timezone or the reboot window fires at the wrong local hour.
 ## Orchestrator runbook
 
 `tools/ct-orchestrator-setup.sh` bootstraps the machine: clones the repo,
-installs the systemd user unit, enables lingering, and starts the daemon. The
-steps here are the OS-level prerequisites the script assumes.
+installs Node (via nvm, following the major in `.nvmrc`), installs the
+main-repo deps (for review-plan validation), installs the systemd user units
+(orchestrator + node-sync), enables lingering, and starts the daemon. The steps
+here are the OS-level prerequisites the script assumes.
 
 ### Prerequisites
 
 ```bash
 sudo apt update && sudo apt install -y git jq curl
 
-# Node 22 (matches CI) + verify
-node -v
+# nvm (Node Version Manager) — the setup script installs the repo's Node major
+# (see "follow-major" below) and re-points ~/.nvm/node-current
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 
-# GitHub CLI, authenticated with repo scope; also wires git push credentials
-gh auth login
-gh auth setup-git
+# GitHub CLI — authenticated with a fine-grained PAT, NOT `gh auth login`.
+# `gh auth login --with-token` hard-rejects any token missing the classic
+# scopes `repo`+`read:org`, so a `public_repo`-only classic token is a dead end.
+# Instead: create a fine-grained PAT repo-scoped to bemerkenswert/carbotracker
+# (Contents/Issues/Pull requests: read+write), put it in the env file the
+# daemon's unit sources (never commit it), and wire git pushes through it.
+mkdir -p ~/.config/carbotracker
+printf 'GH_TOKEN=<fine-grained-pat>\n' > ~/.config/carbotracker/orchestrator.env
+chmod 600 ~/.config/carbotracker/orchestrator.env
+gh auth setup-git --force --hostname github.com
 
 # opencode + agent auth
 curl -fsSL https://opencode.ai/install | bash
 opencode auth login
 ```
 
-The installer checks that `gh git node npm jq opencode systemctl loginctl` are
-all present.
+The installer clones the repo first, installs Node, then checks that
+`gh git node npm jq opencode systemctl loginctl` are all present. `node`/`npm`
+are installed by the script, not by hand.
+
+Node **follow-major**: the script reads `.nvmrc`'s major and runs
+`nvm install <major>` — the latest patch of that major, matching CI's
+`node-version: '22'` — rather than the exact `.nvmrc` pin. The stable
+`~/.nvm/node-current` symlink is what the daemon's `PATH` references; a boot
+job (`carbotracker-node-sync`) re-checks and re-points it on every boot.
 
 ### Keep it from sleeping
 
@@ -128,12 +145,19 @@ Prefer wired Ethernet over Wi-Fi for a 24/7 daemon.
 ### Install + verify
 
 ```bash
+# Bootstrap: get the repo so the setup script exists. The script then pulls the
+# existing clone, installs Node + main-repo deps, installs both units, enables
+# lingering, and starts the daemon.
 git clone https://github.com/bemerkenswert/carbotracker.git ~/git/carbotracker
 ~/git/carbotracker/tools/ct-orchestrator-setup.sh
 
 systemctl --user status carbotracker-orchestrator     # active (running)
 journalctl --user -u carbotracker-orchestrator -f     # follow the daemon
 ```
+
+Both units are enabled: `carbotracker-node-sync` (oneshot, `Before=` the
+daemon) and `carbotracker-orchestrator`. The daemon's unit sources the
+`GH_TOKEN` from `~/.config/carbotracker/orchestrator.env` via `EnvironmentFile=`.
 
 Expect startup reconcile, a poll line (`poll: 0 candidate(s), 0 active`), then
 `sleeping 300s until the next poll` — that is the idle loop.
@@ -149,7 +173,8 @@ Expect startup reconcile, a poll line (`poll: 0 candidate(s), 0 active`), then
   `~/.local/share/opencode`; open a terminal and `opencode` into it (or
   `opencode run --session <id>`). The failure already posts an escalation
   comment with the run's output tail.
-- **Reboots**: `enable` + `enable-linger` bring the daemon back automatically.
+- **Reboots**: `enable` + `enable-linger` bring the daemon back automatically;
+  the node-sync oneshot re-checks the Node major first (`Before=` the daemon).
 
 ### Why not CI / a VPS that boots on a timer
 

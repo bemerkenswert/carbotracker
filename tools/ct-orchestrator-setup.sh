@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
 # ct-orchestrator-setup.sh — bootstrap a VPS for the carbotracker orchestrator.
 #
-# Running this on a fresh VPS clones the repo, installs the systemd user
-# service unit, enables lingering, and starts the daemon. Idempotent: safe to
-# run repeatedly (an existing clone is pulled, the unit is overwritten, and
-# systemctl enable/start are no-ops when the service is already active).
+# Running this on a fresh VPS clones the repo, installs Node (via nvm,
+# following the major in .nvmrc), installs the main-repo deps (for review-plan
+# validation), installs the systemd user units, enables lingering, and starts
+# the daemon. Idempotent: safe to run repeatedly (an existing clone is pulled,
+# the units are overwritten, and systemctl enable/start are no-ops when the
+# service is already active).
 #
-# Prerequisites (all must be installed and on PATH):
-#   - gh          GitHub CLI, authenticated with `gh auth login` (repo scope)
-#   - node/npm    Node.js toolchain (used inside ticket worktrees)
+# Prerequisites (installed before this script, on PATH or under NVM_DIR):
+#   - git         Used to clone the repo
+#   - nvm         Node Version Manager (under ~/.nvm); the script installs the
+#                 repo's Node major and re-points ~/.nvm/node-current
+#   - gh          GitHub CLI, authenticated with a fine-grained PAT via GH_TOKEN
 #   - jq          JSON processor used by the daemon scripts
 #   - opencode    The agent that implements tickets
-#   - git, systemctl, loginctl (systemd user session)
+#   - systemctl, loginctl (systemd user session)
+#
+# node/npm are installed by this script (via tools/ct-node-sync.sh) rather than
+# by hand, so the repo's .nvmrc is the single source of truth for the Node
+# major.
 #
 # The repo is cloned over HTTPS by default; gh acts as the git credential
 # helper for later pushes. Override with CARBOTRACKER_REPO_URL.
@@ -20,8 +28,11 @@ set -euo pipefail
 
 REPO_URL="${CARBOTRACKER_REPO_URL:-https://github.com/bemerkenswert/carbotracker.git}"
 REPO_DIR="${CARBOTRACKER_REPO_DIR:-$HOME/git/carbotracker}"
+NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 SERVICE_UNIT="carbotracker-orchestrator.service"
+NODE_SYNC_SERVICE_UNIT="carbotracker-node-sync.service"
 SERVICE_NAME="carbotracker-orchestrator"
+NODE_SYNC_SERVICE_NAME="carbotracker-node-sync"
 SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 
 # Prerequisites that must be installed and on PATH (also documented above).
@@ -56,10 +67,24 @@ setup_clone() {
   fi
 }
 
+setup_install_node() {
+  setup_log "installing Node (follow-major from $REPO_DIR/.nvmrc)"
+  CARBOTRACKER_REPO_DIR="$REPO_DIR" NVM_DIR="$NVM_DIR" "$REPO_DIR/tools/ct-node-sync.sh"
+  # Make the freshly installed Node visible to the subsequent prereq check via
+  # the stable symlink (the same path the daemon's PATH references).
+  export PATH="$NVM_DIR/node-current/bin:$PATH"
+}
+
+setup_install_main_deps() {
+  setup_log "installing main-repo dependencies (for review-plan validation)"
+  (cd "$REPO_DIR" && npm ci --prefer-offline --no-audit --no-fund)
+}
+
 setup_install_unit() {
-  setup_log "installing systemd user unit $SERVICE_UNIT"
+  setup_log "installing systemd user units"
   mkdir -p "$SYSTEMD_USER_DIR"
   cp "$REPO_DIR/tools/$SERVICE_UNIT" "$SYSTEMD_USER_DIR/$SERVICE_UNIT"
+  cp "$REPO_DIR/tools/$NODE_SYNC_SERVICE_UNIT" "$SYSTEMD_USER_DIR/$NODE_SYNC_SERVICE_UNIT"
 }
 
 setup_enable_linger() {
@@ -70,7 +95,8 @@ setup_enable_linger() {
 setup_enable_start() {
   setup_log "reloading the systemd user daemon"
   systemctl --user daemon-reload
-  setup_log "enabling and starting $SERVICE_NAME"
+  setup_log "enabling $NODE_SYNC_SERVICE_NAME and $SERVICE_NAME"
+  systemctl --user enable "$NODE_SYNC_SERVICE_NAME"
   systemctl --user enable --now "$SERVICE_NAME"
 }
 
@@ -91,8 +117,10 @@ main() {
       setup_help
       ;;
     "")
-      check_prereqs "${PREREQ_TOOLS[@]}"
       setup_clone
+      setup_install_node
+      setup_install_main_deps
+      check_prereqs "${PREREQ_TOOLS[@]}"
       setup_install_unit
       setup_enable_linger
       setup_enable_start

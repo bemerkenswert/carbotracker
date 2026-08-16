@@ -1,0 +1,25 @@
+# Carbotracker node-sync systemd user service.
+#
+# A oneshot boot job that re-checks the repo's required Node major and updates
+# the default Node (and the ~/.nvm/node-current symlink) on every boot, before
+# the orchestrator daemon starts.
+#
+# Install (also done by tools/ct-orchestrator-setup.sh):
+#   mkdir -p ~/.config/systemd/user
+#   cp tools/carbotracker-node-sync.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable carbotracker-node-sync
+
+[Unit]
+Description=Sync Node.js to the major version required by the carbotracker repo
+After=network-online.target
+Wants=network-online.target
+Before=carbotracker-orchestrator.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/git/carbotracker/tools/ct-node-sync.sh
+Environment=PATH=%h/.nvm/node-current/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

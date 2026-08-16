@@ -17,6 +17,11 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=%h/git/carbotracker
+# PATH pins the nvm-managed Node (via the node-current symlink) and opencode,
+# which are user-space installs not on the default systemd PATH. GH_TOKEN is
+# loaded from the environment file below — never baked into this unit.
+Environment=PATH=%h/.nvm/node-current/bin:%h/.opencode/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-%h/.config/carbotracker/orchestrator.env
 ExecStart=%h/git/carbotracker/tools/ct-orchestrator.sh
 Restart=on-failure
 RestartSec=10
