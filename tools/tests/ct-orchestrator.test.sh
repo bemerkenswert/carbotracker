@@ -979,7 +979,7 @@ exit 0'
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree"
   assert_eq "worktree dir created" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
-  assert_eq "opencode run invoked with title and issue prompt" "run --auto --model $ORCHESTRATOR_MODEL --title carbotracker-ticket-10 /implement the issue is 10" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_eq "opencode run invoked with title and issue prompt" "run --auto --model $ORCHESTRATOR_MODEL --title carbotracker-ticket-10 /implement the issue is 10 headless: do not ask, do not install — write the abort file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_contains "branch pushed to origin" "push -u origin ticket/10-alpha" "$(cat "$FAKE_GIT_PUSH_FILE")"
   assert_eq "state session id stored" "ses_abc" "$(jq -r '.[0].sessionId' "$TEST_STATE")"
   assert_eq "state pr number stored" "42" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
@@ -1145,8 +1145,8 @@ exit 0'
   export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree"
-  assert_eq "first opencode attempt uses fresh title session" "run --auto --model $ORCHESTRATOR_MODEL --title carbotracker-ticket-10 /implement the issue is 10" "$(sed -n '1p' "$FAKE_OPENCODE_LOG")"
-  assert_eq "retry once with --continue" "run --auto --model $ORCHESTRATOR_MODEL --continue /implement the issue is 10" "$(sed -n '2p' "$FAKE_OPENCODE_LOG")"
+  assert_eq "first opencode attempt uses fresh title session" "run --auto --model $ORCHESTRATOR_MODEL --title carbotracker-ticket-10 /implement the issue is 10 headless: do not ask, do not install — write the abort file" "$(sed -n '1p' "$FAKE_OPENCODE_LOG")"
+  assert_eq "retry once with --continue" "run --auto --model $ORCHESTRATOR_MODEL --continue /implement the issue is 10 headless: do not ask, do not install — write the abort file" "$(sed -n '2p' "$FAKE_OPENCODE_LOG")"
   assert_eq "retried run completes the ticket" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
   unset FAKE_OPENCODE_COUNT FAKE_OPENCODE_LOG
   state_teardown
@@ -1187,6 +1187,151 @@ exit 0'
   assert_eq "escalation prunes the worktree" "no" "$([[ -d "$worktree" ]] && echo yes || echo no)"
   assert_contains "logs the escalation" "escalated #10 to needs-triage" "$output"
   unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  state_teardown
+}
+
+test_implement_escalates_immediately_on_missing_dependency() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
+  exit 0
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_COMMENT"
+  exit 0
+fi
+exit 1'
+  fake_worktree_npm
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_OPENCODE_LOG"
+  printf "%s\n" "{\"type\":\"missing-dependency\",\"dependencies\":[\"java\",\"Xvfb\"],\"reason\":\"The Firebase emulators need a Java runtime and Cypress needs Xvfb.\"}" > "$ORCHESTRATOR_IMPLEMENT_ABORT_FILE"
+  exit 1
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
+  export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "implement fails on missing-dependency abort" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "missing-dependency abort runs opencode exactly once (no retry)" "1" "$(wc -l < "$FAKE_OPENCODE_LOG")"
+  assert_contains "missing-dependency escalation adds needs-triage" "--add-label needs-triage" "$(cat "$FAKE_ESCALATE_EDIT")"
+  assert_contains "missing-dependency escalation names the tools" "java, Xvfb" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_contains "missing-dependency escalation says the agent never installs" "never installs" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_contains "missing-dependency escalation points at the host" "install them on the host" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_eq "missing-dependency escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "logs why the retry was skipped" "not retrying" "$output"
+  unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT FAKE_OPENCODE_LOG
+  state_teardown
+}
+
+test_poll_once_missing_dependency_stays_on_escalation_path() {
+  state_setup
+  local edits_file="$STATE_DIR/edits"
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
+  printf "[{\"number\":10,\"title\":\"Alpha\"}]\n"
+elif [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_EDITS_FILE"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  exit 0
+elif [[ "$1" == "api" ]]; then
+  printf "0\n"
+fi
+exit 0'
+  fake_worktree_npm
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  printf "%s\n" "{\"type\":\"missing-dependency\",\"dependencies\":[\"java\"],\"reason\":\"The Firebase emulators need a Java runtime.\"}" > "$ORCHESTRATOR_IMPLEMENT_ABORT_FILE"
+  exit 1
+fi
+exit 0'
+  export FAKE_EDITS_FILE="$edits_file"
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
+  assert_eq "missing-dependency escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "missing-dependency escalation adds needs-triage" "--add-label needs-triage" "$(cat "$edits_file")"
+  if grep -q -- "--add-label ready-for-agent" "$edits_file"; then
+    fail "missing-dependency failure does not re-add ready-for-agent"
+  else
+    pass "missing-dependency failure does not re-add ready-for-agent"
+  fi
+  assert_contains "missing-dependency failure logs the escalation path" "remains on the existing escalation path" "$output"
+  unset FAKE_EDITS_FILE
+  state_teardown
+}
+
+test_implement_retries_opencode_when_abort_file_invalid() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[{\"number\":42}]\n"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  exit 0
+fi
+exit 0'
+  fake_worktree_npm
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  local n
+  n="$(cat "$FAKE_OPENCODE_COUNT" 2>/dev/null || echo 0)"
+  n=$((n + 1))
+  printf "%d\n" "$n" > "$FAKE_OPENCODE_COUNT"
+  printf "%s\n" "$*" >> "$FAKE_OPENCODE_LOG"
+  if [[ "$n" -eq 1 ]]; then
+    printf "%s\n" "{\"type\":\"missing-dependency\"}" > "$ORCHESTRATOR_IMPLEMENT_ABORT_FILE"
+    exit 1
+  fi
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"ses_abc\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_OPENCODE_COUNT="$STATE_DIR/opencode_count"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree"
+  assert_eq "schema-invalid abort file still gets the --continue retry" "run --auto --model $ORCHESTRATOR_MODEL --continue /implement the issue is 10 headless: do not ask, do not install — write the abort file" "$(sed -n '2p' "$FAKE_OPENCODE_LOG")"
+  assert_eq "retried run completes the ticket" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  unset FAKE_OPENCODE_COUNT FAKE_OPENCODE_LOG
+  state_teardown
+}
+
+test_resume_escalates_on_missing_dependency() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
+  exit 0
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_COMMENT"
+  exit 0
+fi
+exit 1'
+  fake_command git 'if [[ "$1" == "worktree" && "$2" == "remove" ]]; then
+  rm -rf "$3" "$4"
+elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
+  exit 0
+fi
+exit 0'
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  printf "%s\n" "$*" >> "$FAKE_OPENCODE_LOG"
+  printf "%s\n" "{\"type\":\"missing-dependency\",\"dependencies\":[\"java\"],\"reason\":\"The Firebase emulators need a Java runtime.\"}" > "$ORCHESTRATOR_IMPLEMENT_ABORT_FILE"
+  exit 1
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  mkdir -p "$worktree"
+  export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
+  export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_resume_implementation 10 "Alpha" "$branch" "$worktree" "" 2>&1)" && rc=0 || rc=$?
+  assert_eq "resume fails on missing-dependency abort" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "resume missing-dependency runs opencode exactly once (no retry)" "1" "$(wc -l < "$FAKE_OPENCODE_LOG")"
+  assert_contains "resume missing-dependency adds needs-triage" "--add-label needs-triage" "$(cat "$FAKE_ESCALATE_EDIT")"
+  assert_contains "resume missing-dependency names the tool" "java" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_contains "resume missing-dependency says the agent never installs" "never installs" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_contains "logs why the retry was skipped" "not retrying" "$output"
+  unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT FAKE_OPENCODE_LOG
   state_teardown
 }
 
@@ -3366,6 +3511,10 @@ test_implement_runs_full_pipeline
 test_implement_fails_when_worktree_fails
 test_implement_fails_when_npm_ci_fails
 test_implement_retries_opencode_with_continue
+test_implement_escalates_immediately_on_missing_dependency
+test_poll_once_missing_dependency_stays_on_escalation_path
+test_implement_retries_opencode_when_abort_file_invalid
+test_resume_escalates_on_missing_dependency
 test_implement_escalates_after_two_opencode_failures
 test_implement_escalates_when_no_commits_produced
 test_implement_no_pr_skips_comment

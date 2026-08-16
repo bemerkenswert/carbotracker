@@ -444,7 +444,7 @@ orchestrator_review_act() {
   local schema count needs_human i entry comment_id path type reply body latest posted implement_count
   schema="$SCRIPT_DIR/../.agents/skills/review-comments/review-plan.schema.json"
   if [[ ! -f "$plan_file" ]] \
-    || ! node "$SCRIPT_DIR/ct-review-plan-validate.js" "$schema" "$plan_file" >/dev/null 2>&1; then
+    || ! node "$SCRIPT_DIR/ct-json-validate.js" "$schema" "$plan_file" >/dev/null 2>&1; then
     orchestrator_log "review act #$number: plan $plan_file is missing, malformed, or schema-invalid; keeping the watermark"
     return 1
   fi
@@ -989,21 +989,89 @@ orchestrator_cleanup_worktree() {
   git branch -D "$branch" 2>/dev/null || true
 }
 
+# The typed abort a failed headless /implement run reported: echo the abort
+# artifact's `type` when the file exists and validates against the implement
+# abort schema, echo nothing otherwise. A missing, malformed, or schema-invalid
+# artifact simply means "no typed abort" and the caller keeps its generic
+# failure path (see ADR-0005).
+orchestrator_implement_abort_kind() {
+  local abort_file="$1" schema
+  schema="$SCRIPT_DIR/../.agents/skills/implement/implement-abort.schema.json"
+  if [[ -z "$abort_file" || ! -f "$abort_file" ]]; then
+    return 0
+  fi
+  if node "$SCRIPT_DIR/ct-json-validate.js" "$schema" "$abort_file" >/dev/null 2>&1; then
+    jq -r '.type' "$abort_file" 2>/dev/null || true
+  fi
+}
+
+# The comma-joined dependency list of the abort artifact. Only meaningful
+# after orchestrator_implement_abort_kind has validated the file.
+orchestrator_implement_abort_dependencies() {
+  local abort_file="$1"
+  jq -r '.dependencies | join(", ")' "$abort_file" 2>/dev/null || true
+}
+
+# After a failed opencode attempt, inspect that attempt's abort artifact. When
+# it is a valid missing-dependency abort, record the dependency list in
+# CT_RUN_ABORT_DEPENDENCIES for the caller's escalation, log why no retry will
+# happen, and return 0; otherwise return 1 and the caller proceeds with the
+# generic retry path. $3 names the attempt in the log ("run" / "retry").
+orchestrator_run_opencode_aborted() {
+  local abort_file="$1" number="$2" attempt="$3"
+  CT_RUN_ABORT_DEPENDENCIES=""
+  if [[ "$(orchestrator_implement_abort_kind "$abort_file")" == "missing-dependency" ]]; then
+    CT_RUN_ABORT_DEPENDENCIES="$(orchestrator_implement_abort_dependencies "$abort_file")"
+    orchestrator_log "ERROR: implement #$number: headless $attempt aborted with missing dependencies: ${CT_RUN_ABORT_DEPENDENCIES:-<unknown>}; not retrying"
+    return 0
+  fi
+  return 1
+}
+
+# The escalation reason for a missing-dependency abort; $1 is an optional
+# qualifier the caller prefixes, e.g. " while resuming" (or empty).
+orchestrator_missing_dependency_reason() {
+  local qualifier="$1"
+  printf 'missing dependencies%s: %s — the agent never installs tools; install them on the host and re-tag the ticket ready-for-agent' "$qualifier" "${CT_RUN_ABORT_DEPENDENCIES:-<unknown>}"
+}
+
+# Run one headless opencode implement run in the worktree. Every attempt gets
+# its own ORCHESTRATOR_IMPLEMENT_ABORT_FILE so a run that cannot proceed
+# reports a typed abort there (the skill never installs anything — see
+# ADR-0005). Exit codes: 0 the run succeeded; 1 failed twice (generic, the
+# caller escalates as an opencode failure); 3 the run aborted with a valid
+# `missing-dependency` artifact (CT_RUN_ABORT_DEPENDENCIES carries the list
+# and no retry is attempted — retrying cannot fix a missing system tool).
 orchestrator_run_opencode() {
   local worktree="$1" number="$2" log_file="$3"
   shift 3
-  local prompt="/implement the issue is $number"
+  local prompt="/implement the issue is $number headless: do not ask, do not install — write the abort file"
+  local abort_file
   # Redirect stdin from /dev/null so the run cannot drain a caller's pipe: when
   # poll_once streams candidates from a process substitution, an opencode run
   # that reads stdin would consume the remaining candidate lines and silently
   # cap the poll at one ticket.
-  if (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" "$@" "$prompt" < /dev/null) 2>&1 | tee "$log_file"; then
+  abort_file="$(mktemp "${TMPDIR:-/tmp}/carbotracker-implement-abort.XXXXXX")"
+  if (cd "$worktree" && export ORCHESTRATOR_IMPLEMENT_ABORT_FILE="$abort_file" && opencode run --auto --model "$ORCHESTRATOR_MODEL" "$@" "$prompt" < /dev/null) 2>&1 | tee "$log_file"; then
+    rm -f "$abort_file"
     return 0
   fi
+  if orchestrator_run_opencode_aborted "$abort_file" "$number" "run"; then
+    rm -f "$abort_file"
+    return 3
+  fi
+  rm -f "$abort_file"
   orchestrator_log "ERROR: opencode run failed for #$number (attempt 1); retrying with --continue"
-  if (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" --continue "$prompt" < /dev/null) 2>&1 | tee -a "$log_file"; then
+  abort_file="$(mktemp "${TMPDIR:-/tmp}/carbotracker-implement-abort.XXXXXX")"
+  if (cd "$worktree" && export ORCHESTRATOR_IMPLEMENT_ABORT_FILE="$abort_file" && opencode run --auto --model "$ORCHESTRATOR_MODEL" --continue "$prompt" < /dev/null) 2>&1 | tee -a "$log_file"; then
+    rm -f "$abort_file"
     return 0
   fi
+  if orchestrator_run_opencode_aborted "$abort_file" "$number" "retry"; then
+    rm -f "$abort_file"
+    return 3
+  fi
+  rm -f "$abort_file"
   orchestrator_log "ERROR: opencode run failed for #$number on the retry as well"
   return 1
 }
@@ -1095,7 +1163,7 @@ orchestrator_finish_implementation() {
 
 orchestrator_implement() {
   local number="$1" title="$2" branch="$3" worktree="$4"
-  local session_title session_id pr_number log_file
+  local session_title session_id pr_number log_file run_rc
   CT_IMPLEMENTATION_FAILURE_KIND=non-opencode
 
   orchestrator_log "implementing #$number: creating worktree $worktree (branch $branch)"
@@ -1113,9 +1181,19 @@ orchestrator_implement() {
   session_title="carbotracker-ticket-$number"
   log_file="$(mktemp "${TMPDIR:-/tmp}/carbotracker-opencode.XXXXXX")"
   orchestrator_log "launching opencode for #$number (title $session_title)"
-  if ! orchestrator_run_opencode "$worktree" "$number" "$log_file" --title "$session_title"; then
-    CT_IMPLEMENTATION_FAILURE_KIND=opencode
-    orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "opencode exited non-zero twice"
+  run_rc=0
+  orchestrator_run_opencode "$worktree" "$number" "$log_file" --title "$session_title" || run_rc=$?
+  if [[ "$run_rc" -ne 0 ]]; then
+    if [[ "$run_rc" -eq 3 ]]; then
+      # The headless run reported a typed abort: escalate immediately instead
+      # of the generic retry path — a missing system tool cannot be fixed by
+      # re-running the agent (which never installs anything, see ADR-0005).
+      CT_IMPLEMENTATION_FAILURE_KIND=missing-dependency
+      orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "$(orchestrator_missing_dependency_reason "")"
+    else
+      CT_IMPLEMENTATION_FAILURE_KIND=opencode
+      orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "opencode exited non-zero twice"
+    fi
     rm -f "$log_file"
     return 1
   fi
@@ -1179,7 +1257,7 @@ orchestrator_worktree_has_work() {
 
 orchestrator_resume_implementation() {
   local number="$1" title="$2" branch="$3" worktree="$4" session_id="$5"
-  local session_title log_file run_flags
+  local session_title log_file run_flags run_rc
   session_title="carbotracker-ticket-$number"
   orchestrator_log "resuming implementation #$number in $worktree"
 
@@ -1189,8 +1267,14 @@ orchestrator_resume_implementation() {
     run_flags=(--continue)
   fi
   log_file="$(mktemp "${TMPDIR:-/tmp}/carbotracker-opencode.XXXXXX")"
-  if ! orchestrator_run_opencode "$worktree" "$number" "$log_file" "${run_flags[@]}"; then
-    orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "opencode exited non-zero twice while resuming"
+  run_rc=0
+  orchestrator_run_opencode "$worktree" "$number" "$log_file" "${run_flags[@]}" || run_rc=$?
+  if [[ "$run_rc" -ne 0 ]]; then
+    if [[ "$run_rc" -eq 3 ]]; then
+      orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "$(orchestrator_missing_dependency_reason " while resuming")"
+    else
+      orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "opencode exited non-zero twice while resuming"
+    fi
     rm -f "$log_file"
     return 1
   fi
@@ -1340,8 +1424,8 @@ orchestrator_poll_once() {
     active_count=$((active_count + 1))
 
     if ! orchestrator_implement "$number" "$title" "$branch" "$worktree"; then
-      if [[ "${CT_IMPLEMENTATION_FAILURE_KIND:-non-opencode}" == "opencode" ]]; then
-        orchestrator_log "#${number} opencode failure remains on the existing escalation path"
+      if [[ "${CT_IMPLEMENTATION_FAILURE_KIND:-non-opencode}" == "opencode" || "${CT_IMPLEMENTATION_FAILURE_KIND:-non-opencode}" == "missing-dependency" ]]; then
+        orchestrator_log "#${number} implementation failure remains on the existing escalation path"
       elif orchestrator_state_has_ticket "$ORCHESTRATOR_STATE_FILE" "$number"; then
         # The opencode failure path has already escalated and pruned. Any
         # remaining entry is a non-opencode failure and gets a bounded retry.

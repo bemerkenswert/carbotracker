@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 'use strict';
 
-// Validate a review plan JSON file against the review-comments plan schema.
-// Usage: node tools/ct-review-plan-validate.js <schema> <plan-file>
-// Exit codes: 0 the plan is valid; 1 the plan is invalid or unreadable;
+// Validate a JSON file against a JSON schema (draft-07, ajv).
+// Usage: node tools/ct-json-validate.js <schema> <file>
+// Exit codes: 0 the file is valid; 1 the file is invalid or unreadable;
 // 2 the invocation or the schema itself is wrong.
 
 const fs = require('fs');
 const path = require('path');
 
 if (process.argv.length !== 4) {
-  console.error('usage: ct-review-plan-validate.js <schema> <plan-file>');
+  console.error('usage: ct-json-validate.js <schema> <file>');
   process.exit(2);
 }
 
 const schemaPath = process.argv[2];
-const planPath = process.argv[3];
+const filePath = process.argv[3];
 
 let Ajv;
 try {
@@ -27,7 +27,7 @@ try {
 }
 
 let schema;
-let plan;
+let data;
 try {
   schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 } catch (err) {
@@ -35,9 +35,9 @@ try {
   process.exit(2);
 }
 try {
-  plan = JSON.parse(fs.readFileSync(planPath, 'utf8'));
+  data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 } catch (err) {
-  console.error(`cannot read plan ${planPath}: ${err.message}`);
+  console.error(`cannot read file ${filePath}: ${err.message}`);
   process.exit(1);
 }
 
@@ -50,7 +50,7 @@ try {
   process.exit(2);
 }
 
-const valid = validate(plan);
+const valid = validate(data);
 if (!valid) {
   for (const e of validate.errors) {
     console.error(

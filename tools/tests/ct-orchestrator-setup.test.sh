@@ -131,11 +131,14 @@ fake_all_prereqs() {
   fake_command rg 'exit 0'
   fake_command systemctl 'exit 0'
   fake_command loginctl 'exit 0'
+  fake_command java 'exit 0'
+  fake_command Xvfb 'exit 0'
+  fake_command xkbcomp 'exit 0'
 }
 
 test_check_prereqs_ok() {
   fake_all_prereqs
-  if check_prereqs gh git node npm jq opencode rg systemctl loginctl; then
+  if check_prereqs gh git node npm jq opencode rg systemctl loginctl java Xvfb xkbcomp; then
     pass "prereqs pass when all tools are present"
   else
     fail "prereqs pass when all tools are present"
@@ -226,6 +229,9 @@ test_whole_script_idempotent() {
   fake_command rg 'exit 0'
   fake_systemctl
   fake_loginctl
+  fake_command java 'exit 0'
+  fake_command Xvfb 'exit 0'
+  fake_command xkbcomp 'exit 0'
 
   local home="$sandbox/home"
   mkdir -p "$home"

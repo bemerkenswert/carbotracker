@@ -8,7 +8,8 @@
 #
 # Override the paths below with env vars to run against a sandbox (see
 # tools/tests/ct-orchestrator-verify.test.sh):
-#   REPO_DIR, NVM_DIR, SYSTEMD_USER_DIR, ENV_FILE, UNATTENDED_CONF, LOGIND_CONF
+#   REPO_DIR, NVM_DIR, SYSTEMD_USER_DIR, ENV_FILE, UNATTENDED_CONF, LOGIND_CONF,
+#   XVFB_BIN, XKBCOMP_BIN
 set -euo pipefail
 
 REPO_DIR="${REPO_DIR:-$HOME/git/carbotracker}"
@@ -17,6 +18,9 @@ SYSTEMD_USER_DIR="${SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
 ENV_FILE="${ENV_FILE:-$HOME/.config/carbotracker/orchestrator.env}"
 UNATTENDED_CONF="${UNATTENDED_CONF:-/etc/apt/apt.conf.d/50unattended-upgrades}"
 LOGIND_CONF="${LOGIND_CONF:-/etc/systemd/logind.conf}"
+XVFB_BIN="${XVFB_BIN:-/usr/bin/Xvfb}"
+XKBCOMP_BIN="${XKBCOMP_BIN:-/usr/bin/xkbcomp}"
+JAVA_BIN="${JAVA_BIN:-java}"
 
 PASS=0
 FAIL=0
@@ -127,6 +131,33 @@ verify_opencode() {
     say_ok "rg on PATH (opencode code search)"
   else
     say_bad "rg not on PATH (opencode code search)"
+  fi
+}
+
+# Tools the agent pipeline needs for certain tickets, on the daemon's PATH
+# (the unit's Environment=PATH covers /usr/bin). Missing ones are exactly what
+# a headless /implement run aborts on instead of installing (see ADR-0005), so
+# this section is the host-side check a human runs before tickets arrive.
+verify_prereq_tools() {
+  echo "===== prereq tools (agent pipeline) ====="
+  if command -v "$JAVA_BIN" >/dev/null 2>&1; then
+    say_info "java: $("$JAVA_BIN" -version 2>&1 | head -1)"
+    say_ok "java on PATH (Firebase emulators)"
+  else
+    say_bad "java not on PATH (Firebase emulators need a JRE)"
+  fi
+  # Xvfb spawns xkbcomp at a compiled-in absolute path, not via PATH — a bare
+  # `command -v` would miss a missing system package, so both are asserted on
+  # their /usr/bin locations.
+  if [ -x "$XVFB_BIN" ]; then
+    say_ok "$XVFB_BIN executable (Cypress headless e2e)"
+  else
+    say_bad "$XVFB_BIN missing (Cypress headless e2e)"
+  fi
+  if [ -x "$XKBCOMP_BIN" ]; then
+    say_ok "$XKBCOMP_BIN executable (Xvfb keyboard init)"
+  else
+    say_bad "$XKBCOMP_BIN missing (Xvfb keyboard init)"
   fi
 }
 
@@ -284,6 +315,7 @@ main() {
   verify_node
   verify_gh
   verify_opencode
+  verify_prereq_tools
   verify_repo
   verify_systemd
   verify_secrets
