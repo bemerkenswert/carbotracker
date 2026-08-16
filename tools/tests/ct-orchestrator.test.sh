@@ -495,6 +495,7 @@ test_state_add_creates_entry() {
   assert_eq "entry tracks session id as null" "null" "$(jq -r '.sessionId' <<<"$entry")"
   assert_eq "entry tracks pr number as null" "null" "$(jq -r '.prNumber' <<<"$entry")"
   assert_eq "entry tracks phase" "implementing" "$(jq -r '.phase' <<<"$entry")"
+  assert_eq "entry tracks implementation failures as zero" "0" "$(jq -r '.failureCount' <<<"$entry")"
   local started
   started="$(jq -r '.startedAt' <<<"$entry")"
   assert_eq "entry tracks started-at timestamp" "yes" "$([[ "$started" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] && echo yes || echo no)"
@@ -1215,8 +1216,10 @@ fi
 exit 0'
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
-  assert_eq "failed implementation leaves no state entry" "0" "$(jq 'length' "$TEST_STATE")"
-  assert_contains "logs removal of failed ticket" "removed #10 from state" "$output"
+  assert_eq "failed implementation remains in state" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "failed implementation records failed phase" "failed" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  assert_eq "failed implementation records one failure" "1" "$(jq -r '.[0].failureCount' "$TEST_STATE")"
+  assert_contains "logs failed ticket retry" "kept #10 in failed phase" "$output"
   state_teardown
 }
 
@@ -1238,11 +1241,47 @@ exit 0'
   export FAKE_EDITS_FILE="$edits_file"
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
-  assert_eq "failed implementation leaves no state entry" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "failed implementation remains in state" "1" "$(jq 'length' "$TEST_STATE")"
   assert_contains "restores ready-for-agent after non-opencode failure" "--add-label ready-for-agent" "$(cat "$edits_file")"
   assert_contains "drops in-progress after non-opencode failure" "--remove-label in-progress" "$(cat "$edits_file")"
   assert_contains "logs the label restore" "restored #10 to ready-for-agent" "$output"
   unset FAKE_EDITS_FILE
+  state_teardown
+}
+
+test_non_opencode_failure_escalates_at_bound() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
+  elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+    printf "%s\n" "$*" > "$FAKE_ESCALATE_COMMENT"
+  fi
+  exit 0'
+  fake_command git 'if [[ "$1" == "worktree" && "$2" == "remove" ]]; then rm -rf "$3"; fi; exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit" FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_mark_failed "$TEST_STATE" 10
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_IMPLEMENTATION_RETRIES=2 \
+    orchestrator_handle_non_opencode_failure 10 "$branch" "$worktree" "push failed"
+  assert_eq "bound failure removes state entry" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "bound failure adds triage label" "--add-label needs-triage" "$(cat "$FAKE_ESCALATE_EDIT")"
+  assert_contains "bound failure posts comment" "attempt 2/2" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  state_teardown
+}
+
+test_reconcile_skips_failed_entry() {
+  state_setup
+  fake_command gh 'exit 1'
+  local worktree="$WT_PARENT/10-alpha"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 ticket/10-alpha "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_mark_failed "$TEST_STATE" 10
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_reconcile >/dev/null 2>&1
+  assert_eq "failed entry survives reconcile" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "reconcile preserves failed phase" "failed" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  assert_eq "reconcile preserves failure count" "1" "$(jq -r '.[0].failureCount' "$TEST_STATE")"
   state_teardown
 }
 
@@ -1289,7 +1328,7 @@ exit 0'
   mkdir -p "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once >/dev/null 2>&1
   assert_eq "pre-existing worktree survives failed implementation" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
-  assert_eq "failed claim leaves no state entry" "0" "$(jq 'length' "$TEST_STATE" 2>/dev/null || echo 0)"
+  assert_eq "failed implementation keeps state entry" "1" "$(jq 'length' "$TEST_STATE" 2>/dev/null || echo 0)"
   state_teardown
 }
 
@@ -2728,6 +2767,8 @@ test_poll_once_respects_concurrency_cap
 test_poll_once_skips_when_cap_full
 test_poll_once_removes_entry_on_failed_implement
 test_poll_once_restores_ready_for_agent_on_failed_implement
+test_non_opencode_failure_escalates_at_bound
+test_reconcile_skips_failed_entry
 test_poll_once_cleans_up_worktree_after_failed_implement
 test_poll_once_does_not_cleanup_preexisting_worktree
 test_claim_marks_issue_in_progress

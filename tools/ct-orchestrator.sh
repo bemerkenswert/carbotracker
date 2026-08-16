@@ -13,6 +13,7 @@ ENV_ORCHESTRATOR_WORKTREE_PARENT="${ORCHESTRATOR_WORKTREE_PARENT-}"
 ENV_ORCHESTRATOR_ISSUE_LABELS="${ORCHESTRATOR_ISSUE_LABELS-}"
 ENV_ORCHESTRATOR_IN_PROGRESS_LABEL="${ORCHESTRATOR_IN_PROGRESS_LABEL-}"
 ENV_ORCHESTRATOR_REVIEW_RETRIES="${ORCHESTRATOR_REVIEW_RETRIES-}"
+ENV_ORCHESTRATOR_IMPLEMENTATION_RETRIES="${ORCHESTRATOR_IMPLEMENTATION_RETRIES-}"
 
 CONF_FILE="${CT_ORCHESTRATOR_CONF:-$SCRIPT_DIR/ct-orchestrator.conf}"
 if [[ -f "$CONF_FILE" ]]; then
@@ -26,6 +27,7 @@ ORCHESTRATOR_WORKTREE_PARENT="${ENV_ORCHESTRATOR_WORKTREE_PARENT:-${ORCHESTRATOR
 ORCHESTRATOR_ISSUE_LABELS="${ENV_ORCHESTRATOR_ISSUE_LABELS:-${ORCHESTRATOR_ISSUE_LABELS:-ready-for-agent,ticket}}"
 ORCHESTRATOR_IN_PROGRESS_LABEL="${ENV_ORCHESTRATOR_IN_PROGRESS_LABEL:-${ORCHESTRATOR_IN_PROGRESS_LABEL:-in-progress}}"
 ORCHESTRATOR_REVIEW_RETRIES="${ENV_ORCHESTRATOR_REVIEW_RETRIES:-${ORCHESTRATOR_REVIEW_RETRIES:-3}}"
+ORCHESTRATOR_IMPLEMENTATION_RETRIES="${ENV_ORCHESTRATOR_IMPLEMENTATION_RETRIES:-${ORCHESTRATOR_IMPLEMENTATION_RETRIES:-3}}"
 
 orchestrator_log() {
   # Logs go to stderr so functions that print a value on stdout (e.g. the
@@ -94,7 +96,7 @@ orchestrator_state_add() {
   state="$(orchestrator_state_load "$state_file")"
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   entry="$(jq -n --argjson ticket "$number" --arg branch "$branch" --arg worktree "$worktree" --arg started "$now" \
-    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, lastCommentAt: null, reviewFailures: 0, reviewNoticePosted: false, reviewNeedsHuman: false, phase: "implementing", startedAt: $started}')"
+    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, lastCommentAt: null, reviewFailures: 0, failureCount: 0, reviewNoticePosted: false, reviewNeedsHuman: false, phase: "implementing", startedAt: $started}')"
   state="$(printf '%s' "$state" | jq --argjson entry "$entry" '. + [$entry]')"
   orchestrator_state_write "$state_file" "$state"
 }
@@ -113,6 +115,35 @@ orchestrator_state_remove() {
   local state
   state="$(orchestrator_state_load "$state_file")"
   state="$(printf '%s' "$state" | jq --argjson n "$number" 'map(select(.ticket != $n))')"
+  orchestrator_state_write "$state_file" "$state"
+}
+
+orchestrator_state_phase() {
+  local state_file="$1" number="$2"
+  orchestrator_state_load "$state_file" | jq -r --argjson n "$number" '[.[] | select(.ticket == $n) | .phase][0] // empty'
+}
+
+orchestrator_state_mark_failed() {
+  local state_file="$1" number="$2"
+  local state
+  state="$(orchestrator_state_load "$state_file")"
+  state="$(printf '%s' "$state" | jq --argjson n "$number" \
+    '(.[] | select(.ticket == $n)) |= (.failureCount = ((.failureCount // 0) + 1) | .phase = "failed")')"
+  orchestrator_state_write "$state_file" "$state"
+}
+
+orchestrator_state_failure_count() {
+  local state_file="$1" number="$2"
+  orchestrator_state_load "$state_file" \
+    | jq -r --argjson n "$number" '[.[] | select(.ticket == $n) | .failureCount][0] // 0'
+}
+
+orchestrator_state_retry_failed() {
+  local state_file="$1" number="$2"
+  local state
+  state="$(orchestrator_state_load "$state_file")"
+  state="$(printf '%s' "$state" | jq --argjson n "$number" \
+    '(.[] | select(.ticket == $n and .phase == "failed")) |= (.phase = "implementing")')"
   orchestrator_state_write "$state_file" "$state"
 }
 
@@ -167,7 +198,11 @@ orchestrator_claim() {
     orchestrator_log "ERROR: failed to mark #$number as $ORCHESTRATOR_IN_PROGRESS_LABEL on GitHub"
     return 1
   fi
-  orchestrator_state_add "$ORCHESTRATOR_STATE_FILE" "$number" "$branch" "$worktree"
+  if [[ "$(orchestrator_state_phase "$ORCHESTRATOR_STATE_FILE" "$number")" == "failed" ]]; then
+    orchestrator_state_retry_failed "$ORCHESTRATOR_STATE_FILE" "$number"
+  else
+    orchestrator_state_add "$ORCHESTRATOR_STATE_FILE" "$number" "$branch" "$worktree"
+  fi
   orchestrator_log "claim #$number: phase implementing, worktree $worktree on branch $branch"
 }
 
@@ -703,6 +738,43 @@ _Created by carbotracker's agent skills._"
   return 1
 }
 
+orchestrator_restore_failed_labels() {
+  local line number
+  while IFS= read -r line; do
+    number="$(printf '%s' "$line" | jq -r '.ticket')"
+    if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --add-label ready-for-agent; then
+      orchestrator_log "restored #$number to ready-for-agent after a transient label error"
+    else
+      orchestrator_log "WARNING: failed to restore ready-for-agent on failed #$number; retrying next poll"
+    fi
+  done < <(orchestrator_state_load "$ORCHESTRATOR_STATE_FILE" | jq -c '.[] | select(.phase == "failed")')
+}
+
+orchestrator_handle_non_opencode_failure() {
+  local number="$1" branch="$2" worktree="$3" reason="$4"
+  local failures retries
+  retries="$ORCHESTRATOR_IMPLEMENTATION_RETRIES"
+  orchestrator_state_mark_failed "$ORCHESTRATOR_STATE_FILE" "$number"
+  failures="$(orchestrator_state_failure_count "$ORCHESTRATOR_STATE_FILE" "$number")"
+  if [[ "$failures" -ge "$retries" ]]; then
+    orchestrator_escalate_failure "$number" "$branch" "$worktree" "" \
+      "non-opencode failure (attempt $failures/$retries): $reason"
+    return
+  fi
+
+  if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --add-label ready-for-agent; then
+    orchestrator_log "restored #$number to ready-for-agent after non-opencode failure (attempt $failures/$retries)"
+  else
+    orchestrator_log "WARNING: failed to restore ready-for-agent on #$number; it will need manual re-labelling"
+  fi
+  if [[ "${CT_WORKTREE_CREATED:-0}" == "1" ]]; then
+    orchestrator_cleanup_worktree "$worktree" "$branch"
+  else
+    orchestrator_log "not cleaning up pre-existing worktree $worktree"
+  fi
+  orchestrator_log "kept #$number in failed phase for retry on the next poll"
+}
+
 orchestrator_state_complete_and_comment() {
   local number="$1" session_id="$2" pr_number="$3"
   orchestrator_state_complete "$ORCHESTRATOR_STATE_FILE" "$number" "$session_id" "$pr_number"
@@ -732,6 +804,7 @@ orchestrator_finish_implementation() {
 orchestrator_implement() {
   local number="$1" title="$2" branch="$3" worktree="$4"
   local session_title session_id pr_number log_file
+  CT_IMPLEMENTATION_FAILURE_KIND=non-opencode
 
   orchestrator_log "implementing #$number: creating worktree $worktree (branch $branch)"
   if ! ct_worktree_add "$worktree" "$branch"; then
@@ -749,6 +822,7 @@ orchestrator_implement() {
   log_file="$(mktemp "${TMPDIR:-/tmp}/carbotracker-opencode.XXXXXX")"
   orchestrator_log "launching opencode for #$number (title $session_title)"
   if ! orchestrator_run_opencode "$worktree" "$number" "$log_file" --title "$session_title"; then
+    CT_IMPLEMENTATION_FAILURE_KIND=opencode
     orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "opencode exited non-zero twice"
     rm -f "$log_file"
     return 1
@@ -759,6 +833,7 @@ orchestrator_implement() {
     # opencode failure rather than letting gh pr create fail with a misleading
     # "No commits between main and ..." error.
     orchestrator_log "ERROR: implement #$number: opencode exited 0 but produced no commits (zero diff vs origin/main)"
+    CT_IMPLEMENTATION_FAILURE_KIND=opencode
     orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "no commits produced"
     rm -f "$log_file"
     return 1
@@ -879,6 +954,10 @@ orchestrator_reconcile() {
     number="$(printf '%s' "$line" | jq -r '.ticket')"
     branch="$(printf '%s' "$line" | jq -r '.branch')"
     worktree="$(printf '%s' "$line" | jq -r '.worktree')"
+    if [[ "$(printf '%s' "$line" | jq -r '.phase')" == "failed" ]]; then
+      orchestrator_log "skip reconcile #$number: previous non-opencode failure is awaiting retry"
+      continue
+    fi
     session_id="$(printf '%s' "$line" | jq -r '.sessionId // ""')"
     if [[ "$session_id" == "null" ]]; then
       session_id=""
@@ -926,6 +1005,7 @@ orchestrator_reconcile() {
 
 orchestrator_poll_once() {
   local candidates active_count count line number title slug branch worktree
+  orchestrator_restore_failed_labels
   candidates="$(ct_candidate_issues)"
   active_count="$(orchestrator_state_active_count "$ORCHESTRATOR_STATE_FILE")"
   count="$(printf '%s' "$candidates" | jq 'length')"
@@ -942,8 +1022,12 @@ orchestrator_poll_once() {
     fi
 
     if orchestrator_state_has_ticket "$ORCHESTRATOR_STATE_FILE" "$number"; then
-      orchestrator_log "skip #$number ($title): already claimed"
-      continue
+      if [[ "$(orchestrator_state_phase "$ORCHESTRATOR_STATE_FILE" "$number")" == "failed" ]]; then
+        orchestrator_log "retrying #$number ($title) after non-opencode failure"
+      else
+        orchestrator_log "skip #$number ($title): already claimed"
+        continue
+      fi
     fi
 
     if ct_issue_is_blocked "$number"; then
@@ -962,23 +1046,12 @@ orchestrator_poll_once() {
     active_count=$((active_count + 1))
 
     if ! orchestrator_implement "$number" "$title" "$branch" "$worktree"; then
-      if orchestrator_state_has_ticket "$ORCHESTRATOR_STATE_FILE" "$number"; then
-        # Non-opencode failure (worktree/npm/push/PR): un-claim, restore the
-        # candidate label so the next poll re-claims the ticket, and clean up.
-        # When opencode failed twice (or produced no commits) the implementation
-        # already escalated and pruned, so the entry is gone.
-        orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
-        if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --add-label ready-for-agent; then
-          orchestrator_log "restored #$number to ready-for-agent after failed implementation"
-        else
-          orchestrator_log "WARNING: failed to restore ready-for-agent on #$number; it will need manual re-labelling"
-        fi
-        orchestrator_log "removed #$number from state after failed implementation"
-        if [[ "${CT_WORKTREE_CREATED:-0}" == "1" ]]; then
-          orchestrator_cleanup_worktree "$worktree" "$branch"
-        else
-          orchestrator_log "not cleaning up pre-existing worktree $worktree"
-        fi
+      if [[ "${CT_IMPLEMENTATION_FAILURE_KIND:-non-opencode}" == "opencode" ]]; then
+        orchestrator_log "#${number} opencode failure remains on the existing escalation path"
+      elif orchestrator_state_has_ticket "$ORCHESTRATOR_STATE_FILE" "$number"; then
+        # The opencode failure path has already escalated and pruned. Any
+        # remaining entry is a non-opencode failure and gets a bounded retry.
+        orchestrator_handle_non_opencode_failure "$number" "$branch" "$worktree" "worktree, dependency, push, or PR setup failed"
       else
         orchestrator_log "#$number already escalated and pruned after failed implementation"
       fi
