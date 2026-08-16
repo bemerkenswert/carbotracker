@@ -26,7 +26,9 @@ A ticket moves through phases as the orchestrator works it:
 stateDiagram-v2
     [*] --> implementing: poll finds eligible ticket, claim flips GitHub labels
     implementing --> awaiting_review: opencode done, PR opened
-    implementing --> [*]: failure, un-claim and clean up
+    implementing --> failed: non-opencode failure, count and clean up
+    failed --> implementing: label restored, retry on next poll
+    failed --> [*]: retry bound reached, escalate to needs-triage
     implementing --> [*]: opencode fails twice, escalated to needs-triage
     awaiting_review --> review_round: new comment on PR (newer than lastCommentAt)
     review_round --> awaiting_review: /review-comments succeeds or a retry fails
@@ -39,8 +41,9 @@ stateDiagram-v2
 ```
 
 `implementing` means the orchestrator is actively running a session for the
-ticket; `awaiting review` means the PR exists and a human should look at it.
-Only `implementing` entries count against the concurrency cap.
+ticket; `failed` means a non-opencode failure is waiting for a bounded retry;
+`awaiting review` means the PR exists and a human should look at it. Only
+`implementing` entries count against the concurrency cap.
 
 A claim is recorded **twice**: on the GitHub issue (remove `ready-for-agent`,
 add `in-progress`) and in the local state file. The label flip is what makes
@@ -225,6 +228,7 @@ Active tickets live in a single JSON array, written atomically
     "prNumber": 234,
     "lastCommentAt": "2026-08-13T00:07:00Z",
     "reviewFailures": 0,
+    "failureCount": 0,
     "reviewNoticePosted": false,
     "reviewNeedsHuman": false,
     "phase": "awaiting review",
@@ -242,9 +246,10 @@ Active tickets live in a single JSON array, written atomically
 | `prNumber`           | PR opened for the branch (`null` until it exists)                 |
 | `lastCommentAt`      | Newest human comment timestamp handled on the PR (`null` = never) |
 | `reviewFailures`     | Consecutive failed review rounds (resets on success)              |
+| `failureCount`       | Non-opencode implementation failures before the next retry        |
 | `reviewNoticePosted` | Whether the missing-session notice was already posted on the PR   |
 | `reviewNeedsHuman`   | Whether a review round paused polling for a human decision        |
-| `phase`              | `implementing` or `awaiting review`                               |
+| `phase`              | `implementing`, `failed`, or `awaiting review`                    |
 | `startedAt`          | UTC timestamp of the claim                                        |
 
 ## Data flow
@@ -281,7 +286,10 @@ flowchart TD
     J --> K[gh pr list --head branch → prNumber]
     K --> L[state: sessionId + prNumber, phase awaiting review]
     L --> M[gh issue comment: Started implementation. PR #N created.]
-    F -- failure --> N[un-claim + remove worktree/branch, retry next poll]
+    F -- failure --> N[failureCount++, phase failed, un-claim + clean up]
+    N --> N1{failureCount below bound?}
+    N1 -- yes --> N2[restore ready-for-agent; retry on next poll]
+    N1 -- no --> F4
     M --> O[merge poll: walk awaiting-review entries]
     O --> P0[gh pr view n → state]
     P0 -- MERGED --> P1[close issue: PR #n merged. Issue closed. → prune worktree/branch, remove from state]
@@ -319,15 +327,16 @@ merge poll prunes the worktree and closes the issue.
 Sourced from `ct-orchestrator.conf` (environment variables win over the conf
 file, which wins over defaults):
 
-| Variable                             | Default                                             |
-| ------------------------------------ | --------------------------------------------------- |
-| `ORCHESTRATOR_POLL_INTERVAL_SECONDS` | `300`                                               |
-| `ORCHESTRATOR_CONCURRENCY_CAP`       | `3`                                                 |
-| `ORCHESTRATOR_ISSUE_LABELS`          | `ready-for-agent,ticket`                            |
-| `ORCHESTRATOR_IN_PROGRESS_LABEL`     | `in-progress`                                       |
-| `ORCHESTRATOR_REVIEW_RETRIES`        | `3`                                                 |
-| `ORCHESTRATOR_STATE_FILE`            | `$HOME/.local/state/carbotracker/orchestrator.json` |
-| `ORCHESTRATOR_WORKTREE_PARENT`       | `$HOME/git/worktrees/carbotracker`                  |
+| Variable                              | Default                                             |
+| ------------------------------------- | --------------------------------------------------- |
+| `ORCHESTRATOR_POLL_INTERVAL_SECONDS`  | `300`                                               |
+| `ORCHESTRATOR_CONCURRENCY_CAP`        | `3`                                                 |
+| `ORCHESTRATOR_ISSUE_LABELS`           | `ready-for-agent,ticket`                            |
+| `ORCHESTRATOR_IN_PROGRESS_LABEL`      | `in-progress`                                       |
+| `ORCHESTRATOR_REVIEW_RETRIES`         | `3`                                                 |
+| `ORCHESTRATOR_IMPLEMENTATION_RETRIES` | `3`                                                 |
+| `ORCHESTRATOR_STATE_FILE`             | `$HOME/.local/state/carbotracker/orchestrator.json` |
+| `ORCHESTRATOR_WORKTREE_PARENT`        | `$HOME/git/worktrees/carbotracker`                  |
 
 ## Running
 
@@ -342,9 +351,10 @@ Follow the daemon with `journalctl --user -u carbotracker-orchestrator -f`.
 - Branch/worktree naming is derived once in the poll loop (`slugify`) and
   handed to `ct_worktree_add`, so the state file and the actual worktree can
   never drift apart.
-- A failed step un-claims the ticket and removes the worktree and branch, so
-  the next poll starts clean. This means push/PR failures retry the whole
-  `opencode` run, which is wasteful but simple and safe. Cleanup is guarded:
+- A failed step records a `failed` state and removes the worktree and branch, so
+  the next poll starts clean while the failure count survives a restart. Below
+  the implementation retry bound the ticket is restored to `ready-for-agent`;
+  at the bound it is escalated to `needs-triage`. Cleanup is guarded:
   only a worktree this run actually created (`CT_WORKTREE_CREATED`) is
   removed, so a parallel orchestrator that loses the claim race never deletes
   the winner's worktree. When `opencode` itself fails, the failure is not
