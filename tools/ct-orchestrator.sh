@@ -43,6 +43,8 @@ orchestrator_ensure_labels() {
     || orchestrator_log "WARNING: could not create or update suspect-diff label"
   gh label create human-approved --description "A human has approved an orchestrator warning" --color 0E8A16 --force >/dev/null 2>&1 \
     || orchestrator_log "WARNING: could not create or update human-approved label"
+  gh label create security-rule-approved --description "A human has approved a firestore.rules change" --color 006B75 --force >/dev/null 2>&1 \
+    || orchestrator_log "WARNING: could not create or update security-rule-approved label"
 }
 
 orchestrator_log() {

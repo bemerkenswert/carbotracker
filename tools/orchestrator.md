@@ -110,15 +110,24 @@ compared against itself.
 
 ## Merge gate
 
-The merge gate is a required status check — the `merge-gate` job in
-`.github/workflows/merge-gate.yml` — that runs on every PR open/sync/re-label
-event. It fails iff the PR carries `suspect-diff` without `human-approved`, and
-passes otherwise, so a flagged (off-task) PR cannot be merged by accident:
-branch protection on `main` requires it. A maintainer who has eyeballed a
-suspect PR adds `human-approved` to unblock it (the `suspect-diff` label may
-remain as an audit trail); removing `suspect-diff` also flips the gate green.
-The gate reads only the PR's labels from the event payload, so it needs no
-permissions and no checkout.
+The merge gate is a pair of required status checks — the `merge-gate` and
+`rules-gate` jobs in `.github/workflows/merge-gate.yml` — that run on every PR
+open/sync/re-label event; branch protection on `main` requires them.
+
+- `merge-gate` fails iff the PR carries `suspect-diff` without `human-approved`,
+  so a flagged (off-task) PR cannot be merged by accident. A maintainer who has
+  eyeballed a suspect PR adds `human-approved` to unblock it (the `suspect-diff`
+  label may remain as an audit trail); removing `suspect-diff` also flips the
+  gate green.
+- `rules-gate` fails iff the PR modifies `apps/carbotracker/firestore.rules`
+  without `security-rule-approved`, so a rules diff needs a human's sign-off
+  before it merges (rules deploy on merge and are project-global — see
+  ADR-0006).
+
+`merge-gate` reads only the PR's labels from the event payload, so it needs no
+permissions and no checkout; `rules-gate` additionally checks out the branch to
+diff the rules file against its base. Both labels are bootstrapped by
+`orchestrator_ensure_labels`.
 
 ## Crash recovery
 
