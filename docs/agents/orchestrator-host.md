@@ -107,8 +107,11 @@ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 # `gh auth login --with-token` hard-rejects any token missing the classic
 # scopes `repo`+`read:org`, so a `public_repo`-only classic token is a dead end.
 # Instead: create a fine-grained PAT repo-scoped to bemerkenswert/carbotracker
-# (Contents/Issues/Pull requests: read+write), put it in the env file the
-# daemon's unit sources (never commit it), and wire git pushes through it.
+# (Contents/Issues/Pull requests/Workflows/Administration: read+write), put it
+# in the env file the daemon's unit sources (never commit it), and wire git
+# pushes through it. Workflows is required to push commits touching
+# .github/workflows/ (e.g. the merge-gate workflow); Administration is required
+# for branch-protection rules (e.g. the Terraform labels-as-code ticket).
 mkdir -p ~/.config/carbotracker
 printf 'GH_TOKEN=<fine-grained-pat>\n' > ~/.config/carbotracker/orchestrator.env
 chmod 600 ~/.config/carbotracker/orchestrator.env
