@@ -2609,6 +2609,10 @@ exit 0'
 }
 
 test_state_load_missing
+test_state_load_corrupt
+test_state_add_creates_entry
+test_state_add_is_atomic_and_accumulates
+test_state_has_ticket
 test_state_loaded_but_empty_file
 test_state_complete_updates_entry
 test_state_complete_with_missing_values
