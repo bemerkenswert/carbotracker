@@ -62,6 +62,7 @@ fake_command() {
 
 install_fakes() {
   fake_command gh 'echo carbotracker'
+  fake_command rg 'echo ripgrep 15.2.0'
   fake_command systemctl 'exit 0'
   fake_command loginctl 'echo Linger=yes'
   fake_command sudo 'echo "Status: active"
@@ -182,7 +183,7 @@ test_green_main() {
     rc=$?
   fi
   assert_eq "green main exits 0" 0 "$rc"
-  assert_contains "green summary has no failures" "SUMMARY: 31 ok, 0 fail, 0 skip" "$out"
+  assert_contains "green summary has no failures" "SUMMARY: 32 ok, 0 fail, 0 skip" "$out"
   cleanup_sandbox
 }
 
@@ -200,7 +201,7 @@ test_gap_main() {
     rc=$?
   fi
   assert_eq "gap main exits non-zero" 1 "$rc"
-  assert_contains "gap summary reports one failure" "SUMMARY: 30 ok, 1 fail, 0 skip" "$out"
+  assert_contains "gap summary reports one failure" "SUMMARY: 31 ok, 1 fail, 0 skip" "$out"
   cleanup_sandbox
 }
 

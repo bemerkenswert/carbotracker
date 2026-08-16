@@ -122,6 +122,12 @@ verify_opencode() {
   else
     say_bad "opencode missing at ~/.opencode/bin"
   fi
+  if command -v rg >/dev/null 2>&1; then
+    say_info "rg: $(rg --version 2>/dev/null | head -1)"
+    say_ok "rg on PATH (opencode code search)"
+  else
+    say_bad "rg not on PATH (opencode code search)"
+  fi
 }
 
 verify_repo() {

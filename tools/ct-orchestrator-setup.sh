@@ -15,6 +15,7 @@
 #   - gh          GitHub CLI, authenticated with a fine-grained PAT via GH_TOKEN
 #   - jq          JSON processor used by the daemon scripts
 #   - opencode    The agent that implements tickets
+#   - rg          ripgrep, used by opencode's code-search tool
 #   - systemctl, loginctl (systemd user session)
 #
 # node/npm are installed by this script (via tools/ct-node-sync.sh) rather than
@@ -36,7 +37,7 @@ NODE_SYNC_SERVICE_NAME="carbotracker-node-sync"
 SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 
 # Prerequisites that must be installed and on PATH (also documented above).
-PREREQ_TOOLS=(gh git node npm jq opencode systemctl loginctl)
+PREREQ_TOOLS=(gh git node npm jq opencode rg systemctl loginctl)
 
 setup_log() {
   printf '[ct-orchestrator-setup] %s\n' "$*"

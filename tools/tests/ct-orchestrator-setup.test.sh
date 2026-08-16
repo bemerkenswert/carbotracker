@@ -128,13 +128,14 @@ fake_all_prereqs() {
   fake_command npm 'exit 0'
   fake_command jq 'exit 0'
   fake_command opencode 'exit 0'
+  fake_command rg 'exit 0'
   fake_command systemctl 'exit 0'
   fake_command loginctl 'exit 0'
 }
 
 test_check_prereqs_ok() {
   fake_all_prereqs
-  if check_prereqs gh git node npm jq opencode systemctl loginctl; then
+  if check_prereqs gh git node npm jq opencode rg systemctl loginctl; then
     pass "prereqs pass when all tools are present"
   else
     fail "prereqs pass when all tools are present"
@@ -144,7 +145,7 @@ test_check_prereqs_ok() {
 test_check_prereqs_missing() {
   fake_all_prereqs
   local output
-  output=$(check_prereqs gh git node npm jq opencode systemctl definitely-not-a-tool 2>&1 || true)
+  output=$(check_prereqs gh git node npm jq opencode rg systemctl definitely-not-a-tool 2>&1 || true)
   assert_contains "prereqs fail when a tool is missing" "definitely-not-a-tool" "$output"
 }
 

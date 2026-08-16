@@ -97,7 +97,7 @@ here are the OS-level prerequisites the script assumes.
 ### Prerequisites
 
 ```bash
-sudo apt update && sudo apt install -y git jq curl
+sudo apt update && sudo apt install -y git jq curl ripgrep
 
 # nvm (Node Version Manager) — the setup script installs the repo's Node major
 # (see "follow-major" below) and re-points ~/.nvm/node-current
