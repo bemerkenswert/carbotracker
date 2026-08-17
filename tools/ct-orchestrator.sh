@@ -280,17 +280,20 @@ orchestrator_opencode_session_id() {
 }
 
 orchestrator_pr_number_for_branch() {
-  local branch="$1"
+  local branch="$1" json
   # --state all so a merged or closed PR for the branch still counts: during
   # crash recovery the orchestrator must never open a duplicate PR for a
-  # branch that already has one in any state.
-  gh pr list --head "$branch" --state all --json number 2>/dev/null \
-    | jq -r 'sort_by(.number) | reverse | .[0].number // empty' 2>/dev/null || true
+  # branch that already has one in any state. Fails closed — when gh is down
+  # the caller defers rather than assuming "no PR" and creating a duplicate.
+  if ! json="$(orchestrator_gh "listing PRs for branch $branch" gh pr list --head "$branch" --state all --json number)"; then
+    return 1
+  fi
+  printf '%s' "$json" | jq -r 'sort_by(.number) | reverse | .[0].number // empty' 2>/dev/null || true
 }
 
 orchestrator_pr_field() {
   local pr="$1" field="$2"
-  gh pr view "$pr" --json "$field" --jq ".$field" 2>/dev/null || true
+  orchestrator_gh "reading $field of PR #$pr" gh pr view "$pr" --json "$field" --jq ".$field"
 }
 
 orchestrator_pr_state() {
@@ -320,7 +323,7 @@ orchestrator_labels_are_suspect() {
 }
 
 orchestrator_pr_latest_comment_at() {
-  local pr="$1" me inline reviews general latest
+  local pr="$1" me inline reviews general latest inline_raw reviews_raw general_raw
   # Review surfaces: inline threads (pulls/<n>/comments), top-level review
   # submissions (pulls/<n>/reviews), and general comments on the PR
   # conversation (issues/<n>/comments). The newest timestamp across them is
@@ -329,11 +332,22 @@ orchestrator_pr_latest_comment_at() {
   # only when the AI-source footer ends its body (a bare `contains` would also
   # match a human quote-reply that embeds a quoted footer mid-body), and a
   # review submission with an empty body carries no human signal and is
-  # skipped too. ISO-8601 timestamps sort lexically.
+  # skipped too. ISO-8601 timestamps sort lexically. Fails closed: any surface
+  # read that fails aborts the probe so a caller never mistakes an outage for
+  # "no comments".
   me="$ORCHESTRATOR_AI_FOOTER_END_RE"
-  inline="$(gh api "repos/{owner}/{repo}/pulls/$pr/comments" 2>/dev/null | jq -r --arg me "$me" "[.[] | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | .created_at] | max // empty" 2>/dev/null || true)"
-  reviews="$(gh api "repos/{owner}/{repo}/pulls/$pr/reviews" 2>/dev/null | jq -r --arg me "$me" "[.[] | select(.submitted_at != null) | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | select((.body // \"\") | test(\"[^[:space:]]\")) | .submitted_at] | max // empty" 2>/dev/null || true)"
-  general="$(gh api "repos/{owner}/{repo}/issues/$pr/comments" 2>/dev/null | jq -r --arg me "$me" "[.[] | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | .created_at] | max // empty" 2>/dev/null || true)"
+  if ! inline_raw="$(orchestrator_gh "reading inline comments on PR #$pr" gh api "repos/{owner}/{repo}/pulls/$pr/comments")"; then
+    return 1
+  fi
+  if ! reviews_raw="$(orchestrator_gh "reading reviews on PR #$pr" gh api "repos/{owner}/{repo}/pulls/$pr/reviews")"; then
+    return 1
+  fi
+  if ! general_raw="$(orchestrator_gh "reading general comments on PR #$pr" gh api "repos/{owner}/{repo}/issues/$pr/comments")"; then
+    return 1
+  fi
+  inline="$(printf '%s' "$inline_raw" | jq -r --arg me "$me" "[.[] | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | .created_at] | max // empty" 2>/dev/null || true)"
+  reviews="$(printf '%s' "$reviews_raw" | jq -r --arg me "$me" "[.[] | select(.submitted_at != null) | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | select((.body // \"\") | test(\"[^[:space:]]\")) | .submitted_at] | max // empty" 2>/dev/null || true)"
+  general="$(printf '%s' "$general_raw" | jq -r --arg me "$me" "[.[] | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | .created_at] | max // empty" 2>/dev/null || true)"
   latest="$inline"
   if [[ -n "$reviews" && ( -z "$latest" || "$reviews" > "$latest" ) ]]; then
     latest="$reviews"
@@ -344,9 +358,28 @@ orchestrator_pr_latest_comment_at() {
   printf '%s' "$latest"
 }
 
+# Run a gh invocation, printing its stdout on success and logging a warning with
+# the gh error on failure. Returns gh's exit status, so a caller can distinguish
+# a failed read from an empty one (fail-closed). Every correctness-critical gh
+# call goes through here so an outage's 503s are visible in the journal instead
+# of swallowed.
+orchestrator_gh() {
+  local desc="$1" out rc err
+  shift
+  err="$(mktemp "${TMPDIR:-/tmp}/ct-gh-err.XXXXXX")"
+  out="$("$@" 2>"$err")"
+  rc=$?
+  if [[ $rc -ne 0 ]]; then
+    orchestrator_log "WARNING: $desc failed: $(tr '\n' ' ' <"$err")"
+  fi
+  rm -f "$err"
+  printf '%s' "$out"
+  return $rc
+}
+
 orchestrator_pr_post_comment() {
   local pr="$1" body="$2"
-  gh api "repos/{owner}/{repo}/issues/$pr/comments" -f body="$body" >/dev/null 2>&1
+  orchestrator_gh "posting comment on PR #$pr" gh api "repos/{owner}/{repo}/issues/$pr/comments" -f body="$body" >/dev/null
 }
 
 orchestrator_check_suspect_diff() {
@@ -415,7 +448,27 @@ _Created by carbotracker's agent skills._"; then
 
 orchestrator_pr_reply_to_thread() {
   local pr="$1" comment_id="$2" body="$3"
-  gh api "repos/{owner}/{repo}/pulls/$pr/comments/$comment_id/replies" -f body="$body" >/dev/null 2>&1
+  orchestrator_gh "replying to comment $comment_id on PR #$pr" gh api "repos/{owner}/{repo}/pulls/$pr/comments/$comment_id/replies" -f body="$body" >/dev/null
+}
+
+# True when a reply to a comment already exists, so a resumed or retried act
+# step never double-posts: an inline thread comment counts as replied when some
+# footer-bearing reply is threaded to it (in_reply_to_id), and a general
+# comment counts as replied when a footer-bearing PR-conversation comment starts
+# with the planned reply body (issue comments carry no threading).
+orchestrator_pr_reply_already_posted() {
+  local pr="$1" comment_id="$2" path="$3" reply="$4"
+  local me
+  me="$ORCHESTRATOR_AI_FOOTER_END_RE"
+  if [[ "$path" == "null" || -z "$path" ]]; then
+    orchestrator_gh "reading general comments on PR #$pr" gh api "repos/{owner}/{repo}/issues/$pr/comments" \
+      | jq -e --arg me "$me" --arg reply "$reply" \
+        'any(.[]; ((.body // "") | test($me)) and ((.body // "") | startswith($reply)))' >/dev/null 2>&1
+  else
+    orchestrator_gh "reading inline comments on PR #$pr" gh api "repos/{owner}/{repo}/pulls/$pr/comments" \
+      | jq -e --arg id "$comment_id" --arg me "$me" \
+        'any(.[]; ((.in_reply_to_id // 0) | tostring) == $id and ((.body // "") | test($me)))' >/dev/null 2>&1
+  fi
 }
 
 # Run one headless opencode session in the worktree — the ticket's original
@@ -482,7 +535,10 @@ orchestrator_review_act() {
     # nothing to review does the round succeed as a no-op — silently, with no
     # failure notice.
     last_comment_at="$(orchestrator_state_load "$ORCHESTRATOR_STATE_FILE" | jq -r --argjson n "$number" '[.[] | select(.ticket == $n) | .lastCommentAt // ""][0] // ""' 2>/dev/null || true)"
-    latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
+    if ! latest="$(orchestrator_pr_latest_comment_at "$pr_number")"; then
+      orchestrator_log "review act #$number: could not re-verify review surfaces on PR #$pr_number; keeping the watermark"
+      return 1
+    fi
     if [[ -n "$latest" && ( -z "$last_comment_at" || "$latest" > "$last_comment_at" ) ]]; then
       orchestrator_log "review act #$number: plan is empty but human review content exists on PR #$pr_number; keeping the watermark"
       return 1
@@ -519,7 +575,12 @@ orchestrator_review_act() {
     reply="$(orchestrator_strip_ai_footer "$reply")"
     body="${reply}
 ${ORCHESTRATOR_AI_FOOTER}"
-    if [[ "$path" == "null" || -z "$path" ]]; then
+    # Dedup guard: a resumed or retried act step must never double-post a reply
+    # a previous partial run already landed.
+    if orchestrator_pr_reply_already_posted "$pr_number" "$comment_id" "$path" "$reply"; then
+      posted=$((posted + 1))
+      orchestrator_log "review act #$number: reply to comment $comment_id on PR #$pr_number already posted; skipping ($type)"
+    elif [[ "$path" == "null" || -z "$path" ]]; then
       if orchestrator_pr_post_comment "$pr_number" "$body"; then
         posted=$((posted + 1))
         orchestrator_log "review act #$number: replied to general comment $comment_id on PR #$pr_number ($type)"
@@ -539,8 +600,9 @@ ${ORCHESTRATOR_AI_FOOTER}"
     orchestrator_log "ERROR: no reply posted on PR #$pr_number; keeping the watermark"
     return 1
   fi
-  latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
-  if [[ -n "$latest" ]]; then
+  if ! latest="$(orchestrator_pr_latest_comment_at "$pr_number")"; then
+    orchestrator_log "WARNING: review act #$number: could not read the watermark on PR #$pr_number; the next poll will re-check"
+  elif [[ -n "$latest" ]]; then
     orchestrator_state_mark_reviewed "$ORCHESTRATOR_STATE_FILE" "$number" "$latest"
     orchestrator_log "review act #$number: advanced watermark to $latest on PR #$pr_number"
   fi
@@ -675,7 +737,7 @@ orchestrator_pr_has_new_agent_general_comment() {
 
 orchestrator_review_round() {
   local number="$1" session_id="$2" pr_number="$3" worktree="$4"
-  local failures retries latest body plan_file temp_plan
+  local failures retries latest body plan_file persistent_plan pr_state analyze_failed
   retries="${ORCHESTRATOR_REVIEW_RETRIES:-3}"
   failures="$(orchestrator_state_review_failures "$ORCHESTRATOR_STATE_FILE" "$number")"
   if [[ "$failures" -ge "$retries" ]]; then
@@ -683,20 +745,44 @@ orchestrator_review_round() {
     failures=0
     orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" 0
   fi
-  plan_file="${ORCHESTRATOR_REVIEW_PLAN_FILE:-}"
-  temp_plan=""
-  if [[ -z "$plan_file" ]]; then
-    temp_plan="$(mktemp "${TMPDIR:-/tmp}/carbotracker-review-plan.XXXXXX")"
-    plan_file="$temp_plan"
+  # The PR gate: a round is never launched on a PR that is merged or closed
+  # (the merge poll owns those entries), and an unreadable state defers the
+  # round quietly — an outage must not burn tokens or spam notices on a PR the
+  # daemon cannot reason about.
+  if ! pr_state="$(orchestrator_pr_state "$pr_number")"; then
+    orchestrator_log "review #$number: could not determine state of PR #$pr_number; deferring the round"
+    return 0
   fi
-  if orchestrator_review_analyze "$number" "$session_id" "$pr_number" "$worktree" "$plan_file" \
+  if [[ "$pr_state" == "MERGED" || "$pr_state" == "CLOSED" ]]; then
+    orchestrator_log "review #$number: PR #$pr_number is $pr_state; skipping the review round"
+    return 0
+  fi
+  # The plan file is the handoff between analyze and act. By default it lives
+  # next to the state file (a persistent directory, unlike /tmp), so a daemon
+  # restart or a failed act step resumes from the act phase instead of burning
+  # a fresh analyze. An ORCHESTRATOR_REVIEW_PLAN_FILE override keeps the
+  # embedding/test behavior unchanged.
+  plan_file="${ORCHESTRATOR_REVIEW_PLAN_FILE:-}"
+  persistent_plan=""
+  if [[ -z "$plan_file" ]]; then
+    persistent_plan="$(dirname "$ORCHESTRATOR_STATE_FILE")/review-plan-$number.json"
+    plan_file="$persistent_plan"
+  fi
+  analyze_failed=""
+  if [[ -z "$persistent_plan" || ! -f "$persistent_plan" ]]; then
+    if ! orchestrator_review_analyze "$number" "$session_id" "$pr_number" "$worktree" "$plan_file"; then
+      analyze_failed=1
+    fi
+  else
+    orchestrator_log "review #$number: resuming from persisted plan $persistent_plan"
+  fi
+  if [[ -z "$analyze_failed" ]] \
       && orchestrator_review_act "$number" "$pr_number" "$plan_file" "$session_id" "$worktree"; then
-    rm -f "$temp_plan"
+    rm -f "$persistent_plan"
     orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" 0
     orchestrator_log "review #$number: round succeeded on PR #$pr_number"
     return 0
   fi
-  rm -f "$temp_plan"
   failures=$((failures + 1))
   orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" "$failures"
   body="Automated review round failed (attempt $failures/$retries) on PR #$pr_number. The orchestrator will retry.${ORCHESTRATOR_AI_FOOTER}"
@@ -706,6 +792,9 @@ orchestrator_review_round() {
     orchestrator_log "WARNING: failed to post failure notice on PR #$pr_number"
   fi
   if [[ "$failures" -ge "$retries" ]]; then
+    # The round is abandoned: the plan's analysis can only stale, and a newer
+    # human comment — the thing that resumes a paused PR — needs a fresh plan.
+    rm -f "$persistent_plan"
     latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
     if [[ -n "$latest" ]]; then
       orchestrator_state_mark_reviewed "$ORCHESTRATOR_STATE_FILE" "$number" "$latest"
@@ -740,18 +829,24 @@ orchestrator_review_poll() {
       # Steffen once so the stale PR is visible, then stay quiet.
       notice_posted="$(printf '%s' "$line" | jq -r '.reviewNoticePosted // false')"
       if [[ "$notice_posted" != "true" ]]; then
-        orchestrator_pr_post_comment "$pr_number" "Cannot auto-respond to reviews on PR #$pr_number: no opencode session was recorded for ticket #$number. A maintainer should handle this PR manually.
+        if ! orchestrator_pr_post_comment "$pr_number" "Cannot auto-respond to reviews on PR #$pr_number: no opencode session was recorded for ticket #$number. A maintainer should handle this PR manually.
 ---
-_Created by carbotracker's agent skills._"
-        orchestrator_state_mark_notice_posted "$ORCHESTRATOR_STATE_FILE" "$number"
-        orchestrator_log "review #$number: posted missing-session notice on PR #$pr_number"
+_Created by carbotracker's agent skills._"; then
+          orchestrator_log "WARNING: failed to post missing-session notice on PR #$pr_number"
+        else
+          orchestrator_state_mark_notice_posted "$ORCHESTRATOR_STATE_FILE" "$number"
+          orchestrator_log "review #$number: posted missing-session notice on PR #$pr_number"
+        fi
       else
         orchestrator_log "skip review #$number: no session recorded (notice already posted)"
       fi
       continue
     fi
 
-    latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
+    if ! latest="$(orchestrator_pr_latest_comment_at "$pr_number")"; then
+      orchestrator_log "review #$number: could not read review surfaces on PR #$pr_number; deferring"
+      continue
+    fi
     if [[ -z "$latest" ]]; then
       orchestrator_log "review #$number: no comments on PR #$pr_number"
       continue
@@ -776,34 +871,67 @@ _Created by carbotracker's agent skills._"
 }
 
 orchestrator_prune_ticket() {
-  local number="$1" branch="$2" worktree="$3"
+  local number="$1" branch="$2" worktree="$3" stash_entry="${4:-}"
   orchestrator_cleanup_worktree "$worktree" "$branch"
   orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
-  orchestrator_log "pruned #$number: worktree removed, branch deleted, removed from state"
-}
-
-# The escalation-comment line naming a stashed entry, or empty when no stash
-# exists — shared by every escalation surface so the wording cannot drift.
-orchestrator_stash_line() {
-  local stash_ref="$1" number="$2"
-  if [[ -n "$stash_ref" ]]; then
-    printf '\nUncommitted work was stashed as `%s` before pruning and can be recovered in place with `ct-recover-stalled.sh %s`.' "$stash_ref" "$number"
+  rm -f "$(dirname "$ORCHESTRATOR_STATE_FILE")/review-plan-$number.json"
+  if [[ -n "$stash_entry" ]]; then
+    orchestrator_log "pruned #$number: worktree removed, branch deleted, removed from state; uncommitted work stashed as $stash_entry"
+  else
+    orchestrator_log "pruned #$number: worktree removed, branch deleted, removed from state"
   fi
 }
 
-# Find the ticket's existing stash entry (from a previous failed escalation) or
-# create a fresh one, printing the stash ref or nothing. Re-uses the same
-# selection the recovery tool uses, so a retried escalation names the stash it
-# will actually recover from.
-orchestrator_stash_for_escalation() {
-  local number="$1" worktree="$2"
-  local line
-  line="$(ct_ticket_stash_line "$number")"
-  if [[ -n "$line" ]]; then
-    printf '%s' "${line%%$'\t'*}"
+# Stash any uncommitted work (tracked changes and untracked files) in the
+# ticket's worktree before an escalation prunes it, so a maintainer can recover
+# the work later from the repo's stash list. A clean or missing worktree
+# produces no stash and returns 0. A dirty tree whose stash fails returns 1 so
+# the caller defers the escalation rather than destroying the work it could not
+# protect. Prints the stash entry's message on stdout (empty when nothing was
+# stashed). The message follows the contract: carbotracker: ticket <number>
+# uncommitted work at escalation (<ISO-8601 UTC timestamp>, session <id>). The
+# session id may be passed in (the merge poll carries it in the state entry);
+# otherwise it is looked up by the ticket's session title.
+orchestrator_stash_escalation_work() {
+  local number="$1" worktree="$2" session_id="${3:-}"
+  local timestamp message
+  if [[ ! -d "$worktree" ]]; then
     return 0
   fi
-  orchestrator_stash_before_prune "$number" "$worktree"
+  if ! git -C "$worktree" rev-parse --git-dir >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ -z "$(git -C "$worktree" status --porcelain 2>/dev/null)" ]]; then
+    return 0
+  fi
+  if [[ -z "$session_id" ]]; then
+    session_id="$(orchestrator_opencode_session_id "carbotracker-ticket-$number")"
+  fi
+  timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  message="carbotracker: ticket $number uncommitted work at escalation ($timestamp, session ${session_id:-none})"
+  if git -C "$worktree" stash push --include-untracked --message "$message" >/dev/null 2>&1; then
+    orchestrator_log "escalation #$number: stashed uncommitted work ($message)"
+    printf '%s' "$message"
+    return 0
+  fi
+  orchestrator_log "ERROR: could not stash uncommitted work for #$number before pruning; deferring the escalation so the work survives"
+  return 1
+}
+
+# When an escalation fails to land (gh down), the state entry survives for the
+# next poll's retry. Restore the pre-escalation stash so the worktree returns
+# to its dirty state and the retry re-stashes with a fresh timestamp — the
+# retry's comment must name the entry it actually created, not a stale one.
+orchestrator_restore_stash_after_failed_escalation() {
+  local number="$1" worktree="$2" stash_entry="$3"
+  if [[ -z "$stash_entry" ]]; then
+    return 0
+  fi
+  if git -C "$worktree" stash pop >/dev/null 2>&1; then
+    orchestrator_log "escalation #$number: restored the stashed work after the escalation failed; the retry will re-stash"
+  else
+    orchestrator_log "WARNING: could not restore the stashed work for #$number after a failed escalation; the stash entry $stash_entry remains in the repo"
+  fi
 }
 
 orchestrator_merge_behind_pr() {
@@ -927,7 +1055,7 @@ orchestrator_merge_conflict_pr() {
 }
 
 orchestrator_merge_poll() {
-  local line number pr_number branch worktree session_id state merge_state labels stash_ref stash_line
+  local line number pr_number branch worktree session_id state merge_state labels stash_entry body
   while IFS= read -r line; do
     number="$(printf '%s' "$line" | jq -r '.ticket')"
     pr_number="$(printf '%s' "$line" | jq -r '.prNumber')"
@@ -943,7 +1071,10 @@ orchestrator_merge_poll() {
       continue
     fi
 
-    state="$(orchestrator_pr_state "$pr_number")"
+    if ! state="$(orchestrator_pr_state "$pr_number")"; then
+      orchestrator_log "WARNING: could not determine state of PR #$pr_number for #$number"
+      continue
+    fi
     case "$state" in
       MERGED)
         orchestrator_log "merge detected: PR #$pr_number merged for #$number; closing issue"
@@ -963,24 +1094,33 @@ orchestrator_merge_poll() {
         # removed only once the escalation lands, so a transient gh failure
         # retries next poll instead of stranding an un-labelled issue.
         orchestrator_log "PR #$pr_number closed without merge for #$number; pruning worktree and escalating to triage"
-        stash_ref="$(orchestrator_stash_for_escalation "$number" "$worktree")"
-        stash_line="$(orchestrator_stash_line "$stash_ref" "$number")"
-        if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --add-label needs-triage \
-          && gh issue comment "$number" --body "PR #$pr_number was closed without merging. Escalated to needs-triage for human review.
-${stash_line}
----
-_Created by carbotracker's agent skills._"; then
-          orchestrator_prune_ticket "$number" "$branch" "$worktree"
-          orchestrator_log "escalated #$number to needs-triage and pruned worktree${stash_ref:+ (stashed $stash_ref)}"
+        if ! stash_entry="$(orchestrator_stash_escalation_work "$number" "$worktree" "$session_id")"; then
+          # The stash is the last line of defence for the rejected work: when
+          # it fails, pruning would destroy the work, so the escalation is
+          # deferred and the entry retried on the next poll.
+          orchestrator_log "WARNING: could not stash uncommitted work for #$number; keeping the entry and worktree to retry the escalation"
         else
-          orchestrator_log "WARNING: failed to escalate #$number; keeping entry to retry next poll"
+          body="PR #$pr_number was closed without merging. Escalated to needs-triage for human review."
+          if [[ -n "$stash_entry" ]]; then
+            body+=$'\n'"Uncommitted work was stashed before pruning: \`${stash_entry}\`."
+          fi
+          body+=$'\n---\n_Created by carbotracker\'s agent skills._'
+          if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --add-label needs-triage \
+            && gh issue comment "$number" --body "$body"; then
+            orchestrator_prune_ticket "$number" "$branch" "$worktree" "$stash_entry"
+            orchestrator_log "escalated #$number to needs-triage and pruned worktree"
+          else
+            orchestrator_restore_stash_after_failed_escalation "$number" "$worktree" "$stash_entry"
+            orchestrator_log "WARNING: failed to escalate #$number; keeping entry to retry next poll"
+          fi
         fi
         ;;
       OPEN)
-        merge_state="$(orchestrator_pr_merge_state "$pr_number")"
-        if [[ -z "$merge_state" ]]; then
+        if ! merge_state="$(orchestrator_pr_merge_state "$pr_number")"; then
           orchestrator_log "WARNING: could not determine the merge status of PR #$pr_number; keeping entry to retry next poll"
-        elif [[ "$merge_state" == "BEHIND" || "$merge_state" == "DIRTY" ]]; then
+          continue
+        fi
+        if [[ "$merge_state" == "BEHIND" || "$merge_state" == "DIRTY" ]]; then
           # Both auto-merge actions share the gate check: a flagged PR (suspect
           # without human-approved) is skipped until a maintainer approves it.
           # The labels are read live each poll, so an approval unblocks the PR
@@ -1039,47 +1179,22 @@ orchestrator_push_and_open_pr() {
     orchestrator_log "ERROR: git push failed for #$number"
     return 1
   fi
-  pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+  if ! pr_number="$(orchestrator_pr_number_for_branch "$branch")"; then
+    orchestrator_log "ERROR: could not determine PR for branch $branch after pushing; deferring PR creation"
+    return 1
+  fi
   if [[ -z "$pr_number" ]]; then
     if ! orchestrator_create_pr "$number" "$title" "$branch"; then
       return 1
     fi
-    pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+    if ! pr_number="$(orchestrator_pr_number_for_branch "$branch")"; then
+      orchestrator_log "ERROR: could not confirm PR for branch $branch after creation; deferring"
+      return 1
+    fi
   fi
   orchestrator_check_suspect_diff "$number" "$pr_number" "$worktree"
   orchestrator_check_overlap "$number" "$pr_number" "$worktree"
   printf '%s' "$pr_number"
-}
-
-# Stash any uncommitted work (including untracked files) in $worktree before a
-# prune destroys it, so a stalled run's recoverable work survives escalation.
-# The stash message is the contract the recovery tool greps for, so it always
-# carries the ticket number, a UTC timestamp, and the session id. A clean tree
-# produces no stash. Prints the newest stash ref (e.g. stash@{0}) when a stash
-# was created, nothing otherwise.
-orchestrator_stash_before_prune() {
-  local number="$1" worktree="$2"
-  local session_id message ref
-  if [[ ! -d "$worktree" ]]; then
-    return 0
-  fi
-  if ! git -C "$worktree" rev-parse --git-dir >/dev/null 2>&1; then
-    orchestrator_log "WARNING: $worktree is not a git repo; nothing to stash before pruning"
-    return 0
-  fi
-  if [[ -z "$(git -C "$worktree" status --porcelain 2>/dev/null)" ]]; then
-    orchestrator_log "stash #$number: clean tree, no stash entry created"
-    return 0
-  fi
-  session_id="$(orchestrator_opencode_session_id "carbotracker-ticket-$number")"
-  message="$(ct_stash_message_prefix "$number")$(date -u +%Y-%m-%dT%H:%M:%SZ), session ${session_id:-none})"
-  if ! git -C "$worktree" stash push --include-untracked --message "$message" >/dev/null 2>&1; then
-    orchestrator_log "WARNING: failed to stash uncommitted work for #$number before pruning; work may be lost"
-    return 0
-  fi
-  ref="$(git -C "$worktree" stash list --format='%gd' 2>/dev/null | head -n1)"
-  orchestrator_log "stash #$number: stashed uncommitted work as $ref (session ${session_id:-none})"
-  printf '%s' "$ref"
 }
 
 orchestrator_cleanup_worktree() {
@@ -1157,25 +1272,29 @@ orchestrator_escalate_opencode_failure() {
 
 orchestrator_escalate_failure() {
   local number="$1" branch="$2" worktree="$3" log_file="$4" reason="$5"
-  local tail snippet body stash_ref stash_line
-  stash_ref="$(orchestrator_stash_for_escalation "$number" "$worktree")"
-  tail="$(tail -n 30 "$log_file" 2>/dev/null || true)"
-  snippet=""
-  if [[ -n "$tail" ]]; then
-    snippet="$(printf '\n```\n%s\n```' "$tail")"
+  local tail body stash_entry
+  # Stash before posting so the escalation comment can name the entry. When the
+  # stash fails the escalation is deferred: pruning would destroy the very work
+  # the stash is meant to protect, so the entry and worktree stay put.
+  if ! stash_entry="$(orchestrator_stash_escalation_work "$number" "$worktree")"; then
+    return 1
   fi
-  stash_line="$(orchestrator_stash_line "$stash_ref" "$number")"
-  body="Automated implementation of #$number failed: $reason. Escalated to needs-triage for human review.
-${stash_line}
-${snippet}
----
-_Created by carbotracker's agent skills._"
+  tail="$(tail -n 30 "$log_file" 2>/dev/null || true)"
+  body="Automated implementation of #$number failed: $reason. Escalated to needs-triage for human review."
+  if [[ -n "$stash_entry" ]]; then
+    body+=$'\n'"Uncommitted work was stashed before pruning: \`${stash_entry}\`."
+  fi
+  if [[ -n "$tail" ]]; then
+    body+="$(printf '\n```\n%s\n```' "$tail")"
+  fi
+  body+=$'\n---\n_Created by carbotracker\'s agent skills._'
   if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --remove-label ticket --add-label needs-triage \
     && gh issue comment "$number" --body "$body"; then
-    orchestrator_prune_ticket "$number" "$branch" "$worktree"
-    orchestrator_log "escalated #$number to needs-triage after $reason; pruned worktree and removed from state${stash_ref:+ (stashed $stash_ref)}"
+    orchestrator_prune_ticket "$number" "$branch" "$worktree" "$stash_entry"
+    orchestrator_log "escalated #$number to needs-triage after $reason; pruned worktree and removed from state"
     return 0
   fi
+  orchestrator_restore_stash_after_failed_escalation "$number" "$worktree" "$stash_entry"
   orchestrator_log "WARNING: failed to escalate #$number; leaving entry in state for the poll loop to un-claim"
   return 1
 }
@@ -1194,7 +1313,7 @@ orchestrator_restore_failed_labels() {
 
 orchestrator_handle_non_opencode_failure() {
   local number="$1" branch="$2" worktree="$3" reason="$4"
-  local failures retries stash_ref
+  local failures retries
   retries="$ORCHESTRATOR_IMPLEMENTATION_RETRIES"
   orchestrator_state_mark_failed "$ORCHESTRATOR_STATE_FILE" "$number"
   failures="$(orchestrator_state_failure_count "$ORCHESTRATOR_STATE_FILE" "$number")"
@@ -1210,9 +1329,7 @@ orchestrator_handle_non_opencode_failure() {
     orchestrator_log "WARNING: failed to restore ready-for-agent on #$number; it will need manual re-labelling"
   fi
   if [[ "${CT_WORKTREE_CREATED:-0}" == "1" ]]; then
-    stash_ref="$(orchestrator_stash_before_prune "$number" "$worktree")"
     orchestrator_cleanup_worktree "$worktree" "$branch"
-    orchestrator_log "cleaned up worktree after non-opencode failure for #$number${stash_ref:+ (stashed $stash_ref)}"
   else
     orchestrator_log "not cleaning up pre-existing worktree $worktree"
   fi
@@ -1384,12 +1501,20 @@ orchestrator_recover_pushed_branch() {
   if [[ -z "$session_id" ]]; then
     session_id="$(orchestrator_opencode_session_id "carbotracker-ticket-$number")"
   fi
-  pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+  # Fail closed: when the PR lookup fails (gh down), do not assume "no PR" and
+  # create a duplicate — defer and let the next poll's reconcile retry.
+  if ! pr_number="$(orchestrator_pr_number_for_branch "$branch")"; then
+    orchestrator_log "ERROR: could not determine PR for branch $branch while recovering; deferring"
+    return 1
+  fi
   if [[ -z "$pr_number" ]]; then
     if ! orchestrator_create_pr "$number" "$title" "$branch"; then
       return 1
     fi
-    pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+    if ! pr_number="$(orchestrator_pr_number_for_branch "$branch")"; then
+      orchestrator_log "ERROR: could not confirm PR for branch $branch after creation; deferring"
+      return 1
+    fi
   fi
   orchestrator_check_suspect_diff "$number" "$pr_number" "$worktree"
   orchestrator_check_overlap "$number" "$pr_number" "$worktree"
@@ -1415,7 +1540,7 @@ _Created by carbotracker's agent skills._"; then
 }
 
 orchestrator_reconcile() {
-  local line number title branch worktree session_id pr_number
+  local line number title branch worktree session_id pr_number plan_file plan_ticket tickets
   orchestrator_log "reconciling state file against observable git facts"
   while IFS= read -r line; do
     number="$(printf '%s' "$line" | jq -r '.ticket')"
@@ -1429,15 +1554,17 @@ orchestrator_reconcile() {
     if [[ "$session_id" == "null" ]]; then
       session_id=""
     fi
-    title="$(gh issue view "$number" --json title --jq .title 2>/dev/null || true)"
-    if [[ -z "$title" ]]; then
+    if ! title="$(orchestrator_gh "resolving issue #$number" gh issue view "$number" --json title --jq .title)"; then
       # gh is transiently down (or the issue is gone): do not destroy state —
-      # leave the entry untouched so the next restart re-inspects it.
-      orchestrator_log "WARNING: could not resolve issue #$number; skipping entry until the next restart"
+      # leave the entry untouched so the next poll's reconcile re-inspects it.
+      orchestrator_log "WARNING: could not resolve issue #$number; skipping entry until the next poll"
       continue
     fi
 
-    pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+    if ! pr_number="$(orchestrator_pr_number_for_branch "$branch")"; then
+      orchestrator_log "WARNING: could not determine PR for branch $branch; skipping entry until the next poll"
+      continue
+    fi
     if [[ -n "$pr_number" ]]; then
       if [[ -z "$session_id" ]]; then
         session_id="$(orchestrator_opencode_session_id "carbotracker-ticket-$number")"
@@ -1468,6 +1595,19 @@ orchestrator_reconcile() {
     orchestrator_log "recovered #$number: nothing recoverable; cleaning up"
     orchestrator_drop_unrecoverable "$number" "$branch" "$worktree"
   done < <(orchestrator_state_load "$ORCHESTRATOR_STATE_FILE" | jq -c '.[]')
+
+  # Sweep orphaned persisted plans: a plan whose ticket is no longer in state
+  # can only stale. Plans for live tickets are left for the review round.
+  tickets="$(orchestrator_state_load "$ORCHESTRATOR_STATE_FILE" | jq -r '[.[].ticket] | join(" ")' 2>/dev/null || true)"
+  for plan_file in "$(dirname "$ORCHESTRATOR_STATE_FILE")"/review-plan-*.json; do
+    [[ -f "$plan_file" ]] || continue
+    plan_ticket="${plan_file##*/review-plan-}"
+    plan_ticket="${plan_ticket%.json}"
+    if ! [[ " $tickets " == *" $plan_ticket "* ]]; then
+      rm -f "$plan_file"
+      orchestrator_log "removed orphaned review plan $plan_file (ticket $plan_ticket no longer in state)"
+    fi
+  done
 }
 
 orchestrator_poll_once() {
@@ -1551,9 +1691,14 @@ orchestrator_self_refresh() {
 
 orchestrator_daemon() {
   orchestrator_log "orchestrator started: poll every ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s, concurrency cap $ORCHESTRATOR_CONCURRENCY_CAP, model $ORCHESTRATOR_MODEL, state $ORCHESTRATOR_STATE_FILE"
-  orchestrator_reconcile
   while true; do
     orchestrator_self_refresh
+    # Reconcile at the top of every poll, not just at startup: a transiently
+    # failed recovery (e.g. PR creation during a gh outage) retries on the poll
+    # cadence instead of waiting for a restart. Safe because all implement and
+    # review work is synchronous within a poll, so no entry is ever mid-flight
+    # when a poll-boundary reconcile observes it.
+    orchestrator_reconcile
     orchestrator_poll_once
     orchestrator_log "sleeping ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s until the next poll"
     sleep "$ORCHESTRATOR_POLL_INTERVAL_SECONDS"

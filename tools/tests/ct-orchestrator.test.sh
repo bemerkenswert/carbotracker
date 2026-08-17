@@ -107,6 +107,9 @@ elif [[ "$1" == "rev-list" ]]; then
   printf "%s\n" "$v"
 elif [[ "$1" == "push" && -n "${FAKE_GIT_PUSH_FILE:-}" ]]; then
   printf "%s\n" "$*" > "$FAKE_GIT_PUSH_FILE"
+elif [[ "$1" == "stash" ]]; then
+  printf "%s\n" "$*" >> "${FAKE_GIT_STASH_ARGS:-/dev/null}"
+  if [[ "${FAKE_GIT_STASH_FAIL:-0}" == "1" ]]; then exit 1; fi
 elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
   exit 0
 fi
@@ -416,10 +419,19 @@ exit 0"
 }
 
 # Fake git that removes the dir on `worktree remove`, mirroring how the
-# cleanup helper is invoked by the orchestrator.
+# cleanup helper is invoked by the orchestrator. `status --porcelain` reads
+# $FAKE_GIT_STATUS (empty/absent means a clean tree) and every `stash`
+# invocation is appended to $FAKE_GIT_STASH_ARGS (exiting 1 when
+# FAKE_GIT_STASH_FAIL is set).
 fake_merge_git() {
-  fake_command git 'if [[ "$1" == "worktree" && "$2" == "remove" ]]; then
+  fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "worktree" && "$2" == "remove" ]]; then
   rm -rf "$3" "$4"
+elif [[ "$1" == "status" ]]; then
+  cat "${FAKE_GIT_STATUS:-/dev/null}" 2>/dev/null || true
+elif [[ "$1" == "stash" ]]; then
+  printf "%s\n" "$*" >> "${FAKE_GIT_STASH_ARGS:-/dev/null}"
+  if [[ "${FAKE_GIT_STASH_FAIL:-0}" == "1" ]]; then exit 1; fi
 elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
   exit 0
 fi
@@ -1219,6 +1231,8 @@ exit 1'
   mkdir -p "$3"
 elif [[ "$1" == "worktree" && "$2" == "remove" ]]; then
   rm -rf "$3" "$4"
+elif [[ "$1" == "stash" ]]; then
+  printf "%s\n" "$*" >> "${FAKE_GIT_STASH_ARGS:-/dev/null}"
 elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
   exit 0
 fi
@@ -1228,6 +1242,7 @@ exit 0'
   local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
   export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
   export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
   local output rc
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)" && rc=0 || rc=$?
@@ -1239,7 +1254,8 @@ exit 0'
   assert_eq "escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
   assert_eq "escalation prunes the worktree" "no" "$([[ -d "$worktree" ]] && echo yes || echo no)"
   assert_contains "logs the escalation" "escalated #10 to needs-triage" "$output"
-  unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  assert_eq "clean-tree escalation creates no stash" "no" "$([[ -f "$FAKE_GIT_STASH_ARGS" ]] && echo yes || echo no)"
+  unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT FAKE_GIT_STASH_ARGS
   state_teardown
 }
 
@@ -1258,6 +1274,7 @@ exit 1'
   local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
   export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
   export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
   export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
   export FAKE_REVLIST_SEQ="$STATE_DIR/revlist"
   printf '0\n0\n' > "$FAKE_REVLIST_SEQ"
@@ -1270,7 +1287,8 @@ exit 1'
   assert_eq "empty run escalates without any resume" "1" "$(wc -l < "$FAKE_OPENCODE_LOG")"
   assert_eq "empty-run escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
   assert_contains "logs the empty-run classification" "empty run, escalating without a resume" "$output"
-  unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT FAKE_OPENCODE_LOG FAKE_REVLIST_SEQ
+  assert_eq "clean-tree escalation creates no stash" "no" "$([[ -f "$FAKE_GIT_STASH_ARGS" ]] && echo yes || echo no)"
+  unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT FAKE_GIT_STASH_ARGS FAKE_OPENCODE_LOG FAKE_REVLIST_SEQ
   state_teardown
 }
 
@@ -1407,39 +1425,135 @@ exit 1'
   state_teardown
 }
 
-# Fake git for the stash-on-escalation tests: `status --porcelain` returns
-# $FAKE_GIT_STATUS (absent/empty means clean), `stash push` captures its args to
-# $FAKE_STASH_PUSH_ARGS and writes the entry to $FAKE_STASH_LIST (so a later
-# `stash list` — e.g. from the escalation's existing-stash probe — sees it),
-# `stash list` returns $FAKE_STASH_LIST, and worktree removal + branch deletion
-# succeed.
-fake_stash_git() {
+test_stash_escalation_work_stashes_dirty_tree_with_contract_message() {
+  state_setup
+  local worktree="$WT_PARENT/10-alpha"
+  mkdir -p "$worktree"
   fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
-if [[ "$1" == "worktree" && "$2" == "remove" ]]; then
-  rm -rf "$3" "$4"
-elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
-  exit 0
-elif [[ "$1" == "status" ]]; then
-  cat "${FAKE_GIT_STATUS:-/dev/null}" 2>/dev/null || true
-elif [[ "$1" == "stash" && "$2" == "push" ]]; then
-  printf "%s\n" "$*" >> "${FAKE_STASH_PUSH_ARGS:-/dev/null}"
-  all="$*"
-  msg="${all#*--message }"
-  printf "stash@{0}\tOn feat: %s\n" "$msg" > "${FAKE_STASH_LIST:-/dev/null}"
-  > "${FAKE_GIT_STATUS:-/dev/null}" 2>/dev/null || true
-elif [[ "$1" == "stash" && "$2" == "list" ]]; then
-  if [[ "$*" == *"%gs"* ]]; then
-    cat "${FAKE_STASH_LIST:-/dev/null}" 2>/dev/null || true
-  else
-    cut -f1 "${FAKE_STASH_LIST:-/dev/null}" 2>/dev/null || true
-  fi
-elif [[ "$1" == "rev-parse" ]]; then
-  exit 0
+if [[ "$1" == "rev-parse" ]]; then exit 0
+elif [[ "$1" == "status" ]]; then printf " M src/feature.ts\n"
+elif [[ "$1" == "stash" ]]; then printf "%s\n" "$*" >> "${FAKE_GIT_STASH_ARGS:-/dev/null}"
 fi
 exit 0'
+  fake_command opencode 'if [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"ses_abc\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
+  local entry
+  entry="$(orchestrator_stash_escalation_work 10 "$worktree")"
+  assert_contains "dirty tree stashes with untracked included" "stash push --include-untracked" "$(cat "$FAKE_GIT_STASH_ARGS")"
+  local ts_re='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
+  if [[ "$entry" =~ ^carbotracker:\ ticket\ 10\ uncommitted\ work\ at\ escalation\ \($ts_re,\ session\ ses_abc\)$ ]]; then
+    pass "stash entry message follows the contract"
+  else
+    fail "stash entry message follows the contract"
+    printf "  got: %q\n" "$entry"
+  fi
+  assert_contains "stash passes the contract message to git" "--message $entry" "$(cat "$FAKE_GIT_STASH_ARGS")"
+  unset FAKE_GIT_STASH_ARGS
+  state_teardown
 }
 
-test_escalation_stashes_uncommitted_work() {
+test_stash_escalation_work_uses_passed_session_id() {
+  state_setup
+  local worktree="$WT_PARENT/10-alpha"
+  mkdir -p "$worktree"
+  fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "rev-parse" ]]; then exit 0
+elif [[ "$1" == "status" ]]; then printf " M src/feature.ts\n"
+elif [[ "$1" == "stash" ]]; then printf "%s\n" "$*" >> "${FAKE_GIT_STASH_ARGS:-/dev/null}"
+fi
+exit 0'
+  fake_command opencode 'exit 1'
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
+  local entry ts_re='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
+  entry="$(orchestrator_stash_escalation_work 10 "$worktree" "ses_given")"
+  if [[ "$entry" =~ ^carbotracker:\ ticket\ 10\ uncommitted\ work\ at\ escalation\ \($ts_re,\ session\ ses_given\)$ ]]; then
+    pass "passed session id appears in the message"
+  else
+    fail "passed session id appears in the message"
+    printf "  got: %q\n" "$entry"
+  fi
+  unset FAKE_GIT_STASH_ARGS
+  state_teardown
+}
+
+test_stash_escalation_work_unknown_session_uses_none() {
+  state_setup
+  local worktree="$WT_PARENT/10-alpha"
+  mkdir -p "$worktree"
+  fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "rev-parse" ]]; then exit 0
+elif [[ "$1" == "status" ]]; then printf " M src/feature.ts\n"
+elif [[ "$1" == "stash" ]]; then printf "%s\n" "$*" >> "${FAKE_GIT_STASH_ARGS:-/dev/null}"
+fi
+exit 0'
+  fake_command opencode 'if [[ "$1" == "session" ]]; then printf "[]\n"; fi
+exit 0'
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
+  local entry ts_re='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
+  entry="$(orchestrator_stash_escalation_work 10 "$worktree")"
+  if [[ "$entry" =~ ^carbotracker:\ ticket\ 10\ uncommitted\ work\ at\ escalation\ \($ts_re,\ session\ none\)$ ]]; then
+    pass "unknown session id is recorded as none"
+  else
+    fail "unknown session id is recorded as none"
+    printf "  got: %q\n" "$entry"
+  fi
+  unset FAKE_GIT_STASH_ARGS
+  state_teardown
+}
+
+test_stash_escalation_work_skips_clean_tree() {
+  state_setup
+  local worktree="$WT_PARENT/10-alpha"
+  mkdir -p "$worktree"
+  fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "rev-parse" ]]; then exit 0
+elif [[ "$1" == "status" ]]; then exit 0
+elif [[ "$1" == "stash" ]]; then printf "stash called\n" >> "${FAKE_GIT_STASH_ARGS:-/dev/null}"
+fi
+exit 0'
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
+  assert_eq "clean tree produces no stash entry" "" "$(orchestrator_stash_escalation_work 10 "$worktree")"
+  assert_eq "clean tree never invokes stash" "no" "$([[ -f "$FAKE_GIT_STASH_ARGS" ]] && echo yes || echo no)"
+  unset FAKE_GIT_STASH_ARGS
+  state_teardown
+}
+
+test_stash_escalation_work_skips_missing_worktree() {
+  state_setup
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/git_calls"
+  fake_command git 'printf "git called\n" >> "${FAKE_GIT_STASH_ARGS:-/dev/null}"; exit 0'
+  assert_eq "missing worktree produces no stash entry" "" "$(orchestrator_stash_escalation_work 10 "$WT_PARENT/nope")"
+  assert_eq "missing worktree never touches git" "no" "$([[ -f "$FAKE_GIT_STASH_ARGS" ]] && echo yes || echo no)"
+  unset FAKE_GIT_STASH_ARGS
+  state_teardown
+}
+
+test_stash_escalation_work_fails_closed_on_stash_error() {
+  state_setup
+  local worktree="$WT_PARENT/10-alpha"
+  mkdir -p "$worktree"
+  fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "rev-parse" ]]; then exit 0
+elif [[ "$1" == "status" ]]; then printf " M src/feature.ts\n"
+elif [[ "$1" == "stash" ]]; then exit 1
+fi
+exit 0'
+  fake_command opencode 'if [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"ses_abc\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+  local entry rc log
+  entry="$(orchestrator_stash_escalation_work 10 "$worktree" 2>"$STATE_DIR/stash_log")" && rc=0 || rc=$?
+  assert_eq "failed stash reports no entry" "" "$entry"
+  assert_eq "failed stash returns non-zero so the caller defers" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_contains "failed stash logs an error" "ERROR" "$(cat "$STATE_DIR/stash_log")"
+  state_teardown
+}
+
+test_implement_escalation_stashes_uncommitted_work_and_names_entry() {
   state_setup
   fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
   printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
@@ -1449,31 +1563,47 @@ elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
   exit 0
 fi
 exit 1'
-  fake_stash_git
+  fake_stalled_git
   fake_stalled_opencode
   local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
   export FAKE_GIT_STATUS="$STATE_DIR/git_status"
-  export FAKE_STASH_PUSH_ARGS="$STATE_DIR/stash_push"
-  export FAKE_STASH_LIST="$STATE_DIR/stash_list"
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
+  export FAKE_OPENCODE_EXITS="$STATE_DIR/opencode_exits"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
   export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
   export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
-  mkdir -p "$worktree"
-  printf ' M src/feature.ts\n?? new-file.ts\n' > "$FAKE_GIT_STATUS"
+  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
+  printf '1\n1\n' > "$FAKE_OPENCODE_EXITS"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
-  local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_escalate_failure 10 "$branch" "$worktree" "" "no commits produced" 2>&1)"
-  assert_contains "stashes the work before pruning" "stash push --include-untracked" "$(cat "$FAKE_STASH_PUSH_ARGS")"
-  assert_contains "stash message follows the contract and names the ticket" "carbotracker: ticket 10 uncommitted work at escalation" "$(cat "$FAKE_STASH_PUSH_ARGS")"
-  assert_contains "stash message records the session id" "session ses_abc)" "$(cat "$FAKE_STASH_PUSH_ARGS")"
-  assert_eq "stash message records an ISO-8601 UTC timestamp" "yes" "$(grep -qE 'at escalation \(20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z, session' "$FAKE_STASH_PUSH_ARGS" && echo yes || echo no)"
-  assert_contains "escalation comment names the stash ref" 'stashed as `stash@{0}`' "$(cat "$FAKE_ESCALATE_COMMENT")"
-  assert_contains "escalation comment points at the recovery tool" "ct-recover-stalled.sh 10" "$(cat "$FAKE_ESCALATE_COMMENT")"
-  assert_contains "escalation log names the stash ref" "stashed stash@{0}" "$output"
-  unset FAKE_GIT_STATUS FAKE_STASH_PUSH_ARGS FAKE_STASH_LIST FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  local output rc ts_re='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "dirty-tree escalation fails the implement round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_contains "escalation stashes with untracked included" "stash push --include-untracked" "$(cat "$FAKE_GIT_STASH_ARGS")"
+  if [[ "$(cat "$FAKE_GIT_STASH_ARGS")" =~ --message\ carbotracker:\ ticket\ 10\ uncommitted\ work\ at\ escalation\ \($ts_re,\ session\ ses_abc\)$ ]]; then
+    pass "escalation stash message follows the contract"
+  else
+    fail "escalation stash message follows the contract"
+    printf "  got: %q\n" "$(cat "$FAKE_GIT_STASH_ARGS")"
+  fi
+  assert_contains "escalation comment names the stash entry" "Uncommitted work was stashed before pruning" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  if [[ "$(cat "$FAKE_ESCALATE_COMMENT")" =~ carbotracker:\ ticket\ 10\ uncommitted\ work\ at\ escalation\ \($ts_re,\ session\ ses_abc\) ]]; then
+    pass "escalation comment carries the stash message"
+  else
+    fail "escalation comment carries the stash message"
+    printf "  got: %q\n" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  fi
+  if [[ "$output" =~ pruned\ #10:.*stashed\ as\ carbotracker:\ ticket\ 10\ uncommitted\ work\ at\ escalation\ \($ts_re,\ session\ ses_abc\) ]]; then
+    pass "prune log line names the stash entry"
+  else
+    fail "prune log line names the stash entry"
+    printf "  got: %q\n" "$output"
+  fi
+  assert_eq "escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
+  unset FAKE_GIT_STATUS FAKE_GIT_STASH_ARGS FAKE_OPENCODE_EXITS FAKE_OPENCODE_LOG FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
   state_teardown
 }
 
-test_escalation_clean_tree_creates_no_stash() {
+test_implement_escalation_keeps_worktree_when_stash_fails() {
   state_setup
   fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
   printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
@@ -1483,62 +1613,53 @@ elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
   exit 0
 fi
 exit 1'
-  fake_stash_git
+  fake_stalled_git
   fake_stalled_opencode
   local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
-  export FAKE_STASH_PUSH_ARGS="$STATE_DIR/stash_push"
+  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
+  export FAKE_GIT_STASH_FAIL=1
+  export FAKE_OPENCODE_EXITS="$STATE_DIR/opencode_exits"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
   export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
   export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
-  mkdir -p "$worktree"
+  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
+  printf '1\n1\n' > "$FAKE_OPENCODE_EXITS"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
-  local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_escalate_failure 10 "$branch" "$worktree" "" "no commits produced" 2>&1)"
-  assert_eq "clean tree creates no stash push" "no" "$([[ -f "$FAKE_STASH_PUSH_ARGS" ]] && echo yes || echo no)"
-  assert_eq "escalation comment does not mention a stash" "0" "$(grep -c "stashed as" "$FAKE_ESCALATE_COMMENT")"
-  assert_contains "logs the clean-tree case" "clean tree, no stash entry created" "$output"
-  unset FAKE_STASH_PUSH_ARGS FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "failed stash fails the implement round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "failed stash keeps the entry in state" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "failed stash keeps the worktree" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_eq "failed stash posts no escalation comment" "no" "$([[ -f "$FAKE_ESCALATE_COMMENT" ]] && echo yes || echo no)"
+  assert_contains "logs that the escalation is deferred" "deferring the escalation" "$output"
+  unset FAKE_GIT_STATUS FAKE_GIT_STASH_ARGS FAKE_GIT_STASH_FAIL FAKE_OPENCODE_EXITS FAKE_OPENCODE_LOG FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
   state_teardown
 }
 
-test_merge_prune_does_not_stash_merged_work() {
+test_implement_escalation_failure_restores_stash() {
   state_setup
-  fake_merge_gh "MERGED"
-  fake_stash_git
-  local worktree="$WT_PARENT/123-foo"
-  mkdir -p "$worktree"
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  exit 1
+fi
+exit 1'
+  fake_stalled_git
+  fake_stalled_opencode
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
   export FAKE_GIT_STATUS="$STATE_DIR/git_status"
-  export FAKE_STASH_PUSH_ARGS="$STATE_DIR/stash_push"
-  export FAKE_ISSUE_EDIT_ARGS="$STATE_DIR/issue_edit"
-  export FAKE_ISSUE_CLOSE_ARGS="$STATE_DIR/issue_close"
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
+  export FAKE_OPENCODE_EXITS="$STATE_DIR/opencode_exits"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
   printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>/dev/null
-  assert_eq "merged prune creates no orphaned stash" "no" "$([[ -f "$FAKE_STASH_PUSH_ARGS" ]] && echo yes || echo no)"
-  unset FAKE_GIT_STATUS FAKE_STASH_PUSH_ARGS FAKE_ISSUE_EDIT_ARGS FAKE_ISSUE_CLOSE_ARGS
-  state_teardown
-}
-
-test_closed_pr_escalation_stashes_work() {
-  state_setup
-  fake_closed_escalate_gh
-  fake_stash_git
-  local worktree="$WT_PARENT/123-foo"
-  mkdir -p "$worktree"
-  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
-  export FAKE_STASH_PUSH_ARGS="$STATE_DIR/stash_push"
-  export FAKE_STASH_LIST="$STATE_DIR/stash_list"
-  export FAKE_ESCALATE_ARGS="$STATE_DIR/escalate"
-  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
-  local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
-  assert_contains "closed-pr escalation stashes the work" "stash push --include-untracked" "$(cat "$FAKE_STASH_PUSH_ARGS")"
-  assert_contains "closed-pr stash names the ticket" "carbotracker: ticket 123 uncommitted work at escalation" "$(cat "$FAKE_STASH_PUSH_ARGS")"
-  assert_contains "closed-pr escalation comment names the recovery tool" "ct-recover-stalled.sh 123" "$(cat "$FAKE_ESCALATE_ARGS")"
-  assert_contains "closed-pr escalation log names the stash ref" "stashed stash@{0}" "$output"
-  unset FAKE_GIT_STATUS FAKE_STASH_PUSH_ARGS FAKE_STASH_LIST FAKE_ESCALATE_ARGS
+  printf '1\n1\n' > "$FAKE_OPENCODE_EXITS"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "failed escalation keeps the entry in state" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "failed escalation stashes before the attempt" "stash push --include-untracked" "$(cat "$FAKE_GIT_STASH_ARGS")"
+  assert_contains "failed escalation pops the stash back" "stash pop" "$(cat "$FAKE_GIT_STASH_ARGS")"
+  assert_contains "logs the stash restore" "restored the stashed work" "$output"
+  unset FAKE_GIT_STATUS FAKE_GIT_STASH_ARGS FAKE_OPENCODE_EXITS FAKE_OPENCODE_LOG
   state_teardown
 }
 
@@ -2412,6 +2533,326 @@ test_review_round_after_pause_starts_fresh_budget() {
   state_teardown
 }
 
+# Fake gh for the review-round PR gate: `pr view` returns the given state ($1,
+# or "FAIL" to simulate a gh outage) and the api surfaces mirror fake_review_act_gh
+# with one human inline comment at $2.
+fake_review_round_gh() {
+  local state="${1:-OPEN}" latest="${2:-2026-08-13T00:07:00Z}"
+  local footer="_Created by carbotracker's agent skills._"
+  fake_command gh "if [[ \"\$1\" == \"pr\" && \"\$2\" == \"view\" ]]; then
+  if [[ \"$state\" == \"FAIL\" ]]; then
+    echo \"HTTP 503: no server\" >&2
+    exit 1
+  fi
+  printf \"$state\n\"
+  exit 0
+elif [[ \"\$1\" == \"api\" ]]; then
+  case \"\$2\" in
+    *reviews*) printf \"[]\n\" ;;
+    *replies*)
+      printf \"%s\n\" \"\$*\" >> \"\${FAKE_THREAD_REPLY_ARGS:-/dev/null}\"
+      ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"human inline comment\\\",\\\"id\\\":1,\\\"in_reply_to_id\\\":null}]\n\" ;;
+    *issues/*comments*)
+      if [[ \"\$*\" == *\"-f body=\"* ]]; then
+        printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
+        exit 0
+      fi
+      printf \"[]\n\"
+      ;;
+  esac
+fi
+exit 0"
+}
+
+# Like fake_review_round_gh, but every general-comment POST exits 1 (simulating
+# a posting outage) so the act step fails.
+fake_review_round_gh_fail_post() {
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  printf "OPEN\n"
+  exit 0
+elif [[ "$1" == "api" ]]; then
+  case "$2" in
+    *reviews*) printf "[]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:07:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"human comment\",\"id\":1,\"in_reply_to_id\":null}]\n" ;;
+    *issues/*comments*)
+      if [[ "$*" == *"-f body="* ]]; then
+        echo "boom 503 from gh" >&2
+        exit 1
+      fi
+      printf "[]\n"
+      ;;
+  esac
+fi
+exit 0'
+}
+
+# Fake opencode that appends every `run` invocation to $FAKE_OPENCODE_LOG, so a
+# test can assert that no analyze was launched.
+fake_opencode_recorder() {
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  printf "%s\n" "$*" >> "${FAKE_OPENCODE_LOG:-/dev/null}"
+  exit 0
+fi
+exit 0'
+}
+
+test_review_round_skips_merged_pr() {
+  state_setup
+  fake_review_round_gh "MERGED"
+  fake_opencode_recorder
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 1
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)"
+  assert_eq "merged pr launches no analyze" "" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null || true)"
+  assert_eq "merged pr leaves the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  assert_eq "merged pr posts no notice" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
+  assert_contains "merged pr logs the skip" "PR #456 is MERGED" "$output"
+  unset FAKE_OPENCODE_LOG FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_skips_closed_pr() {
+  state_setup
+  fake_review_round_gh "CLOSED"
+  fake_opencode_recorder
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)"
+  assert_eq "closed pr launches no analyze" "" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null || true)"
+  assert_contains "closed pr logs the skip" "PR #456 is CLOSED" "$output"
+  unset FAKE_OPENCODE_LOG
+  state_teardown
+}
+
+test_review_round_defers_when_state_unreadable() {
+  state_setup
+  fake_review_round_gh "FAIL"
+  fake_opencode_recorder
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 1
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)"
+  assert_eq "unreadable state launches no analyze" "" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null || true)"
+  assert_eq "unreadable state leaves the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  assert_eq "unreadable state posts no notice" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
+  assert_contains "unreadable state defers" "could not determine state of PR #456" "$output"
+  assert_contains "unreadable state logs the gh error" "HTTP 503" "$output"
+  unset FAKE_OPENCODE_LOG FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_resumes_from_persisted_plan() {
+  state_setup
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 999, "path": null, "line": null, "type": "answer", "reply": "Covered in the PR description.", "confidence": 0.9}]}' > "$STATE_DIR/review-plan-123.json"
+  fake_review_round_gh "OPEN"
+  fake_opencode_recorder
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)"
+  assert_eq "resume skips the analyze step" "" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null || true)"
+  assert_contains "resume replies from the persisted plan" "Covered in the PR description." "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  assert_eq "plan deleted on success" "no" "$([[ -f "$STATE_DIR/review-plan-123.json" ]] && echo yes || echo no)"
+  assert_contains "resume logged" "resuming from persisted plan" "$output"
+  assert_eq "resume advances the watermark" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  unset FAKE_OPENCODE_LOG FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_keeps_plan_on_act_failure() {
+  state_setup
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 999, "path": null, "line": null, "type": "answer", "reply": "Covered in the PR description.", "confidence": 0.9}]}' > "$STATE_DIR/review-plan-123.json"
+  fake_review_round_gh_fail_post
+  fake_opencode_recorder
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "failed round keeps the persisted plan" "yes" "$([[ -f "$STATE_DIR/review-plan-123.json" ]] && echo yes || echo no)"
+  assert_eq "failed round increments failures" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  unset FAKE_OPENCODE_LOG
+  state_teardown
+}
+
+test_review_round_deletes_plan_at_retry_cap() {
+  state_setup
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 999, "path": null, "line": null, "type": "answer", "reply": "Covered in the PR description.", "confidence": 0.9}]}' > "$STATE_DIR/review-plan-123.json"
+  fake_review_round_gh_fail_post
+  fake_opencode_recorder
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 2
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "abandoned round deletes the plan" "no" "$([[ -f "$STATE_DIR/review-plan-123.json" ]] && echo yes || echo no)"
+  assert_eq "abandoned round hits the cap" "3" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  state_teardown
+}
+
+test_review_act_dedups_thread_reply() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  write_answer_plan "$plan"
+  local footer="_Created by carbotracker's agent skills._"
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  printf "OPEN\n"
+  exit 0
+elif [[ "$1" == "api" ]]; then
+  case "$2" in
+    *reviews*) printf "[]\n" ;;
+    *replies*)
+      printf "%s\n" "$*" >> "${FAKE_THREAD_REPLY_ARGS:-/dev/null}"
+      ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:09:00Z\",\"body\":\"_Created by carbotracker'"'"'s agent skills._\",\"id\":9001,\"in_reply_to_id\":3788850731}]\n" ;;
+    *issues/*comments*) printf "[]\n" ;;
+  esac
+fi
+exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_THREAD_REPLY_ARGS="$STATE_DIR/thread_reply"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>/dev/null
+  assert_eq "already-replied thread comment is not re-posted" "" "$(cat "$FAKE_THREAD_REPLY_ARGS" 2>/dev/null || true)"
+  unset FAKE_THREAD_REPLY_ARGS
+  state_teardown
+}
+
+test_review_act_dedups_general_reply() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 999, "path": null, "line": null, "type": "answer", "reply": "Covered in the PR description.", "confidence": 0.9}]}' > "$plan"
+  local footer="_Created by carbotracker's agent skills._"
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  printf "OPEN\n"
+  exit 0
+elif [[ "$1" == "api" ]]; then
+  case "$2" in
+    *reviews*) printf "[]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:07:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"human comment\",\"id\":1,\"in_reply_to_id\":null}]\n" ;;
+    *issues/*comments*)
+      if [[ "$*" == *"-f body="* ]]; then
+        printf "%s\n" "$*" >> "${FAKE_PR_COMMENT_ARGS:-/dev/null}"
+        exit 0
+      fi
+      printf "[{\"id\":9001,\"body\":\"Covered in the PR description. _Created by carbotracker'"'"'s agent skills._\"}]\n"
+      ;;
+  esac
+fi
+exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>/dev/null
+  assert_eq "already-replied general comment is not re-posted" "" "$(cat "$FAKE_PR_COMMENT_ARGS" 2>/dev/null || true)"
+  unset FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_gh_failure_logged() {
+  state_setup
+  fake_command gh 'echo "boom 503 from gh" >&2; exit 1'
+  local output rc
+  output="$(orchestrator_pr_post_comment 456 "hi" 2>&1)" && rc=0 || rc=$?
+  assert_contains "post failure logs the gh error" "boom 503 from gh" "$output"
+  assert_eq "post failure returns non-zero" "1" "$rc"
+  state_teardown
+}
+
+test_reconcile_defers_when_pr_lookup_fails() {
+  state_setup
+  fake_reconcile_git 0 no no
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  echo "HTTP 503: no server" >&2
+  exit 1
+elif [[ "$1" == "issue" && "$2" == "view" ]]; then
+  printf "Some Title\n"
+fi
+exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc ""
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>&1)"
+  assert_eq "entry kept when pr lookup fails" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "deferral logged" "could not determine PR for branch" "$output"
+  assert_contains "gh error visible in the journal" "HTTP 503" "$output"
+  state_teardown
+}
+
+test_reconcile_retries_failed_recovery_next_poll() {
+  state_setup
+  fake_reconcile_git 0 no yes
+  fake_command npm 'exit 0'
+  fake_reconcile_opencode ses_old
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  if [[ -f "$FAKE_GH_UP" ]]; then
+    printf "[{\"number\":50}]\n"
+  else
+    echo "HTTP 503" >&2
+    exit 1
+  fi
+elif [[ "$1" == "issue" && "$2" == "view" ]]; then
+  printf "Some Title\n"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  exit 0
+fi
+exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_GH_UP="$STATE_DIR/gh_up"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_old ""
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>/dev/null
+  assert_eq "first poll defers on the outage" "" "$(jq -r '.[0].prNumber // ""' "$TEST_STATE")"
+  touch "$FAKE_GH_UP"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>/dev/null
+  assert_eq "next poll recovers the branch" "50" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
+  assert_eq "recovered branch reaches awaiting review" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  unset FAKE_GH_UP
+  state_teardown
+}
+
+test_reconcile_sweeps_orphaned_plan() {
+  state_setup
+  printf '{}' > "$STATE_DIR/review-plan-999.json"
+  fake_command gh 'exit 0'
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>&1)"
+  assert_eq "orphaned plan removed" "no" "$([[ -f "$STATE_DIR/review-plan-999.json" ]] && echo yes || echo no)"
+  assert_contains "orphan sweep logged" "removed orphaned review plan" "$output"
+  state_teardown
+}
+
 test_state_add_creates_review_failures_zero() {
   state_setup
   orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$WT_PARENT/123-foo"
@@ -2732,6 +3173,7 @@ test_merge_poll_prunes_closed_pr() {
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   export FAKE_ESCALATE_ARGS="$STATE_DIR/escalate"
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>/dev/null
@@ -2740,7 +3182,98 @@ test_merge_poll_prunes_closed_pr() {
   assert_contains "closed without merge drops in-progress label" "--remove-label in-progress" "$(cat "$FAKE_ESCALATE_ARGS")"
   assert_contains "closed without merge adds needs-triage label" "--add-label needs-triage" "$(cat "$FAKE_ESCALATE_ARGS")"
   assert_contains "closed without merge comments naming the pr" "PR #456 was closed without merging" "$(cat "$FAKE_ESCALATE_ARGS")"
-  unset FAKE_ESCALATE_ARGS
+  assert_eq "clean-tree closed escalation creates no stash" "no" "$([[ -f "$FAKE_GIT_STASH_ARGS" ]] && echo yes || echo no)"
+  unset FAKE_ESCALATE_ARGS FAKE_GIT_STASH_ARGS
+  state_teardown
+}
+
+test_merge_poll_closed_stashes_uncommitted_work_and_names_entry() {
+  state_setup
+  fake_closed_escalate_gh
+  fake_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_ESCALATE_ARGS="$STATE_DIR/escalate"
+  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
+  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output ts_re='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_contains "closed escalation stashes with untracked included" "stash push --include-untracked" "$(cat "$FAKE_GIT_STASH_ARGS")"
+  if [[ "$(cat "$FAKE_GIT_STASH_ARGS")" =~ --message\ carbotracker:\ ticket\ 123\ uncommitted\ work\ at\ escalation\ \($ts_re,\ session\ ses_abc\)$ ]]; then
+    pass "closed escalation stash message follows the contract"
+  else
+    fail "closed escalation stash message follows the contract"
+    printf "  got: %q\n" "$(cat "$FAKE_GIT_STASH_ARGS")"
+  fi
+  assert_contains "closed escalation comment names the stash" "Uncommitted work was stashed before pruning" "$(cat "$FAKE_ESCALATE_ARGS")"
+  if [[ "$(cat "$FAKE_ESCALATE_ARGS")" =~ carbotracker:\ ticket\ 123\ uncommitted\ work\ at\ escalation\ \($ts_re,\ session\ ses_abc\) ]]; then
+    pass "closed escalation comment carries the stash message"
+  else
+    fail "closed escalation comment carries the stash message"
+    printf "  got: %q\n" "$(cat "$FAKE_ESCALATE_ARGS")"
+  fi
+  if [[ "$output" =~ pruned\ #123:.*stashed\ as\ carbotracker:\ ticket\ 123\ uncommitted\ work\ at\ escalation\ \($ts_re,\ session\ ses_abc\) ]]; then
+    pass "closed escalation prune log line names the stash entry"
+  else
+    fail "closed escalation prune log line names the stash entry"
+    printf "  got: %q\n" "$output"
+  fi
+  assert_eq "closed escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "closed escalation removes the worktree" "no" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  unset FAKE_ESCALATE_ARGS FAKE_GIT_STATUS FAKE_GIT_STASH_ARGS
+  state_teardown
+}
+
+test_merge_poll_closed_keeps_worktree_when_stash_fails() {
+  state_setup
+  fake_closed_escalate_gh
+  fake_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_ESCALATE_ARGS="$STATE_DIR/escalate"
+  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
+  export FAKE_GIT_STASH_FAIL=1
+  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "failed stash keeps entry in state" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "failed stash keeps the worktree" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_eq "failed stash posts no escalation" "no" "$([[ -s "$FAKE_ESCALATE_ARGS" ]] && echo yes || echo no)"
+  assert_contains "logs that the escalation is deferred" "keeping the entry and worktree to retry the escalation" "$output"
+  unset FAKE_ESCALATE_ARGS FAKE_GIT_STATUS FAKE_GIT_STASH_ARGS FAKE_GIT_STASH_FAIL
+  state_teardown
+}
+
+test_merge_poll_closed_escalation_failure_restores_stash() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  printf "CLOSED\n"
+elif [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  exit 1
+fi
+exit 0'
+  fake_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
+  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "failed escalation keeps entry in state" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "failed escalation stashes before the attempt" "stash push --include-untracked" "$(cat "$FAKE_GIT_STASH_ARGS")"
+  assert_contains "failed escalation pops the stash back" "stash pop" "$(cat "$FAKE_GIT_STASH_ARGS")"
+  assert_contains "logs the stash restore" "restored the stashed work" "$output"
+  assert_contains "logs escalation retry warning" "keeping entry to retry next poll" "$output"
+  unset FAKE_GIT_STATUS FAKE_GIT_STASH_ARGS
   state_teardown
 }
 
@@ -3152,10 +3685,66 @@ exit 0'
   mkdir -p "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  # Called directly (not via a command substitution): a set -e abort on the
+  # fail-closed state read would kill the whole suite here.
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll >"$STATE_DIR/out" 2>&1; then
+    pass "merge poll survives a gh state-read error"
+  else
+    fail "merge poll survives a gh state-read error"
+  fi
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  output="$(cat "$STATE_DIR/out")"
   assert_eq "gh error keeps entry in state" "1" "$(jq 'length' "$TEST_STATE")"
   assert_contains "logs gh error handling" "could not determine state" "$output"
+  state_teardown
+}
+
+test_merge_poll_merge_status_error_keeps_entry() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  if [[ "$*" == *"mergeStateStatus"* ]]; then
+    exit 1
+  fi
+  printf "OPEN\n"
+fi
+exit 0'
+  fake_command git 'exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll >"$STATE_DIR/out" 2>&1; then
+    pass "merge poll survives a gh merge-status error"
+  else
+    fail "merge poll survives a gh merge-status error"
+  fi
+  local output
+  output="$(cat "$STATE_DIR/out")"
+  assert_eq "merge-status error keeps entry in state" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "logs the merge-status deferral" "could not determine the merge status" "$output"
+  state_teardown
+}
+
+test_review_poll_notice_post_failure_survives() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "api" ]]; then
+  exit 1
+fi
+exit 0'
+  fake_command opencode 'exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 "" 456
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_poll >"$STATE_DIR/out" 2>&1; then
+    pass "review poll survives a notice-post failure"
+  else
+    fail "review poll survives a notice-post failure"
+  fi
+  local output
+  output="$(cat "$STATE_DIR/out")"
+  assert_eq "failed notice post is not marked posted" "false" "$(jq -r '.[0].reviewNoticePosted' "$TEST_STATE")"
+  assert_contains "logs the failed notice post" "failed to post missing-session notice" "$output"
   state_teardown
 }
 
@@ -3729,6 +4318,18 @@ test_review_round_all_replies_fail_keeps_watermark_and_retries
 test_review_round_failure_increments_and_posts_notice
 test_review_round_third_failure_pauses_and_consumes
 test_review_round_after_pause_starts_fresh_budget
+test_review_round_skips_merged_pr
+test_review_round_skips_closed_pr
+test_review_round_defers_when_state_unreadable
+test_review_round_resumes_from_persisted_plan
+test_review_round_keeps_plan_on_act_failure
+test_review_round_deletes_plan_at_retry_cap
+test_review_act_dedups_thread_reply
+test_review_act_dedups_general_reply
+test_gh_failure_logged
+test_reconcile_defers_when_pr_lookup_fails
+test_reconcile_retries_failed_recovery_next_poll
+test_reconcile_sweeps_orphaned_plan
 test_review_plan_validator_reference_resolves
 test_self_refresh_re_execs_on_hash_change
 test_self_refresh_passes_on_matching_hash
@@ -3755,6 +4356,9 @@ test_pr_merge_state_returns_behind
 test_pr_merge_state_gh_error
 test_merge_poll_prunes_merged_pr
 test_merge_poll_prunes_closed_pr
+test_merge_poll_closed_stashes_uncommitted_work_and_names_entry
+test_merge_poll_closed_keeps_worktree_when_stash_fails
+test_merge_poll_closed_escalation_failure_restores_stash
 test_merge_poll_keeps_entry_when_escalate_fails
 test_merge_poll_keeps_entry_when_close_fails
 test_merge_poll_keeps_open_pr
@@ -3775,6 +4379,8 @@ test_state_merge_failures_updates
 test_state_merge_notice_posted_updates
 test_merge_poll_skips_entry_without_pr
 test_merge_poll_gh_error_keeps_entry
+test_merge_poll_merge_status_error_keeps_entry
+test_review_poll_notice_post_failure_survives
 test_merge_poll_ignores_implementing_phase
 test_poll_once_runs_merge_poll
 test_implement_runs_full_pipeline
@@ -3787,10 +4393,15 @@ test_implement_resumes_stalled_run_once_and_finishes
 test_implement_escalates_when_resume_still_commitless
 test_implement_escalates_when_resume_exits_nonzero
 test_implement_escalates_when_retry_already_resumed
-test_escalation_stashes_uncommitted_work
-test_escalation_clean_tree_creates_no_stash
-test_merge_prune_does_not_stash_merged_work
-test_closed_pr_escalation_stashes_work
+test_stash_escalation_work_stashes_dirty_tree_with_contract_message
+test_stash_escalation_work_uses_passed_session_id
+test_stash_escalation_work_unknown_session_uses_none
+test_stash_escalation_work_skips_clean_tree
+test_stash_escalation_work_skips_missing_worktree
+test_stash_escalation_work_fails_closed_on_stash_error
+test_implement_escalation_stashes_uncommitted_work_and_names_entry
+test_implement_escalation_keeps_worktree_when_stash_fails
+test_implement_escalation_failure_restores_stash
 test_implement_no_pr_skips_comment
 test_implement_no_session_stores_null
 test_implement_opens_pr_when_none_exists

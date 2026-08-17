@@ -1,17 +1,9 @@
 import { inject } from '@angular/core';
 import { filterNull } from '@carbotracker/utility';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
-import { concatLatestFrom } from '@ngrx/operators';
+import { concatLatestFrom, mapResponse } from '@ngrx/operators';
 import { Store } from '@ngrx/store';
-import {
-  catchError,
-  exhaustMap,
-  map,
-  mergeMap,
-  of,
-  switchMap,
-  tap,
-} from 'rxjs';
+import { exhaustMap, map, mergeMap, switchMap, tap } from 'rxjs';
 import {
   AuthApiActions,
   LogoutApiActions,
@@ -73,10 +65,11 @@ export const updateProduct$ = createEffect(
             ...changedProduct,
           })
           .pipe(
-            map(() => ProductsApiActions.updatingProductSuccessful()),
-            catchError((error) =>
-              of(ProductsApiActions.updatingProductFailed({ error })),
-            ),
+            mapResponse({
+              next: () => ProductsApiActions.updatingProductSuccessful(),
+              error: (error) =>
+                ProductsApiActions.updatingProductFailed({ error }),
+            }),
           ),
       ),
     ),
@@ -89,10 +82,11 @@ export const deleteProduct$ = createEffect(
       ofType(DeleteProductConfirmationDialogActions.confirmClicked),
       exhaustMap(({ selectedProduct }) =>
         productsService.deleteProduct(selectedProduct.id).pipe(
-          map(() => ProductsApiActions.deletingProductSuccessful()),
-          catchError((error) =>
-            of(ProductsApiActions.deletingProductFailed({ error })),
-          ),
+          mapResponse({
+            next: () => ProductsApiActions.deletingProductSuccessful(),
+            error: (error) =>
+              ProductsApiActions.deletingProductFailed({ error }),
+          }),
         ),
       ),
     ),
@@ -113,10 +107,11 @@ export const createProduct$ = createEffect(
       map(([{ newProduct }, userId]) => ({ ...newProduct, creator: userId })),
       mergeMap((newProduct) =>
         productsService.createProduct({ ...newProduct }).pipe(
-          map(() => ProductsApiActions.creatingProductSuccessful()),
-          catchError((error) =>
-            of(ProductsApiActions.creatingProductFailed(error)),
-          ),
+          mapResponse({
+            next: () => ProductsApiActions.creatingProductSuccessful(),
+            error: (error) =>
+              ProductsApiActions.creatingProductFailed({ error }),
+          }),
         ),
       ),
     ),

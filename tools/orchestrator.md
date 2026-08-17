@@ -13,14 +13,17 @@ replies and pausing for human decisions). It runs as a systemd user service
 (see `carbotracker-orchestrator.service`).
 
 On startup the daemon first **reconciles** the state file against observable
-git facts (see [Crash recovery](#crash-recovery)), so a VPS restart or crashed
-run resumes from what actually exists on disk rather than from stale in-memory
-state. A failing `opencode run` is retried once with `--continue` before the
-ticket is escalated to a human (see [opencode failures](#opencode-failures)).
-An `opencode run` that exits 0 without committing is classified as a **stalled
-run** (uncommitted work left behind; its session is resumed exactly once) or an
-**empty run** (clean tree; escalated immediately with no resume) — see
-[No-commit runs: stalled vs empty](#no-commit-runs-stalled-vs-empty).
+git facts, and repeats that reconcile at the top of **every** poll cycle (see
+[Crash recovery](#crash-recovery)), so a VPS restart or crashed run resumes from
+what actually exists on disk rather than from stale in-memory state, and a
+recovery that hit a transient `gh` failure retries on the poll cadence instead
+of waiting for the next restart. A failing `opencode run` is retried once with
+`--continue` before the ticket is escalated to a human (see [opencode
+failures](#opencode-failures)). An `opencode run` that exits 0 without
+committing is classified as a **stalled run** (uncommitted work left behind; its
+session is resumed exactly once) or an **empty run** (clean tree; escalated
+immediately with no resume) — see [No-commit runs: stalled vs
+empty](#no-commit-runs-stalled-vs-empty).
 
 Between polls the daemon also **self-refreshes**: it hashes its own script at
 load time and, when the on-disk hash differs at the top of a poll cycle, it
@@ -80,11 +83,12 @@ Each poll, before the review loop, the orchestrator walks every state entry in
   the close fails, the entry is **kept** so the merge is re-detected and the
   close retried on the next poll — the closure is never silently dropped.
 - **`CLOSED`** — the PR was closed without merging: the work is rejected. The
-  orchestrator prunes the worktree and branch, then escalates the issue to a
-  human — drops `in-progress`, adds `needs-triage`, and leaves a comment
-  naming the closed PR. The entry is removed only once the escalation lands,
-  so a transient `gh` failure retries next poll instead of stranding an
-  un-labelled issue.
+  orchestrator escalates the issue to a human — drops `in-progress`, adds
+  `needs-triage`, and leaves a comment naming the closed PR — then prunes the
+  worktree and branch. Uncommitted work is stashed before the prune and named
+  in the comment (see [Escalation stashing](#escalation-stashing)). The entry
+  is removed only once the escalation lands, so a transient `gh` failure
+  retries next poll instead of stranding an un-labelled issue.
 - **`OPEN`** — the merge status is checked. Both auto-merge actions share the
   merge-gate skip: a PR carrying `suspect-diff` without `human-approved` is
   skipped entirely — the labels are read fresh from GitHub each poll, so a
@@ -146,9 +150,10 @@ diff the rules file against its base. Both labels are bootstrapped by
 
 ## Crash recovery
 
-The state file is the orchestrator's memory, never the source of truth. On
-daemon startup (`once` mode too) the orchestrator runs `orchestrator_reconcile`,
-which walks every entry in the state file and inspects the observable facts —
+The state file is the orchestrator's memory, never the source of truth. At
+daemon start and at the top of every poll cycle (`once` mode runs it once) the
+orchestrator runs `orchestrator_reconcile`, which walks every entry in the state
+file and inspects the observable facts —
 does the worktree directory exist, what does `git status`/`git log` say, is the
 branch pushed (`git ls-remote`), and is there a PR for the branch (`gh pr list
 --head <branch> --state all`). It then transitions each ticket to the phase
@@ -178,8 +183,17 @@ that matches reality:
   pipeline — re-tag it to retry.
 
 Each entry is handled independently; a failure on one (e.g. `gh` transiently
-down) logs a warning and leaves the entry for the next restart rather than
-blocking the rest.
+down) logs a warning and leaves the entry for the next poll's reconcile rather
+than blocking the rest. The PR-state reads that drive reconcile and the merge
+poll are **fail-closed**: when `gh` fails, the entry is deferred — never
+assumed to be "no PR" (which would risk a duplicate) — and the gh error is
+logged so an outage is visible in the journal instead of swallowed.
+
+Reconcile runs per poll because all implement and review work is synchronous
+_within_ a poll, so no entry is ever mid-flight when a poll-boundary reconcile
+observes it — a repeated reconcile can never orphan an in-flight run. Reconcile
+also sweeps orphaned persisted review plans (see [Review plan
+persistence](#review-plan-persistence)) whose ticket is no longer in state.
 
 ## opencode failures
 
@@ -190,12 +204,33 @@ session. If the retry also fails, the orchestrator **escalates**: it removes
 `in-progress` and `ticket` (the `ready-for-agent` label was already removed at
 claim time), adds `needs-triage`, comments on the issue with the failure reason
 and the tail of the run's output, prunes the worktree and branch, and removes
-the entry from state. Before that prune destroys anything, any uncommitted work
-in the worktree is **stashed** (see
-[Stash and recovery](#stash-and-recovery)) so it survives the prune. The ticket
-is now a human problem, not a pipeline retry-loop. If the escalation itself
-fails, the entry stays in state and the poll loop's normal un-claim/cleanup
-path removes it.
+the entry from state. Uncommitted work is stashed before the prune (see
+[Escalation stashing](#escalation-stashing)). The ticket is now a human
+problem, not a pipeline retry-loop. If the escalation itself fails, the entry
+stays in state and the poll loop's normal un-claim/cleanup path removes it.
+
+## Escalation stashing
+
+Every escalation that prunes a worktree first stashes any uncommitted work —
+tracked changes and untracked files alike (`git stash push --include-untracked`)
+— so a failed run's half-written work survives for a maintainer to recover from
+`git stash list`. The stash message follows the contract
+`carbotracker: ticket <number> uncommitted work at escalation (<ISO-8601 UTC
+timestamp>, session <id>)`; the escalation comment and the prune log line both
+name the entry. A clean or missing worktree creates no stash.
+
+The stash protects the work, so the escalation is **fail-closed**: when a dirty
+worktree's stash fails, the prune is deferred — the entry and worktree stay put
+and the escalation is retried (the merge-poll path retries next poll; the
+implement path retries when the daemon re-visits the entry on a restart), rather
+than destroying the very work the stash exists to protect.
+
+The stash is created before the escalation comment is posted, so the comment
+names the actual entry. If the escalation fails to land (`gh` down) after the
+stash succeeded, the stash is popped again to restore the dirty worktree: on the
+merge-poll path the next poll re-stashes with a fresh timestamp and names its
+own entry, and on the implement path the restored work is picked up by a later
+resume — never pruned.
 
 ## No-commit runs: stalled vs empty
 
@@ -286,6 +321,14 @@ Each poll, after claiming work, the orchestrator walks every state entry in
   `_Created by carbotracker's agent skills._` footer are the orchestrator's
   own output and are excluded from the watermark, so the agent's replies and
   the failure notices can never re-trigger the loop.
+- Before any round, the orchestrator reads the PR's state and **skips** the
+  entry when the PR is merged or closed — silently, with no failure counter and
+  no notice — since those entries belong to the merge poll's cleanup. When the
+  state cannot be read, the round is **deferred** the same quiet way, so a `gh`
+  outage never launches a token-burning analyze on a PR the daemon cannot
+  reason about. The watermark probe is fail-closed too: an unreadable review
+  surface is logged with the gh error and the round deferred, never mistaken
+  for "no comments".
 - If that timestamp is newer than the entry's `lastCommentAt`, it runs a
   review round, split into an **analyze** and an **act** step (see ADR-0003):
   - **Analyze** — `opencode run --auto --session <sessionId>` invoking the
@@ -293,6 +336,10 @@ Each poll, after claiming work, the orchestrator walks every state entry in
     not implement — write the plan file") in the worktree. The skill's entire
     output is a plan file written to `ORCHESTRATOR_REVIEW_PLAN_FILE`; it never
     posts and never implements. Analyze success only means opencode exited 0.
+    By default the plan file lives **next to the state file**
+    (`review-plan-<ticket>.json`), a persistent directory unlike `/tmp`, so an
+    interrupted round can resume (see [Review plan
+    persistence](#review-plan-persistence)).
   - **Act** — read the plan, validate it against the review-comments plan
     schema, and apply it. A comment classified `implement` is applied by
     resuming the original opencode session with a comment-scoped `/implement`
@@ -333,6 +380,30 @@ Each poll, after claiming work, the orchestrator walks every state entry in
   full context; the orchestrator posts a one-time notice on the PR
   (tracked via `reviewNoticePosted`) so the stale PR is visible to a
   maintainer.
+
+## Review plan persistence
+
+The plan file is the handoff between the analyze and act steps. Because it
+defaults to a persistent path next to the state file (`review-plan-<ticket>.json`,
+atomic write, honouring the `ORCHESTRATOR_REVIEW_PLAN_FILE` override for
+embedding and tests), the expensive analyze step is never repeated after an
+interruption:
+
+- **Resume from act** — when a round starts and a plan for the ticket already
+  exists, the analyze step is skipped and the round resumes from the act step
+  (schema-validated first). A daemon restart between analyze and act, or a
+  failed act step (e.g. a transient reply-post 503), therefore continues from
+  the plan instead of re-burning an analyze session.
+- **Deletion** — the plan is removed once the round succeeds, once the round
+  is abandoned (the retry cap is reached and polling pauses), and when the
+  entry is pruned (`orchestrator_prune_ticket`). Reconcile sweeps orphaned
+  plans whose ticket is no longer in state. It survives act failures and
+  restarts so they can resume from act.
+- **Idempotent act** — before posting a reply, the act step checks whether a
+  footer-bearing reply to that comment already exists (inline threads via
+  `in_reply_to_id`, general comments via a footer-bearing newer
+  PR-conversation reply starting with the planned body) and skips the post if
+  so. A resumed or retried round never double-posts a reply.
 
 ## State file
 
@@ -384,7 +455,7 @@ The full flow: startup reconciliation, then each poll cycle.
 
 ```mermaid
 flowchart TD
-    S[startup: reconcile state entries against git facts] --> S1{PR exists for branch?}
+    S[poll top: reconcile state entries against git facts] --> S1{PR exists for branch?}
     S1 -- yes --> AR[phase awaiting review, begin polling]
     S1 -- no --> S2{branch pushed?}
     S2 -- yes --> S3[create PR + phase awaiting review]
@@ -403,7 +474,7 @@ flowchart TD
     F1 -- yes --> F2[retry: opencode run --auto --continue /implement the issue is N]
     F2 --> F3{non-zero again?}
     F3 -- no --> F5
-    F3 -- yes --> F4[escalate: stash uncommitted work, needs-triage, comment with output, prune, remove from state]
+    F3 -- yes --> F4[escalate: needs-triage, stash uncommitted work, comment with output, prune, remove from state]
     F5 -- yes --> G
     F5 -- no, work present, first invocation only --> F6[stalled run: resume once — opencode run --auto --continue]
     F5 -- no, work present, retry already resumed --> F4[escalate: no commits produced even after resuming the session]
@@ -428,7 +499,7 @@ flowchart TD
     O --> P0[gh pr view n → state]
     P0 -- MERGED --> P1[close issue: PR #n merged. Issue closed. → prune worktree/branch, remove from state]
     P1 -- close failed --> O
-    P0 -- CLOSED --> P2[escalate: stash leftover work, drop in-progress, add needs-triage, comment → prune worktree/branch, remove from state]
+    P0 -- CLOSED --> P2[escalate: drop in-progress, add needs-triage, stash uncommitted work, comment → prune worktree/branch, remove from state]
     P0 -- OPEN --> P3
     P2 -- escalate failed --> O
     P2 --> O
