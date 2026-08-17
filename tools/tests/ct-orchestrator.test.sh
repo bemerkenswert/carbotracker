@@ -1407,6 +1407,114 @@ exit 1'
   state_teardown
 }
 
+# Fake git for the stash-on-escalation tests: `status --porcelain` returns
+# $FAKE_GIT_STATUS (absent/empty means clean), `stash push` captures its args to
+# $FAKE_STASH_PUSH_ARGS and clears the status (the tree is clean afterwards),
+# `stash list` returns $FAKE_STASH_LIST, and worktree removal + branch deletion
+# succeed.
+fake_stash_git() {
+  fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "worktree" && "$2" == "remove" ]]; then
+  rm -rf "$3" "$4"
+elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
+  exit 0
+elif [[ "$1" == "status" ]]; then
+  cat "${FAKE_GIT_STATUS:-/dev/null}" 2>/dev/null || true
+elif [[ "$1" == "stash" && "$2" == "push" ]]; then
+  printf "%s\n" "$*" >> "${FAKE_STASH_PUSH_ARGS:-/dev/null}"
+  > "${FAKE_GIT_STATUS:-/dev/null}" 2>/dev/null || true
+elif [[ "$1" == "stash" && "$2" == "list" ]]; then
+  cat "${FAKE_STASH_LIST:-/dev/null}" 2>/dev/null || true
+elif [[ "$1" == "rev-parse" ]]; then
+  exit 0
+fi
+exit 0'
+}
+
+test_escalation_stashes_uncommitted_work() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
+  exit 0
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_COMMENT"
+  exit 0
+fi
+exit 1'
+  fake_stash_git
+  fake_stalled_opencode
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
+  export FAKE_STASH_PUSH_ARGS="$STATE_DIR/stash_push"
+  export FAKE_STASH_LIST="$STATE_DIR/stash_list"
+  export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
+  export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  mkdir -p "$worktree"
+  printf ' M src/feature.ts\n?? new-file.ts\n' > "$FAKE_GIT_STATUS"
+  printf 'stash@{0}\n' > "$FAKE_STASH_LIST"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_escalate_failure 10 "$branch" "$worktree" "" "no commits produced" 2>&1)"
+  assert_contains "stashes the work before pruning" "stash push --include-untracked" "$(cat "$FAKE_STASH_PUSH_ARGS")"
+  assert_contains "stash message follows the contract and names the ticket" "carbotracker: ticket 10 uncommitted work at escalation" "$(cat "$FAKE_STASH_PUSH_ARGS")"
+  assert_contains "stash message records the session id" "session ses_abc)" "$(cat "$FAKE_STASH_PUSH_ARGS")"
+  assert_eq "stash message records an ISO-8601 UTC timestamp" "yes" "$(grep -qE 'at escalation \(20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z, session' "$FAKE_STASH_PUSH_ARGS" && echo yes || echo no)"
+  assert_contains "escalation comment names the stash ref" 'stashed as `stash@{0}`' "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_contains "escalation comment points at the recovery tool" "ct-recover-stalled.sh 10" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_contains "escalation log names the stash ref" "stashed stash@{0}" "$output"
+  unset FAKE_GIT_STATUS FAKE_STASH_PUSH_ARGS FAKE_STASH_LIST FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  state_teardown
+}
+
+test_escalation_clean_tree_creates_no_stash() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
+  exit 0
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_COMMENT"
+  exit 0
+fi
+exit 1'
+  fake_stash_git
+  fake_stalled_opencode
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_STASH_PUSH_ARGS="$STATE_DIR/stash_push"
+  export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
+  export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_escalate_failure 10 "$branch" "$worktree" "" "no commits produced" 2>&1)"
+  assert_eq "clean tree creates no stash push" "no" "$([[ -f "$FAKE_STASH_PUSH_ARGS" ]] && echo yes || echo no)"
+  assert_eq "escalation comment does not mention a stash" "0" "$(grep -c "stashed as" "$FAKE_ESCALATE_COMMENT")"
+  assert_contains "logs the clean-tree case" "clean tree, no stash entry created" "$output"
+  unset FAKE_STASH_PUSH_ARGS FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  state_teardown
+}
+
+test_merge_prune_stashes_uncommitted_work() {
+  state_setup
+  fake_merge_gh "MERGED"
+  fake_stash_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
+  export FAKE_STASH_PUSH_ARGS="$STATE_DIR/stash_push"
+  export FAKE_STASH_LIST="$STATE_DIR/stash_list"
+  export FAKE_ISSUE_EDIT_ARGS="$STATE_DIR/issue_edit"
+  export FAKE_ISSUE_CLOSE_ARGS="$STATE_DIR/issue_close"
+  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
+  printf 'stash@{0}\n' > "$FAKE_STASH_LIST"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>/dev/null
+  assert_contains "merge prune stashes leftover work" "stash push --include-untracked" "$(cat "$FAKE_STASH_PUSH_ARGS")"
+  assert_contains "merge prune stash names the ticket" "carbotracker: ticket 123 uncommitted work at escalation" "$(cat "$FAKE_STASH_PUSH_ARGS")"
+  unset FAKE_GIT_STATUS FAKE_STASH_PUSH_ARGS FAKE_STASH_LIST FAKE_ISSUE_EDIT_ARGS FAKE_ISSUE_CLOSE_ARGS
+  state_teardown
+}
+
 test_implement_no_pr_skips_comment() {
   state_setup
   fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
@@ -3652,6 +3760,9 @@ test_implement_resumes_stalled_run_once_and_finishes
 test_implement_escalates_when_resume_still_commitless
 test_implement_escalates_when_resume_exits_nonzero
 test_implement_escalates_when_retry_already_resumed
+test_escalation_stashes_uncommitted_work
+test_escalation_clean_tree_creates_no_stash
+test_merge_prune_stashes_uncommitted_work
 test_implement_no_pr_skips_comment
 test_implement_no_session_stores_null
 test_implement_opens_pr_when_none_exists

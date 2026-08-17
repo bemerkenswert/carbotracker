@@ -61,3 +61,11 @@ _Avoid_: Last-seen, cursor
 **Review trigger**:
 What starts a review round: only human-authored comments and reviews; bot comments (GitHub Actions previews, dependabot) never trigger.
 _Avoid_: Review signal (when it means a bot post)
+
+**Stash**:
+The `git stash` entry the orchestrator creates before pruning a worktree that holds uncommitted work on escalation, so a stalled run's recoverable changes survive the prune. The message records the ticket number, a UTC timestamp, and the session id, which is what makes the entry attributable in the repo-global stash list.
+_Avoid_: Save, backup
+
+**Recover**:
+Reopening a stalled ticket's session in place via `ct-recover-stalled.sh` — finding the ticket's stash, recreating the worktree at its deterministic path, applying the stash without popping it, and resuming the session. Not a restart (which discards work).
+_Avoid_: Restart, retry

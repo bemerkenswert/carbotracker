@@ -25,7 +25,7 @@ fi
 ORCHESTRATOR_POLL_INTERVAL_SECONDS="${ENV_ORCHESTRATOR_POLL_INTERVAL_SECONDS:-${ORCHESTRATOR_POLL_INTERVAL_SECONDS:-300}}"
 ORCHESTRATOR_CONCURRENCY_CAP="${ENV_ORCHESTRATOR_CONCURRENCY_CAP:-${ORCHESTRATOR_CONCURRENCY_CAP:-3}}"
 ORCHESTRATOR_STATE_FILE="${ENV_ORCHESTRATOR_STATE_FILE:-${ORCHESTRATOR_STATE_FILE:-$HOME/.local/state/carbotracker/orchestrator.json}}"
-ORCHESTRATOR_WORKTREE_PARENT="${ENV_ORCHESTRATOR_WORKTREE_PARENT:-${ORCHESTRATOR_WORKTREE_PARENT:-$HOME/git/worktrees/carbotracker}}"
+ORCHESTRATOR_WORKTREE_PARENT="${ENV_ORCHESTRATOR_WORKTREE_PARENT:-${ORCHESTRATOR_WORKTREE_PARENT:-$WORKTREE_PARENT}}"
 ORCHESTRATOR_ISSUE_LABELS="${ENV_ORCHESTRATOR_ISSUE_LABELS:-${ORCHESTRATOR_ISSUE_LABELS:-ready-for-agent,ticket}}"
 ORCHESTRATOR_IN_PROGRESS_LABEL="${ENV_ORCHESTRATOR_IN_PROGRESS_LABEL:-${ORCHESTRATOR_IN_PROGRESS_LABEL:-in-progress}}"
 ORCHESTRATOR_REVIEW_RETRIES="${ENV_ORCHESTRATOR_REVIEW_RETRIES:-${ORCHESTRATOR_REVIEW_RETRIES:-3}}"
@@ -777,7 +777,7 @@ _Created by carbotracker's agent skills._"
 
 orchestrator_prune_ticket() {
   local number="$1" branch="$2" worktree="$3"
-  orchestrator_cleanup_worktree "$worktree" "$branch"
+  orchestrator_cleanup_worktree "$number" "$worktree" "$branch"
   orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
   orchestrator_log "pruned #$number: worktree removed, branch deleted, removed from state"
 }
@@ -903,7 +903,7 @@ orchestrator_merge_conflict_pr() {
 }
 
 orchestrator_merge_poll() {
-  local line number pr_number branch worktree session_id state merge_state labels
+  local line number pr_number branch worktree session_id state merge_state labels stash_ref stash_line
   while IFS= read -r line; do
     number="$(printf '%s' "$line" | jq -r '.ticket')"
     pr_number="$(printf '%s' "$line" | jq -r '.prNumber')"
@@ -939,8 +939,14 @@ orchestrator_merge_poll() {
         # removed only once the escalation lands, so a transient gh failure
         # retries next poll instead of stranding an un-labelled issue.
         orchestrator_log "PR #$pr_number closed without merge for #$number; pruning worktree and escalating to triage"
+        stash_ref="$(orchestrator_stash_before_prune "$number" "$worktree")"
+        stash_line=""
+        if [[ -n "$stash_ref" ]]; then
+          stash_line="$(printf '\nUncommitted work was stashed as `%s` before pruning and can be recovered in place with `ct-recover-stalled.sh %s`.' "$stash_ref" "$number")"
+        fi
         if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --add-label needs-triage \
           && gh issue comment "$number" --body "PR #$pr_number was closed without merging. Escalated to needs-triage for human review.
+${stash_line}
 ---
 _Created by carbotracker's agent skills._"; then
           orchestrator_prune_ticket "$number" "$branch" "$worktree"
@@ -1024,8 +1030,40 @@ orchestrator_push_and_open_pr() {
   printf '%s' "$pr_number"
 }
 
+# Stash any uncommitted work (including untracked files) in $worktree before a
+# prune destroys it, so a stalled run's recoverable work survives escalation.
+# The stash message is the contract the recovery tool greps for, so it always
+# carries the ticket number, a UTC timestamp, and the session id. A clean tree
+# produces no stash. Prints the newest stash ref (e.g. stash@{0}) when a stash
+# was created, nothing otherwise.
+orchestrator_stash_before_prune() {
+  local number="$1" worktree="$2"
+  local session_id message ref
+  if [[ ! -d "$worktree" ]]; then
+    return 0
+  fi
+  if ! git -C "$worktree" rev-parse --git-dir >/dev/null 2>&1; then
+    orchestrator_log "WARNING: $worktree is not a git repo; nothing to stash before pruning"
+    return 0
+  fi
+  if [[ -z "$(git -C "$worktree" status --porcelain 2>/dev/null)" ]]; then
+    orchestrator_log "stash #$number: clean tree, no stash entry created"
+    return 0
+  fi
+  session_id="$(orchestrator_opencode_session_id "carbotracker-ticket-$number")"
+  message="carbotracker: ticket $number uncommitted work at escalation ($(date -u +%Y-%m-%dT%H:%M:%SZ), session ${session_id:-none})"
+  if ! git -C "$worktree" stash push --include-untracked --message "$message" >/dev/null 2>&1; then
+    orchestrator_log "WARNING: failed to stash uncommitted work for #$number before pruning; work may be lost"
+    return 0
+  fi
+  ref="$(git -C "$worktree" stash list --format='%gd' 2>/dev/null | head -n1)"
+  orchestrator_log "stash #$number: stashed uncommitted work as $ref (session ${session_id:-none})"
+  printf '%s' "$ref"
+}
+
 orchestrator_cleanup_worktree() {
-  local worktree="$1" branch="$2"
+  local number="$1" worktree="$2" branch="$3"
+  orchestrator_stash_before_prune "$number" "$worktree"
   git worktree remove --force "$worktree" 2>/dev/null || rm -rf "$worktree"
   git branch -D "$branch" 2>/dev/null || true
 }
@@ -1099,20 +1137,26 @@ orchestrator_escalate_opencode_failure() {
 
 orchestrator_escalate_failure() {
   local number="$1" branch="$2" worktree="$3" log_file="$4" reason="$5"
-  local tail snippet body
+  local tail snippet body stash_ref stash_line
+  stash_ref="$(orchestrator_stash_before_prune "$number" "$worktree")"
   tail="$(tail -n 30 "$log_file" 2>/dev/null || true)"
   snippet=""
   if [[ -n "$tail" ]]; then
     snippet="$(printf '\n```\n%s\n```' "$tail")"
   fi
+  stash_line=""
+  if [[ -n "$stash_ref" ]]; then
+    stash_line="$(printf '\nUncommitted work was stashed as `%s` before pruning and can be recovered in place with `ct-recover-stalled.sh %s`.' "$stash_ref" "$number")"
+  fi
   body="Automated implementation of #$number failed: $reason. Escalated to needs-triage for human review.
+${stash_line}
 ${snippet}
 ---
 _Created by carbotracker's agent skills._"
   if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --remove-label ticket --add-label needs-triage \
     && gh issue comment "$number" --body "$body"; then
     orchestrator_prune_ticket "$number" "$branch" "$worktree"
-    orchestrator_log "escalated #$number to needs-triage after $reason; pruned worktree and removed from state"
+    orchestrator_log "escalated #$number to needs-triage after $reason; pruned worktree and removed from state${stash_line:+ (stashed $stash_ref)}"
     return 0
   fi
   orchestrator_log "WARNING: failed to escalate #$number; leaving entry in state for the poll loop to un-claim"
@@ -1149,7 +1193,7 @@ orchestrator_handle_non_opencode_failure() {
     orchestrator_log "WARNING: failed to restore ready-for-agent on #$number; it will need manual re-labelling"
   fi
   if [[ "${CT_WORKTREE_CREATED:-0}" == "1" ]]; then
-    orchestrator_cleanup_worktree "$worktree" "$branch"
+    orchestrator_cleanup_worktree "$number" "$worktree" "$branch"
   else
     orchestrator_log "not cleaning up pre-existing worktree $worktree"
   fi
@@ -1335,7 +1379,7 @@ orchestrator_recover_pushed_branch() {
 
 orchestrator_drop_unrecoverable() {
   local number="$1" branch="$2" worktree="$3"
-  orchestrator_cleanup_worktree "$worktree" "$branch"
+  orchestrator_cleanup_worktree "$number" "$worktree" "$branch"
   if ! gh issue comment "$number" --body "The orchestrator found no recoverable work for this ticket after a restart. It has been cleaned up and removed from the pipeline. Re-tag with ready-for-agent to retry.
 ---
 _Created by carbotracker's agent skills._"; then
@@ -1408,7 +1452,7 @@ orchestrator_reconcile() {
 }
 
 orchestrator_poll_once() {
-  local candidates active_count count line number title slug branch worktree
+  local candidates active_count count line number title branch worktree
   orchestrator_restore_failed_labels
   candidates="$(ct_candidate_issues)"
   active_count="$(orchestrator_state_active_count "$ORCHESTRATOR_STATE_FILE")"
@@ -1439,9 +1483,8 @@ orchestrator_poll_once() {
       continue
     fi
 
-    slug="$(slugify "$title")"
-    branch="ticket/$number-$slug"
-    worktree="$ORCHESTRATOR_WORKTREE_PARENT/$number-$slug"
+    branch="$(ct_ticket_branch "$number" "$title")"
+    worktree="$(ct_ticket_worktree "$number" "$title" "$ORCHESTRATOR_WORKTREE_PARENT")"
     if ! orchestrator_claim "$number" "$branch" "$worktree"; then
       orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
       orchestrator_log "claim failed for #$number; removed from state"
