@@ -109,6 +109,7 @@ elif [[ "$1" == "push" && -n "${FAKE_GIT_PUSH_FILE:-}" ]]; then
   printf "%s\n" "$*" > "$FAKE_GIT_PUSH_FILE"
 elif [[ "$1" == "stash" ]]; then
   printf "%s\n" "$*" >> "${FAKE_GIT_STASH_ARGS:-/dev/null}"
+  if [[ "${FAKE_GIT_STASH_FAIL:-0}" == "1" ]]; then exit 1; fi
 elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
   exit 0
 fi
@@ -420,7 +421,8 @@ exit 0"
 # Fake git that removes the dir on `worktree remove`, mirroring how the
 # cleanup helper is invoked by the orchestrator. `status --porcelain` reads
 # $FAKE_GIT_STATUS (empty/absent means a clean tree) and every `stash`
-# invocation is appended to $FAKE_GIT_STASH_ARGS.
+# invocation is appended to $FAKE_GIT_STASH_ARGS (exiting 1 when
+# FAKE_GIT_STASH_FAIL is set).
 fake_merge_git() {
   fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
 if [[ "$1" == "worktree" && "$2" == "remove" ]]; then
@@ -429,6 +431,7 @@ elif [[ "$1" == "status" ]]; then
   cat "${FAKE_GIT_STATUS:-/dev/null}" 2>/dev/null || true
 elif [[ "$1" == "stash" ]]; then
   printf "%s\n" "$*" >> "${FAKE_GIT_STASH_ARGS:-/dev/null}"
+  if [[ "${FAKE_GIT_STASH_FAIL:-0}" == "1" ]]; then exit 1; fi
 elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
   exit 0
 fi
@@ -1528,7 +1531,7 @@ test_stash_escalation_work_skips_missing_worktree() {
   state_teardown
 }
 
-test_stash_escalation_work_fails_open_on_stash_error() {
+test_stash_escalation_work_fails_closed_on_stash_error() {
   state_setup
   local worktree="$WT_PARENT/10-alpha"
   mkdir -p "$worktree"
@@ -1545,8 +1548,8 @@ exit 0'
   local entry rc log
   entry="$(orchestrator_stash_escalation_work 10 "$worktree" 2>"$STATE_DIR/stash_log")" && rc=0 || rc=$?
   assert_eq "failed stash reports no entry" "" "$entry"
-  assert_eq "failed stash exits 0 so the escalation proceeds" "yes" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
-  assert_contains "failed stash logs a warning" "WARNING" "$(cat "$STATE_DIR/stash_log")"
+  assert_eq "failed stash returns non-zero so the caller defers" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_contains "failed stash logs an error" "ERROR" "$(cat "$STATE_DIR/stash_log")"
   state_teardown
 }
 
@@ -1597,6 +1600,40 @@ exit 1'
   fi
   assert_eq "escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
   unset FAKE_GIT_STATUS FAKE_GIT_STASH_ARGS FAKE_OPENCODE_EXITS FAKE_OPENCODE_LOG FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  state_teardown
+}
+
+test_implement_escalation_keeps_worktree_when_stash_fails() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
+  exit 0
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_COMMENT"
+  exit 0
+fi
+exit 1'
+  fake_stalled_git
+  fake_stalled_opencode
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
+  export FAKE_GIT_STASH_FAIL=1
+  export FAKE_OPENCODE_EXITS="$STATE_DIR/opencode_exits"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
+  export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
+  printf '1\n1\n' > "$FAKE_OPENCODE_EXITS"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "failed stash fails the implement round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "failed stash keeps the entry in state" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "failed stash keeps the worktree" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_eq "failed stash posts no escalation comment" "no" "$([[ -f "$FAKE_ESCALATE_COMMENT" ]] && echo yes || echo no)"
+  assert_contains "logs that the escalation is deferred" "deferring the escalation" "$output"
+  unset FAKE_GIT_STATUS FAKE_GIT_STASH_ARGS FAKE_GIT_STASH_FAIL FAKE_OPENCODE_EXITS FAKE_OPENCODE_LOG FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
   state_teardown
 }
 
@@ -2870,6 +2907,29 @@ test_merge_poll_closed_stashes_uncommitted_work_and_names_entry() {
   state_teardown
 }
 
+test_merge_poll_closed_keeps_worktree_when_stash_fails() {
+  state_setup
+  fake_closed_escalate_gh
+  fake_merge_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_ESCALATE_ARGS="$STATE_DIR/escalate"
+  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
+  export FAKE_GIT_STASH_ARGS="$STATE_DIR/stash_args"
+  export FAKE_GIT_STASH_FAIL=1
+  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "failed stash keeps entry in state" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "failed stash keeps the worktree" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_eq "failed stash posts no escalation" "no" "$([[ -s "$FAKE_ESCALATE_ARGS" ]] && echo yes || echo no)"
+  assert_contains "logs that the escalation is deferred" "keeping the entry and worktree to retry the escalation" "$output"
+  unset FAKE_ESCALATE_ARGS FAKE_GIT_STATUS FAKE_GIT_STASH_ARGS FAKE_GIT_STASH_FAIL
+  state_teardown
+}
+
 test_merge_poll_closed_escalation_failure_restores_stash() {
   state_setup
   fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
@@ -3909,6 +3969,7 @@ test_pr_merge_state_gh_error
 test_merge_poll_prunes_merged_pr
 test_merge_poll_prunes_closed_pr
 test_merge_poll_closed_stashes_uncommitted_work_and_names_entry
+test_merge_poll_closed_keeps_worktree_when_stash_fails
 test_merge_poll_closed_escalation_failure_restores_stash
 test_merge_poll_keeps_entry_when_escalate_fails
 test_merge_poll_keeps_entry_when_close_fails
@@ -3947,8 +4008,9 @@ test_stash_escalation_work_uses_passed_session_id
 test_stash_escalation_work_unknown_session_uses_none
 test_stash_escalation_work_skips_clean_tree
 test_stash_escalation_work_skips_missing_worktree
-test_stash_escalation_work_fails_open_on_stash_error
+test_stash_escalation_work_fails_closed_on_stash_error
 test_implement_escalation_stashes_uncommitted_work_and_names_entry
+test_implement_escalation_keeps_worktree_when_stash_fails
 test_implement_escalation_failure_restores_stash
 test_implement_no_pr_skips_comment
 test_implement_no_session_stores_null

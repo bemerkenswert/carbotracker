@@ -204,14 +204,20 @@ tracked changes and untracked files alike (`git stash push --include-untracked`)
 `git stash list`. The stash message follows the contract
 `carbotracker: ticket <number> uncommitted work at escalation (<ISO-8601 UTC
 timestamp>, session <id>)`; the escalation comment and the prune log line both
-name the entry. A clean or missing worktree creates no stash, and a failed
-stash never blocks the escalation — the prune proceeds without it.
+name the entry. A clean or missing worktree creates no stash.
+
+The stash protects the work, so the escalation is **fail-closed**: when a dirty
+worktree's stash fails, the prune is deferred — the entry and worktree stay put
+and the escalation is retried (the merge-poll path retries next poll; the
+implement path retries when the daemon re-visits the entry on a restart), rather
+than destroying the very work the stash exists to protect.
 
 The stash is created before the escalation comment is posted, so the comment
-names the actual entry. If the escalation fails to land (`gh` down), the stash
-is popped again to restore the dirty worktree: the entry survives in state, the
-next poll retries the escalation, and that retry re-stashes with a fresh
-timestamp and names its own entry.
+names the actual entry. If the escalation fails to land (`gh` down) after the
+stash succeeded, the stash is popped again to restore the dirty worktree: on the
+merge-poll path the next poll re-stashes with a fresh timestamp and names its
+own entry, and on the implement path the restored work is picked up by a later
+resume — never pruned.
 
 ## No-commit runs: stalled vs empty
 

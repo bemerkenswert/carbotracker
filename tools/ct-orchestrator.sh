@@ -789,12 +789,13 @@ orchestrator_prune_ticket() {
 # Stash any uncommitted work (tracked changes and untracked files) in the
 # ticket's worktree before an escalation prunes it, so a maintainer can recover
 # the work later from the repo's stash list. A clean or missing worktree
-# produces no stash, and a failed stash never blocks the escalation. Prints the
-# stash entry's message on stdout (empty when nothing was stashed). The message
-# follows the contract: carbotracker: ticket <number> uncommitted work at
-# escalation (<ISO-8601 UTC timestamp>, session <id>). The session id may be
-# passed in (the merge poll carries it in the state entry); otherwise it is
-# looked up by the ticket's session title.
+# produces no stash and returns 0. A dirty tree whose stash fails returns 1 so
+# the caller defers the escalation rather than destroying the work it could not
+# protect. Prints the stash entry's message on stdout (empty when nothing was
+# stashed). The message follows the contract: carbotracker: ticket <number>
+# uncommitted work at escalation (<ISO-8601 UTC timestamp>, session <id>). The
+# session id may be passed in (the merge poll carries it in the state entry);
+# otherwise it is looked up by the ticket's session title.
 orchestrator_stash_escalation_work() {
   local number="$1" worktree="$2" session_id="${3:-}"
   local timestamp message
@@ -815,9 +816,10 @@ orchestrator_stash_escalation_work() {
   if git -C "$worktree" stash push --include-untracked --message "$message" >/dev/null 2>&1; then
     orchestrator_log "escalation #$number: stashed uncommitted work ($message)"
     printf '%s' "$message"
-  else
-    orchestrator_log "WARNING: could not stash uncommitted work for #$number before pruning; escalating without a stash"
+    return 0
   fi
+  orchestrator_log "ERROR: could not stash uncommitted work for #$number before pruning; deferring the escalation so the work survives"
+  return 1
 }
 
 # When an escalation fails to land (gh down), the state entry survives for the
@@ -993,19 +995,25 @@ orchestrator_merge_poll() {
         # removed only once the escalation lands, so a transient gh failure
         # retries next poll instead of stranding an un-labelled issue.
         orchestrator_log "PR #$pr_number closed without merge for #$number; pruning worktree and escalating to triage"
-        stash_entry="$(orchestrator_stash_escalation_work "$number" "$worktree" "$session_id")"
-        body="PR #$pr_number was closed without merging. Escalated to needs-triage for human review."
-        if [[ -n "$stash_entry" ]]; then
-          body+=$'\n'"Uncommitted work was stashed before pruning: \`${stash_entry}\`."
-        fi
-        body+=$'\n---\n_Created by carbotracker\'s agent skills._'
-        if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --add-label needs-triage \
-          && gh issue comment "$number" --body "$body"; then
-          orchestrator_prune_ticket "$number" "$branch" "$worktree" "$stash_entry"
-          orchestrator_log "escalated #$number to needs-triage and pruned worktree"
+        if ! stash_entry="$(orchestrator_stash_escalation_work "$number" "$worktree" "$session_id")"; then
+          # The stash is the last line of defence for the rejected work: when
+          # it fails, pruning would destroy the work, so the escalation is
+          # deferred and the entry retried on the next poll.
+          orchestrator_log "WARNING: could not stash uncommitted work for #$number; keeping the entry and worktree to retry the escalation"
         else
-          orchestrator_restore_stash_after_failed_escalation "$number" "$worktree" "$stash_entry"
-          orchestrator_log "WARNING: failed to escalate #$number; keeping entry to retry next poll"
+          body="PR #$pr_number was closed without merging. Escalated to needs-triage for human review."
+          if [[ -n "$stash_entry" ]]; then
+            body+=$'\n'"Uncommitted work was stashed before pruning: \`${stash_entry}\`."
+          fi
+          body+=$'\n---\n_Created by carbotracker\'s agent skills._'
+          if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --add-label needs-triage \
+            && gh issue comment "$number" --body "$body"; then
+            orchestrator_prune_ticket "$number" "$branch" "$worktree" "$stash_entry"
+            orchestrator_log "escalated #$number to needs-triage and pruned worktree"
+          else
+            orchestrator_restore_stash_after_failed_escalation "$number" "$worktree" "$stash_entry"
+            orchestrator_log "WARNING: failed to escalate #$number; keeping entry to retry next poll"
+          fi
         fi
         ;;
       OPEN)
@@ -1159,9 +1167,12 @@ orchestrator_escalate_opencode_failure() {
 orchestrator_escalate_failure() {
   local number="$1" branch="$2" worktree="$3" log_file="$4" reason="$5"
   local tail body stash_entry
-  # Stash before posting so the escalation comment can name the entry. The
-  # stash is popped again below if the escalation does not land.
-  stash_entry="$(orchestrator_stash_escalation_work "$number" "$worktree")"
+  # Stash before posting so the escalation comment can name the entry. When the
+  # stash fails the escalation is deferred: pruning would destroy the very work
+  # the stash is meant to protect, so the entry and worktree stay put.
+  if ! stash_entry="$(orchestrator_stash_escalation_work "$number" "$worktree")"; then
+    return 1
+  fi
   tail="$(tail -n 30 "$log_file" 2>/dev/null || true)"
   body="Automated implementation of #$number failed: $reason. Escalated to needs-triage for human review."
   if [[ -n "$stash_entry" ]]; then
