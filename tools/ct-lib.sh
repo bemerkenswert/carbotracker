@@ -8,6 +8,44 @@ slugify() {
   printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C sed 's/[^a-z0-9]/-/g' | LC_ALL=C sed 's/--*/-/g' | LC_ALL=C sed 's/^-//;s/-$//'
 }
 
+# The deterministic branch name for a ticket — the pipeline's single source of
+# truth so the orchestrator, ct-worktree.sh, and the recovery tool can never
+# derive different paths for the same ticket.
+ct_ticket_branch() {
+  local number="$1" title="$2"
+  printf 'ticket/%s-%s' "$number" "$(slugify "$title")"
+}
+
+# The deterministic worktree path for a ticket, derived from the same slug as
+# the branch so the session's original directory can be recomputed after the
+# orchestrator pruned it. $3 overrides the parent directory (the orchestrator
+# passes its own configurable ORCHESTRATOR_WORKTREE_PARENT).
+ct_ticket_worktree() {
+  local number="$1" title="$2" parent="${3:-$WORKTREE_PARENT}"
+  printf '%s/%s-%s' "$parent" "$number" "$(slugify "$title")"
+}
+
+# The stash-message contract between the orchestrator (which stashes on
+# escalation) and the recovery tool (which greps for the entry): the fixed
+# prefix naming the ticket. The orchestrator appends the timestamp and session
+# id; the recovery tool greps for the prefix verbatim (grep -F), so the two
+# sides can never drift apart.
+ct_stash_message_prefix() {
+  local number="$1"
+  printf 'carbotracker: ticket %s uncommitted work at escalation (' "$number"
+}
+
+# The newest stash entry for a ticket — "ref<TAB>subject" or nothing. Stash
+# list is newest-first, so the first match is the ticket's latest work. The
+# shared consumer for both the recovery tool and the orchestrator's escalation
+# comments, so they can never select different entries for the same ticket.
+ct_ticket_stash_line() {
+  local number="$1"
+  git stash list --format='%gd%x09%gs' 2>/dev/null \
+    | grep -F "$(ct_stash_message_prefix "$number")" \
+    | head -n 1 || true
+}
+
 ct_issue_title() {
   gh issue view "$1" --json title --jq .title 2>/dev/null || true
 }
@@ -129,17 +167,16 @@ ct_worktree_add() {
 
 ct_worktree_create() {
   local issue_number="$1"
-  local title slug
+  local title
   title=$(ct_issue_title "$issue_number")
   if [[ -z "$title" ]]; then
     echo "Error: Could not find issue #$issue_number" >&2
     return 1
   fi
 
-  slug=$(slugify "$title")
   CT_WORKTREE_TITLE="$title"
-  CT_WORKTREE_BRANCH="ticket/$issue_number-$slug"
-  CT_WORKTREE_DIR="$WORKTREE_PARENT/$issue_number-$slug"
+  CT_WORKTREE_BRANCH="$(ct_ticket_branch "$issue_number" "$title")"
+  CT_WORKTREE_DIR="$(ct_ticket_worktree "$issue_number" "$title")"
 
   echo "Issue:  #$issue_number - $title"
   echo "Branch: $CT_WORKTREE_BRANCH"

@@ -265,6 +265,46 @@ exists so a triager can tell "agent stopped mid-thought" (stalled run) from
 **resume** is worth a token. A **restart** — a fresh worktree and session from
 scratch — happens only when a human re-tags the ticket with `ready-for-agent`.
 
+## Stash and recovery
+
+Whenever the orchestrator prunes a worktree that holds uncommitted work on a
+failure or escalation — an implement failure, a closed-without-merge PR, or a
+non-opencode retry — it first **stashes** that work
+(`git stash push --include-untracked`) so no recoverable change is ever lost to
+pruning. A clean tree produces no stash, and a successfully **merged** PR is
+pruned without stashing (the work already landed; a stash entry would just
+orphan). The stash message is the interface between the stashing side and the
+recovery tool, so it always records the ticket number, a UTC timestamp, and the
+session id:
+
+```text
+carbotracker: ticket <number> uncommitted work at escalation (<ISO-8601 UTC timestamp>, session <id>)
+```
+
+The stash lives in the repository's shared `refs/stash` and survives the
+worktree removal, so the entry is attributable in the repo-global stash list
+even after several tickets interleave. The escalation comment and the prune log
+line name the stash entry (`stash@{n}`) so a triager knows recoverable work
+exists and where it is.
+
+A maintainer recovers a stalled ticket in place with a single command (run from
+inside a clone of the repo, so `git stash list` and `git fetch` have a
+repository to work against):
+
+```bash
+ct-recover-stalled.sh <ticket>
+```
+
+It finds the ticket's newest stash (clear error if none), derives the same
+deterministic worktree path and branch the pipeline uses, recreates the worktree
+from `origin/main` if it is missing, installs dependencies, applies the stash
+**without popping it** (so the entry stays as a safety net), verifies the
+session id from the stash message still exists in opencode's session list
+(warns and starts fresh otherwise), prints a status block, and opens the
+interactive opencode session in the worktree. A conflict on apply aborts the
+command with instructions and leaves the stash intact. Once the PR lands, the
+maintainer drops the entry: `git stash drop stash@{N}`.
+
 ## Review loop
 
 Each poll, after claiming work, the orchestrator walks every state entry in
@@ -509,14 +549,17 @@ file, which wins over defaults):
 - `ct-orchestrator.sh` — run the daemon (systemd user service).
 - `ct-orchestrator.sh once` — run a single poll cycle and exit.
 - `ct-orchestrator.sh help` — show usage.
+- `ct-recover-stalled.sh <ticket>` — recover a stalled run in place from its
+  stash entry (see [Stash and recovery](#stash-and-recovery)).
 
 Follow the daemon with `journalctl --user -u carbotracker-orchestrator -f`.
 
 ## Design notes
 
-- Branch/worktree naming is derived once in the poll loop (`slugify`) and
-  handed to `ct_worktree_add`, so the state file and the actual worktree can
-  never drift apart.
+- Branch/worktree naming is derived once via the shared `ct_ticket_branch` /
+  `ct_ticket_worktree` helpers (in `ct-lib.sh`) and handed to
+  `ct_worktree_add`, so the state file, the actual worktree, and the recovery
+  tool can never derive different paths for the same ticket.
 - A failed step records a `failed` state and removes the worktree and branch, so
   the next poll starts clean while the failure count survives a restart. Below
   the implementation retry bound the ticket is restored to `ready-for-agent`;

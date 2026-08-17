@@ -25,7 +25,7 @@ fi
 ORCHESTRATOR_POLL_INTERVAL_SECONDS="${ENV_ORCHESTRATOR_POLL_INTERVAL_SECONDS:-${ORCHESTRATOR_POLL_INTERVAL_SECONDS:-300}}"
 ORCHESTRATOR_CONCURRENCY_CAP="${ENV_ORCHESTRATOR_CONCURRENCY_CAP:-${ORCHESTRATOR_CONCURRENCY_CAP:-3}}"
 ORCHESTRATOR_STATE_FILE="${ENV_ORCHESTRATOR_STATE_FILE:-${ORCHESTRATOR_STATE_FILE:-$HOME/.local/state/carbotracker/orchestrator.json}}"
-ORCHESTRATOR_WORKTREE_PARENT="${ENV_ORCHESTRATOR_WORKTREE_PARENT:-${ORCHESTRATOR_WORKTREE_PARENT:-$HOME/git/worktrees/carbotracker}}"
+ORCHESTRATOR_WORKTREE_PARENT="${ENV_ORCHESTRATOR_WORKTREE_PARENT:-${ORCHESTRATOR_WORKTREE_PARENT:-$WORKTREE_PARENT}}"
 ORCHESTRATOR_ISSUE_LABELS="${ENV_ORCHESTRATOR_ISSUE_LABELS:-${ORCHESTRATOR_ISSUE_LABELS:-ready-for-agent,ticket}}"
 ORCHESTRATOR_IN_PROGRESS_LABEL="${ENV_ORCHESTRATOR_IN_PROGRESS_LABEL:-${ORCHESTRATOR_IN_PROGRESS_LABEL:-in-progress}}"
 ORCHESTRATOR_REVIEW_RETRIES="${ENV_ORCHESTRATOR_REVIEW_RETRIES:-${ORCHESTRATOR_REVIEW_RETRIES:-3}}"
@@ -1611,7 +1611,7 @@ orchestrator_reconcile() {
 }
 
 orchestrator_poll_once() {
-  local candidates active_count count line number title slug branch worktree
+  local candidates active_count count line number title branch worktree
   orchestrator_restore_failed_labels
   candidates="$(ct_candidate_issues)"
   active_count="$(orchestrator_state_active_count "$ORCHESTRATOR_STATE_FILE")"
@@ -1642,9 +1642,8 @@ orchestrator_poll_once() {
       continue
     fi
 
-    slug="$(slugify "$title")"
-    branch="ticket/$number-$slug"
-    worktree="$ORCHESTRATOR_WORKTREE_PARENT/$number-$slug"
+    branch="$(ct_ticket_branch "$number" "$title")"
+    worktree="$(ct_ticket_worktree "$number" "$title" "$ORCHESTRATOR_WORKTREE_PARENT")"
     if ! orchestrator_claim "$number" "$branch" "$worktree"; then
       orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
       orchestrator_log "claim failed for #$number; removed from state"
