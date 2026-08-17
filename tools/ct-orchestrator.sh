@@ -829,11 +829,14 @@ orchestrator_review_poll() {
       # Steffen once so the stale PR is visible, then stay quiet.
       notice_posted="$(printf '%s' "$line" | jq -r '.reviewNoticePosted // false')"
       if [[ "$notice_posted" != "true" ]]; then
-        orchestrator_pr_post_comment "$pr_number" "Cannot auto-respond to reviews on PR #$pr_number: no opencode session was recorded for ticket #$number. A maintainer should handle this PR manually.
+        if ! orchestrator_pr_post_comment "$pr_number" "Cannot auto-respond to reviews on PR #$pr_number: no opencode session was recorded for ticket #$number. A maintainer should handle this PR manually.
 ---
-_Created by carbotracker's agent skills._"
-        orchestrator_state_mark_notice_posted "$ORCHESTRATOR_STATE_FILE" "$number"
-        orchestrator_log "review #$number: posted missing-session notice on PR #$pr_number"
+_Created by carbotracker's agent skills._"; then
+          orchestrator_log "WARNING: failed to post missing-session notice on PR #$pr_number"
+        else
+          orchestrator_state_mark_notice_posted "$ORCHESTRATOR_STATE_FILE" "$number"
+          orchestrator_log "review #$number: posted missing-session notice on PR #$pr_number"
+        fi
       else
         orchestrator_log "skip review #$number: no session recorded (notice already posted)"
       fi
@@ -1068,7 +1071,10 @@ orchestrator_merge_poll() {
       continue
     fi
 
-    state="$(orchestrator_pr_state "$pr_number")"
+    if ! state="$(orchestrator_pr_state "$pr_number")"; then
+      orchestrator_log "WARNING: could not determine state of PR #$pr_number for #$number"
+      continue
+    fi
     case "$state" in
       MERGED)
         orchestrator_log "merge detected: PR #$pr_number merged for #$number; closing issue"
@@ -1110,10 +1116,11 @@ orchestrator_merge_poll() {
         fi
         ;;
       OPEN)
-        merge_state="$(orchestrator_pr_merge_state "$pr_number")"
-        if [[ -z "$merge_state" ]]; then
+        if ! merge_state="$(orchestrator_pr_merge_state "$pr_number")"; then
           orchestrator_log "WARNING: could not determine the merge status of PR #$pr_number; keeping entry to retry next poll"
-        elif [[ "$merge_state" == "BEHIND" || "$merge_state" == "DIRTY" ]]; then
+          continue
+        fi
+        if [[ "$merge_state" == "BEHIND" || "$merge_state" == "DIRTY" ]]; then
           # Both auto-merge actions share the gate check: a flagged PR (suspect
           # without human-approved) is skipped until a maintainer approves it.
           # The labels are read live each poll, so an approval unblocks the PR

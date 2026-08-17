@@ -3685,10 +3685,66 @@ exit 0'
   mkdir -p "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  # Called directly (not via a command substitution): a set -e abort on the
+  # fail-closed state read would kill the whole suite here.
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll >"$STATE_DIR/out" 2>&1; then
+    pass "merge poll survives a gh state-read error"
+  else
+    fail "merge poll survives a gh state-read error"
+  fi
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  output="$(cat "$STATE_DIR/out")"
   assert_eq "gh error keeps entry in state" "1" "$(jq 'length' "$TEST_STATE")"
   assert_contains "logs gh error handling" "could not determine state" "$output"
+  state_teardown
+}
+
+test_merge_poll_merge_status_error_keeps_entry() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  if [[ "$*" == *"mergeStateStatus"* ]]; then
+    exit 1
+  fi
+  printf "OPEN\n"
+fi
+exit 0'
+  fake_command git 'exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll >"$STATE_DIR/out" 2>&1; then
+    pass "merge poll survives a gh merge-status error"
+  else
+    fail "merge poll survives a gh merge-status error"
+  fi
+  local output
+  output="$(cat "$STATE_DIR/out")"
+  assert_eq "merge-status error keeps entry in state" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "logs the merge-status deferral" "could not determine the merge status" "$output"
+  state_teardown
+}
+
+test_review_poll_notice_post_failure_survives() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "api" ]]; then
+  exit 1
+fi
+exit 0'
+  fake_command opencode 'exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 "" 456
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_poll >"$STATE_DIR/out" 2>&1; then
+    pass "review poll survives a notice-post failure"
+  else
+    fail "review poll survives a notice-post failure"
+  fi
+  local output
+  output="$(cat "$STATE_DIR/out")"
+  assert_eq "failed notice post is not marked posted" "false" "$(jq -r '.[0].reviewNoticePosted' "$TEST_STATE")"
+  assert_contains "logs the failed notice post" "failed to post missing-session notice" "$output"
   state_teardown
 }
 
@@ -4323,6 +4379,8 @@ test_state_merge_failures_updates
 test_state_merge_notice_posted_updates
 test_merge_poll_skips_entry_without_pr
 test_merge_poll_gh_error_keeps_entry
+test_merge_poll_merge_status_error_keeps_entry
+test_review_poll_notice_post_failure_survives
 test_merge_poll_ignores_implementing_phase
 test_poll_once_runs_merge_poll
 test_implement_runs_full_pipeline
