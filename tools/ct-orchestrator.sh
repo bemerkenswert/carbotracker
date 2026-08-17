@@ -1037,15 +1037,63 @@ orchestrator_run_opencode() {
   # Redirect stdin from /dev/null so the run cannot drain a caller's pipe: when
   # poll_once streams candidates from a process substitution, an opencode run
   # that reads stdin would consume the remaining candidate lines and silently
-  # cap the poll at one ticket.
+  # cap the poll at one ticket. CT_OPENCODE_ATTEMPTS counts the headless runs
+  # this function launched — the token guard (at most twice per implement round)
+  # is enforced by the caller, which must never resume when the counter is
+  # already at the bound.
+  CT_OPENCODE_ATTEMPTS=1
   if (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" "$@" "$prompt" < /dev/null) 2>&1 | tee "$log_file"; then
     return 0
   fi
   orchestrator_log "ERROR: opencode run failed for #$number (attempt 1); retrying with --continue"
-  if (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" --continue "$prompt" < /dev/null) 2>&1 | tee -a "$log_file"; then
+  CT_OPENCODE_ATTEMPTS=2
+  if orchestrator_opencode_continue "$worktree" "$number" "$log_file"; then
     return 0
   fi
   orchestrator_log "ERROR: opencode run failed for #$number on the retry as well"
+  return 1
+}
+
+# The shared single `opencode run --auto --continue` boundary: resume the
+# ticket's session in $worktree, appending the output to $log_file. It is the
+# retry leg of orchestrator_run_opencode and the stalled-run resume alike, and
+# is itself exactly one headless invocation — never two.
+orchestrator_opencode_continue() {
+  local worktree="$1" number="$2" log_file="$3"
+  local prompt="/implement the issue is $number"
+  if (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" --continue "$prompt" < /dev/null) 2>&1 | tee -a "$log_file"; then
+    return 0
+  fi
+  return 1
+}
+
+# Resume a stalled run exactly once: the session the stalled run just left
+# behind is continued so the agent can finish and commit. The caller has already
+# spent one opencode invocation on the stalled run and only calls this when the
+# round's budget still has room, so this is the round's second and final one —
+# there is no retry here (token guard: the headless run command is invoked at
+# most twice per implement round). The resume's outcome is judged by commits
+# alone; a non-zero exit or another commit-less exit both escalate, never resume
+# again.
+orchestrator_resume_stalled_run() {
+  local worktree="$1" number="$2" log_file="$3"
+  if ! orchestrator_opencode_continue "$worktree" "$number" "$log_file"; then
+    orchestrator_log "ERROR: opencode run failed for #$number while resuming the stalled run"
+    return 1
+  fi
+  return 0
+}
+
+# The single chokepoint for escalating an opencode failure in the implement
+# flow: classify the round as an opencode failure, escalate with the given
+# reason, drop the run's log, and stop the round. Every no-commit and
+# resume-related outcome funnels through here so the failure taxonomy is
+# enforced in one place.
+orchestrator_escalate_opencode_failure() {
+  local number="$1" branch="$2" worktree="$3" log_file="$4" reason="$5"
+  CT_IMPLEMENTATION_FAILURE_KIND=opencode
+  orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "$reason"
+  rm -f "$log_file"
   return 1
 }
 
@@ -1155,21 +1203,42 @@ orchestrator_implement() {
   log_file="$(mktemp "${TMPDIR:-/tmp}/carbotracker-opencode.XXXXXX")"
   orchestrator_log "launching opencode for #$number (title $session_title)"
   if ! orchestrator_run_opencode "$worktree" "$number" "$log_file" --title "$session_title"; then
-    CT_IMPLEMENTATION_FAILURE_KIND=opencode
-    orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "opencode exited non-zero twice"
-    rm -f "$log_file"
+    orchestrator_escalate_opencode_failure "$number" "$branch" "$worktree" "$log_file" "opencode exited non-zero twice"
     return 1
   fi
   if ! orchestrator_branch_has_commits "$worktree" "$branch"; then
-    # opencode exited 0 but the branch tip is still at origin/main: the agent
-    # went off-task or committed nothing, so no PR can be opened. Escalate as an
-    # opencode failure rather than letting gh pr create fail with a misleading
-    # "No commits between main and ..." error.
-    orchestrator_log "ERROR: implement #$number: opencode exited 0 but produced no commits (zero diff vs origin/main)"
-    CT_IMPLEMENTATION_FAILURE_KIND=opencode
-    orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "no commits produced"
-    rm -f "$log_file"
-    return 1
+    # opencode exited 0 but the branch tip is still at origin/main, so no PR can
+    # be opened. Split the zero-commit exit by the worktree: uncommitted work
+    # left behind means a **stalled run**, whose session is resumed exactly once;
+    # a clean tree means an **empty run**, escalated immediately (resuming a
+    # session that did nothing would burn tokens). The resume is the round's
+    # second and final opencode invocation (token guard: at most twice per
+    # round), so it only happens when this successful exit was the first
+    # invocation — if orchestrator_run_opencode's non-zero retry already
+    # continued the session, that retry was the one resume and the ticket
+    # escalates instead of resuming a second time.
+    if orchestrator_worktree_has_work "$worktree" "$branch"; then
+      if [[ "$CT_OPENCODE_ATTEMPTS" -eq 1 ]]; then
+        orchestrator_log "ERROR: implement #$number: opencode exited 0 with no commits and uncommitted work present; stalled run, resuming the session once"
+        if ! orchestrator_resume_stalled_run "$worktree" "$number" "$log_file"; then
+          orchestrator_escalate_opencode_failure "$number" "$branch" "$worktree" "$log_file" "opencode exited non-zero while resuming a no-commit run"
+          return 1
+        fi
+        if ! orchestrator_branch_has_commits "$worktree" "$branch"; then
+          orchestrator_log "ERROR: implement #$number: resumed stalled run still produced no commits (zero diff vs origin/main)"
+          orchestrator_escalate_opencode_failure "$number" "$branch" "$worktree" "$log_file" "no commits produced even after resuming the session"
+          return 1
+        fi
+      else
+        orchestrator_log "ERROR: implement #$number: opencode retry exited 0 with no commits and uncommitted work present; the retry already resumed the session, escalating"
+        orchestrator_escalate_opencode_failure "$number" "$branch" "$worktree" "$log_file" "no commits produced even after resuming the session"
+        return 1
+      fi
+    else
+      orchestrator_log "ERROR: implement #$number: opencode exited 0 with no commits and a clean tree; empty run, escalating without a resume"
+      orchestrator_escalate_opencode_failure "$number" "$branch" "$worktree" "$log_file" "no commits produced"
+      return 1
+    fi
   fi
   rm -f "$log_file"
 

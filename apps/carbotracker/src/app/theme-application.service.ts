@@ -11,7 +11,7 @@ import {
   tap,
 } from 'rxjs';
 import { ThemePreference } from '../features/settings/theme-preference.model';
-import { settingsFeature } from './app.reducer';
+import { settingsFeature } from '../features/settings/+state/settings.store';
 
 export type ResolvedTheme = 'light' | 'dark';
 

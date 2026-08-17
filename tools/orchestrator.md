@@ -17,6 +17,10 @@ git facts (see [Crash recovery](#crash-recovery)), so a VPS restart or crashed
 run resumes from what actually exists on disk rather than from stale in-memory
 state. A failing `opencode run` is retried once with `--continue` before the
 ticket is escalated to a human (see [opencode failures](#opencode-failures)).
+An `opencode run` that exits 0 without committing is classified as a **stalled
+run** (uncommitted work left behind; its session is resumed exactly once) or an
+**empty run** (clean tree; escalated immediately with no resume) — see
+[No-commit runs: stalled vs empty](#no-commit-runs-stalled-vs-empty).
 
 Between polls the daemon also **self-refreshes**: it hashes its own script at
 load time and, when the on-disk hash differs at the top of a poll cycle, it
@@ -38,6 +42,9 @@ stateDiagram-v2
     failed --> implementing: label restored, retry on next poll
     failed --> [*]: retry bound reached, escalate to needs-triage
     implementing --> [*]: opencode fails twice, escalated to needs-triage
+    implementing --> implementing: exit 0, no commits, work present (stalled run, resumed once)
+    implementing --> [*]: empty run escalated to needs-triage
+    implementing --> [*]: resume commit-less or non-zero, escalated to needs-triage
     awaiting_review --> review_round: new comment on PR (newer than lastCommentAt)
     review_round --> awaiting_review: /review-comments succeeds or a retry fails
     awaiting_review --> [*]: merge poll sees PR merged, closes issue
@@ -187,6 +194,39 @@ the entry from state. The ticket is now a human problem, not a pipeline
 retry-loop. If the escalation itself fails, the entry stays in state and the
 poll loop's normal un-claim/cleanup path removes it.
 
+## No-commit runs: stalled vs empty
+
+When `opencode run` exits 0 but the branch tip still sits at `origin/main`
+(the branch has no commits), a PR cannot be opened. The orchestrator splits
+that zero-commit exit by the worktree before escalating:
+
+- **Stalled run** — the worktree holds uncommitted work (any change that shows
+  in `git status --porcelain`; ignored files like `dist` don't count). The
+  agent stopped mid-thought, so its session is **resumed exactly once**: a
+  single `opencode run --auto --continue /implement the issue is N` invocation
+  against the same session. The resume is the round's second and final opencode
+  invocation (token guard: the headless run command is invoked **at most twice
+  per implement round**), so it never retries on its own. If the zero-commit
+  exit came from the internal `--continue` retry after a non-zero first attempt,
+  that retry already consumed the one resume — the ticket escalates with the
+  resume reason instead of continuing a second time. If the resume produces
+  commits the ticket finishes normally — push, PR, `awaiting review`. If the
+  resume exits 0 without commits it escalates with "no commits produced even
+  after resuming the session"; a non-zero resume escalates with "opencode
+  exited non-zero while resuming a no-commit run". A stalled run is never
+  resumed more than once.
+- **Empty run** — the worktree is clean. The agent did nothing, so escalating
+  is the only outcome: the session is **not** resumed (resuming a session that
+  produced no work would burn tokens for nothing), and the ticket escalates
+  immediately with "no commits produced".
+
+Both classify as opencode failures — the escalation removes `in-progress` and
+`ticket`, adds `needs-triage`, and prunes the worktree and branch. The taxonomy
+exists so a triager can tell "agent stopped mid-thought" (stalled run) from
+"agent did nothing" (empty run), and so the pipeline knows when a bounded
+**resume** is worth a token. A **restart** — a fresh worktree and session from
+scratch — happens only when a human re-tags the ticket with `ready-for-agent`.
+
 ## Review loop
 
 Each poll, after claiming work, the orchestrator walks every state entry in
@@ -316,11 +356,19 @@ flowchart TD
     D --> E[npm ci --prefer-offline --no-audit --no-fund]
     E --> F[opencode run --auto --title carbotracker-ticket-N /implement the issue is N]
     F --> F1{non-zero exit?}
-    F1 -- no --> G
+    F1 -- no --> F5{commits on branch?}
     F1 -- yes --> F2[retry: opencode run --auto --continue /implement the issue is N]
     F2 --> F3{non-zero again?}
-    F3 -- no --> G
+    F3 -- no --> F5
     F3 -- yes --> F4[escalate: needs-triage, comment with output, prune, remove from state]
+    F5 -- yes --> G
+    F5 -- no, work present, first invocation only --> F6[stalled run: resume once — opencode run --auto --continue]
+    F5 -- no, work present, retry already resumed --> F4[escalate: no commits produced even after resuming the session]
+    F6 --> F7{commits now?}
+    F7 -- yes --> G
+    F6 -- non-zero exit --> F4[escalate: opencode exited non-zero while resuming a no-commit run]
+    F7 -- no --> F4[escalate: no commits produced even after resuming the session]
+    F5 -- no, clean tree --> F4[escalate: empty run, no commits produced]
     G[opencode session list → sessionId by title]
     G --> H[git push -u origin branch]
     H --> I{PR exists?}

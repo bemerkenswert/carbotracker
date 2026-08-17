@@ -3,7 +3,11 @@ import { filterNull } from '@carbotracker/utility';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { concatLatestFrom, mapResponse } from '@ngrx/operators';
 import { Store } from '@ngrx/store';
-import { switchMap } from 'rxjs';
+import { switchMap, tap } from 'rxjs';
+import {
+  AuthApiActions,
+  LogoutApiActions,
+} from '../../../auth/+state/actions/api.actions';
 import { authFeature } from '../../../auth/+state/auth.store';
 import { InsulinToCarbRatiosService } from '../../services/insulin-to-carb-ratios.service';
 import { ThemePreferenceService } from '../../services/theme-preference.service';
@@ -12,6 +16,70 @@ import {
   InsulinToCarbRatiosPageActions,
   SettingsPageActions,
 } from '../actions/component.actions';
+
+export const startStreamingInsulinToCarbRatios$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    insulinToCarbRatiosService = inject(InsulinToCarbRatiosService),
+    store = inject(Store),
+  ) =>
+    actions$.pipe(
+      ofType(AuthApiActions.userIsLoggedIn),
+      switchMap(() => store.select(authFeature.selectUserId)),
+      tap((uid) => {
+        if (uid) {
+          insulinToCarbRatiosService.subscribeToOwnInsulinToCarbRatios({ uid });
+        }
+      }),
+    ),
+  { dispatch: false, functional: true },
+);
+
+export const stopStreamingInsulinToCarbRatios$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    insulinToCarbRatiosService = inject(InsulinToCarbRatiosService),
+  ) =>
+    actions$.pipe(
+      ofType(LogoutApiActions.logoutSuccessful),
+      tap(() => {
+        insulinToCarbRatiosService.unsubscribeFromOwnInsulinToCarbRatios();
+      }),
+    ),
+  { dispatch: false, functional: true },
+);
+
+export const startStreamingThemePreference$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    themePreferenceService = inject(ThemePreferenceService),
+    store = inject(Store),
+  ) =>
+    actions$.pipe(
+      ofType(AuthApiActions.userIsLoggedIn),
+      switchMap(() => store.select(authFeature.selectUserId)),
+      tap((uid) => {
+        if (uid) {
+          themePreferenceService.subscribeToOwnThemePreference({ uid });
+        }
+      }),
+    ),
+  { dispatch: false, functional: true },
+);
+
+export const stopStreamingThemePreference$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    themePreferenceService = inject(ThemePreferenceService),
+  ) =>
+    actions$.pipe(
+      ofType(LogoutApiActions.logoutSuccessful),
+      tap(() => {
+        themePreferenceService.unsubscribeFromOwnThemePreference();
+      }),
+    ),
+  { dispatch: false, functional: true },
+);
 
 export const createInsulinToCarbRatios$ = createEffect(
   (

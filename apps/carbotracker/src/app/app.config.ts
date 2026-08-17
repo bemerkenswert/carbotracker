@@ -7,7 +7,6 @@ import {
 import { MAT_SNACK_BAR_DEFAULT_OPTIONS } from '@angular/material/snack-bar';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
-import { provideEffects } from '@ngrx/effects';
 import { provideRouterStore, routerReducer } from '@ngrx/router-store';
 import { Store, provideStore } from '@ngrx/store';
 import { provideStoreDevtools } from '@ngrx/store-devtools';
@@ -18,8 +17,7 @@ import { environment } from '../environments/environment';
 import { authFeature } from '../features/auth/+state/auth.store';
 import { getAuthProviders } from '../features/auth/auth.providers';
 import { getProductsProviders } from '../features/products/products.providers';
-import * as appEffects from './app.effects';
-import { settingsFeature } from './app.reducer';
+import { getSettingsProviders } from '../features/settings/settings.providers';
 import { ThemeApplicationService } from './theme-application.service';
 
 const isLoggedIn = () => {
@@ -35,13 +33,12 @@ export const appConfig: ApplicationConfig = {
     provideAnimations(),
     provideStore({
       router: routerReducer,
-      [settingsFeature.name]: settingsFeature.reducer,
     }),
     environment.fireBaseProvider(),
     provideRouterStore(),
     getAuthProviders(),
     getProductsProviders(),
-    provideEffects([appEffects]),
+    getSettingsProviders(),
     provideStoreDevtools(),
     provideRouter(
       [

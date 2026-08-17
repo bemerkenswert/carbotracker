@@ -1,4 +1,4 @@
-import { createActionGroup, emptyProps } from '@ngrx/store';
+import { createActionGroup, emptyProps, props } from '@ngrx/store';
 
 export const RoutingActions = createActionGroup({
   source: 'Auth | Routing',
@@ -7,5 +7,7 @@ export const RoutingActions = createActionGroup({
     'Navigation to Login Page Failed': emptyProps(),
     'Navigation to Sign Up Page Successful': emptyProps(),
     'Navigation to Sign Up Page Failed': emptyProps(),
+    'Navigation to App Successful': emptyProps(),
+    'Navigation to App Failed': props<{ error: unknown }>(),
   },
 });

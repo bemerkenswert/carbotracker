@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Store } from '@ngrx/store';
 import { BehaviorSubject, of } from 'rxjs';
 import { ThemePreference } from '../features/settings/theme-preference.model';
-import { settingsFeature } from './app.reducer';
+import { settingsFeature } from '../features/settings/+state/settings.store';
 import { ThemeApplicationService } from './theme-application.service';
 
 const DARK_THEME_CLASS = 'dark-theme';

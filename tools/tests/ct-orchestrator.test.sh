@@ -81,6 +81,59 @@ exit 0'
   fake_command npm 'exit 0'
 }
 
+# Fake git for the stalled/empty implement tests: worktree add/remove, a
+# configurable `git status --porcelain` payload ($FAKE_GIT_STATUS — empty/absent
+# means a clean tree), a scripted rev-list sequence ($FAKE_REVLIST_SEQ, one
+# value consumed per call, default 0), and optional push capture. The rev-list
+# value is the unpushed-commit count, so a resumed run "commits" by putting a 1
+# in the sequence at the point it should be observed. Fake bodies run at top
+# level (no `local`).
+fake_stalled_git() {
+  fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  mkdir -p "$3"
+elif [[ "$1" == "worktree" && "$2" == "remove" ]]; then
+  rm -rf "$3" "$4"
+elif [[ "$1" == "status" ]]; then
+  cat "${FAKE_GIT_STATUS:-/dev/null}" 2>/dev/null || true
+elif [[ "$1" == "rev-parse" ]]; then
+  exit 0
+elif [[ "$1" == "rev-list" ]]; then
+  v="$(head -n1 "${FAKE_REVLIST_SEQ:-/dev/null}" 2>/dev/null)"
+  v="${v:-0}"
+  if [[ -n "${FAKE_REVLIST_SEQ:-}" && -f "$FAKE_REVLIST_SEQ" ]]; then
+    tail -n +2 "$FAKE_REVLIST_SEQ" > "$FAKE_REVLIST_SEQ.tmp" && mv "$FAKE_REVLIST_SEQ.tmp" "$FAKE_REVLIST_SEQ"
+  fi
+  printf "%s\n" "$v"
+elif [[ "$1" == "push" && -n "${FAKE_GIT_PUSH_FILE:-}" ]]; then
+  printf "%s\n" "$*" > "$FAKE_GIT_PUSH_FILE"
+elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
+  exit 0
+fi
+exit 0'
+  fake_command npm 'exit 0'
+}
+
+# Fake opencode for the stalled/empty implement tests: each `opencode run`
+# invocation consumes one exit code from $FAKE_OPENCODE_EXITS (default 0, so
+# unset behaves as a success for every invocation) and logs its args to
+# $FAKE_OPENCODE_LOG (one line per invocation); session list returns a ticket-10
+# session. Fake bodies run at top level (no `local`).
+fake_stalled_opencode() {
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  code="$(head -n1 "${FAKE_OPENCODE_EXITS:-/dev/null}" 2>/dev/null)"
+  code="${code:-0}"
+  if [[ -n "${FAKE_OPENCODE_EXITS:-}" && -f "$FAKE_OPENCODE_EXITS" ]]; then
+    tail -n +2 "$FAKE_OPENCODE_EXITS" > "$FAKE_OPENCODE_EXITS.tmp" && mv "$FAKE_OPENCODE_EXITS.tmp" "$FAKE_OPENCODE_EXITS"
+  fi
+  printf "%s\n" "$*" >> "${FAKE_OPENCODE_LOG:-/dev/null}"
+  exit "$code"
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"ses_abc\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+}
+
 # Fake the commands the implementation pipeline invokes: git worktree add,
 # npm ci, opencode run + session list, and gh pr list / issue comment. The
 # gh fake delegates everything else to the caller-provided body.
@@ -1190,7 +1243,7 @@ exit 0'
   state_teardown
 }
 
-test_implement_escalates_when_no_commits_produced() {
+test_implement_escalates_empty_run_without_resume() {
   state_setup
   fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
   printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
@@ -1200,38 +1253,157 @@ elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
   exit 0
 fi
 exit 1'
-  fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
-if [[ "$1" == "worktree" && "$2" == "add" ]]; then
-  mkdir -p "$3"
-elif [[ "$1" == "worktree" && "$2" == "remove" ]]; then
-  rm -rf "$3" "$4"
-elif [[ "$1" == "rev-parse" ]]; then
-  exit 1
-elif [[ "$1" == "rev-list" ]]; then
-  printf "0\n"
-elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
-  exit 0
-fi
-exit 0'
-  fake_command npm 'exit 0'
-  fake_command opencode 'if [[ "$1" == "run" ]]; then
-  exit 0
-elif [[ "$1" == "session" ]]; then
-  printf "[]\n"
-fi
-exit 0'
+  fake_stalled_git
+  fake_stalled_opencode
   local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
   export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
   export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_REVLIST_SEQ="$STATE_DIR/revlist"
+  printf '0\n0\n' > "$FAKE_REVLIST_SEQ"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
   local output rc
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)" && rc=0 || rc=$?
-  assert_eq "implement fails when no commits produced" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
-  assert_contains "zero-commit escalation adds needs-triage" "--add-label needs-triage" "$(cat "$FAKE_ESCALATE_EDIT")"
-  assert_contains "zero-commit escalation names the real cause" "no commits produced" "$(cat "$FAKE_ESCALATE_COMMENT")"
-  assert_eq "zero-commit escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
-  assert_contains "logs the real cause" "produced no commits" "$output"
-  unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  assert_eq "empty run escalates (implement fails)" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_contains "empty-run escalation adds needs-triage" "--add-label needs-triage" "$(cat "$FAKE_ESCALATE_EDIT")"
+  assert_contains "empty-run escalation names the real cause" "no commits produced" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_eq "empty run escalates without any resume" "1" "$(wc -l < "$FAKE_OPENCODE_LOG")"
+  assert_eq "empty-run escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "logs the empty-run classification" "empty run, escalating without a resume" "$output"
+  unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT FAKE_OPENCODE_LOG FAKE_REVLIST_SEQ
+  state_teardown
+}
+
+test_implement_resumes_stalled_run_once_and_finishes() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[{\"number\":42}]\n"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_COMMENT_FILE"
+fi
+exit 0'
+  fake_stalled_git
+  fake_stalled_opencode
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
+  export FAKE_REVLIST_SEQ="$STATE_DIR/revlist"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_GIT_PUSH_FILE="$STATE_DIR/git_push"
+  export FAKE_COMMENT_FILE="$STATE_DIR/comment"
+  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
+  printf '0\n1\n' > "$FAKE_REVLIST_SEQ"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree"
+  assert_eq "stalled run resumes exactly once" "2" "$(wc -l < "$FAKE_OPENCODE_LOG")"
+  assert_eq "first invocation is the fresh title session" "run --auto --model $ORCHESTRATOR_MODEL --title carbotracker-ticket-10 /implement the issue is 10" "$(sed -n '1p' "$FAKE_OPENCODE_LOG")"
+  assert_eq "resume continues the session once" "run --auto --model $ORCHESTRATOR_MODEL --continue /implement the issue is 10" "$(sed -n '2p' "$FAKE_OPENCODE_LOG")"
+  assert_contains "resumed run finishes by pushing the branch" "push -u origin ticket/10-alpha" "$(cat "$FAKE_GIT_PUSH_FILE")"
+  assert_eq "resumed run completes the normal finish path" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  assert_eq "resumed run records the pr number" "42" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
+  assert_contains "issue commented with pr number" "Started implementation. PR #42 created." "$(cat "$FAKE_COMMENT_FILE")"
+  unset FAKE_GIT_STATUS FAKE_REVLIST_SEQ FAKE_OPENCODE_LOG FAKE_GIT_PUSH_FILE FAKE_COMMENT_FILE
+  state_teardown
+}
+
+test_implement_escalates_when_resume_still_commitless() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
+  exit 0
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_COMMENT"
+  exit 0
+fi
+exit 1'
+  fake_stalled_git
+  fake_stalled_opencode
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
+  export FAKE_REVLIST_SEQ="$STATE_DIR/revlist"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
+  export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
+  printf '0\n0\n' > "$FAKE_REVLIST_SEQ"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "commit-less resume escalates (implement fails)" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "the round invoked opencode exactly twice (token guard)" "2" "$(wc -l < "$FAKE_OPENCODE_LOG")"
+  assert_contains "the resume is the second invocation" "--continue /implement the issue is 10" "$(sed -n '2p' "$FAKE_OPENCODE_LOG")"
+  assert_contains "commit-less resume escalation names the real cause" "no commits produced even after resuming the session" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_eq "commit-less resume escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "logs the stalled-run classification" "stalled run, resuming the session once" "$output"
+  unset FAKE_GIT_STATUS FAKE_REVLIST_SEQ FAKE_OPENCODE_LOG FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  state_teardown
+}
+
+test_implement_escalates_when_resume_exits_nonzero() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
+  exit 0
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_COMMENT"
+  exit 0
+fi
+exit 1'
+  fake_stalled_git
+  fake_stalled_opencode
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
+  export FAKE_REVLIST_SEQ="$STATE_DIR/revlist"
+  export FAKE_OPENCODE_EXITS="$STATE_DIR/opencode_exits"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
+  export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
+  printf '0\n' > "$FAKE_REVLIST_SEQ"
+  printf '0\n1\n' > "$FAKE_OPENCODE_EXITS"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "non-zero resume escalates (implement fails)" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "the round invoked opencode exactly twice (token guard)" "2" "$(wc -l < "$FAKE_OPENCODE_LOG")"
+  assert_contains "non-zero resume escalation names the real cause" "opencode exited non-zero while resuming a no-commit run" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_eq "non-zero resume escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "logs the stalled-run classification" "stalled run, resuming the session once" "$output"
+  unset FAKE_GIT_STATUS FAKE_REVLIST_SEQ FAKE_OPENCODE_EXITS FAKE_OPENCODE_LOG FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  state_teardown
+}
+
+test_implement_escalates_when_retry_already_resumed() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
+  exit 0
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_COMMENT"
+  exit 0
+fi
+exit 1'
+  fake_stalled_git
+  fake_stalled_opencode
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
+  export FAKE_REVLIST_SEQ="$STATE_DIR/revlist"
+  export FAKE_OPENCODE_EXITS="$STATE_DIR/opencode_exits"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
+  export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
+  printf '0\n' > "$FAKE_REVLIST_SEQ"
+  printf '1\n0\n' > "$FAKE_OPENCODE_EXITS"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "retry-exit-zero no-commit escalates (implement fails)" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "the round invoked opencode exactly twice (token guard)" "2" "$(wc -l < "$FAKE_OPENCODE_LOG")"
+  assert_eq "the retry is the second invocation" "run --auto --model $ORCHESTRATOR_MODEL --continue /implement the issue is 10" "$(sed -n '2p' "$FAKE_OPENCODE_LOG")"
+  assert_contains "a retry already resumed the session, so it escalates with the resume reason" "no commits produced even after resuming the session" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_eq "retry-exit-zero no-commit escalation removes the entry from state" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "logs that the retry already resumed the session" "the retry already resumed the session, escalating" "$output"
+  unset FAKE_GIT_STATUS FAKE_REVLIST_SEQ FAKE_OPENCODE_EXITS FAKE_OPENCODE_LOG FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
   state_teardown
 }
 
@@ -3475,7 +3647,11 @@ test_implement_fails_when_worktree_fails
 test_implement_fails_when_npm_ci_fails
 test_implement_retries_opencode_with_continue
 test_implement_escalates_after_two_opencode_failures
-test_implement_escalates_when_no_commits_produced
+test_implement_escalates_empty_run_without_resume
+test_implement_resumes_stalled_run_once_and_finishes
+test_implement_escalates_when_resume_still_commitless
+test_implement_escalates_when_resume_exits_nonzero
+test_implement_escalates_when_retry_already_resumed
 test_implement_no_pr_skips_comment
 test_implement_no_session_stores_null
 test_implement_opens_pr_when_none_exists
