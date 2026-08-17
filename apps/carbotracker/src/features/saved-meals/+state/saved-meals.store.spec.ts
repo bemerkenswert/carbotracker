@@ -1,6 +1,9 @@
 import { SavedMeal } from '../saved-meal.model';
 import { SavedMealsApiActions } from './actions/api.actions';
-import { SavedMealPageComponentActions } from './actions/component.actions';
+import {
+  SavedMealPageComponentActions,
+  SavedMealsPageComponentActions,
+} from './actions/component.actions';
 import { getInitialState, savedMealsFeature } from './saved-meals.store';
 
 describe('savedMealsFeature', () => {
@@ -12,6 +15,37 @@ describe('savedMealsFeature', () => {
 
   const older = createSavedMeal('a', 'older', new Date('2024-01-01'));
   const newer = createSavedMeal('b', 'newer', new Date('2024-06-01'));
+
+  it('returns the initial state for an unknown action', () => {
+    const initialState = getInitialState();
+    const action = { type: 'Unknown' };
+
+    const state = savedMealsFeature.reducer(initialState, action);
+
+    expect(state).toBe(initialState);
+  });
+
+  it('stores the name filter when it changes', () => {
+    const state = savedMealsFeature.reducer(
+      getInitialState(),
+      SavedMealsPageComponentActions.nameFilterChanged({ nameFilter: 'pasta' }),
+    );
+
+    const nameFilter = savedMealsFeature.selectNameFilter.projector(state);
+
+    expect(nameFilter).toBe('pasta');
+  });
+
+  it('clears the name filter when the filter is cleared', () => {
+    const state = savedMealsFeature.reducer(
+      getInitialState(),
+      SavedMealsPageComponentActions.nameFilterChanged({ nameFilter: null }),
+    );
+
+    const nameFilter = savedMealsFeature.selectNameFilter.projector(state);
+
+    expect(nameFilter).toBeNull();
+  });
 
   it('exposes saved meals sorted by name when the collection changes', () => {
     const state = savedMealsFeature.reducer(

@@ -1,4 +1,25 @@
 <ctui-toolbar title="Saved meals"></ctui-toolbar>
+<mat-form-field>
+  <mat-label>Search meals</mat-label>
+  <input
+    type="text"
+    matInput
+    placeholder="Filter by name"
+    [value]="viewModel().nameFilter ?? ''"
+    (input)="onNameFilterChange($event)"
+  />
+  @if (viewModel().nameFilter) {
+    <button
+      matSuffix
+      mat-icon-button
+      type="button"
+      aria-label="Clear search"
+      (click)="onClearNameFilter()"
+    >
+      <mat-icon>close</mat-icon>
+    </button>
+  }
+</mat-form-field>
 @if (viewModel().savedMeals.length > 0) {
   <mat-nav-list>
     @for (
@@ -16,6 +37,8 @@
       </mat-list-item>
     }
   </mat-nav-list>
+} @else if (viewModel().noMatches) {
+  <p>No saved meals match your search.</p>
 } @else {
   <p>No saved meals yet. Save a current meal to see it here.</p>
 }
