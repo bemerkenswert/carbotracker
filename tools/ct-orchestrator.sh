@@ -38,6 +38,14 @@ ORCHESTRATOR_MERGE_RETRIES="${ENV_ORCHESTRATOR_MERGE_RETRIES:-${ORCHESTRATOR_MER
 # never drifts to opencode's default (which can be a pricier model).
 ORCHESTRATOR_MODEL="${ENV_ORCHESTRATOR_MODEL:-${ORCHESTRATOR_MODEL:-opencode-go/deepseek-v4-flash}}"
 
+# The content hash of this script as loaded. The daemon loop compares the
+# on-disk hash against it between polls and re-execs itself when they differ,
+# so a repo update (rename, edit, pull) is picked up without a manual service
+# restart — a stale daemon once called a validator script that had been
+# renamed on disk underneath it and failed every review round. Checked only
+# between polls: an in-flight implement run must never be orphaned.
+ORCHESTRATOR_SELF_HASH="$(sha256sum "${BASH_SOURCE[0]}" 2>/dev/null | cut -d' ' -f1 || true)"
+
 orchestrator_ensure_labels() {
   gh label create suspect-diff --description "The implementation changed a feature other than the one declared by the ticket" --color D93F0B --force >/dev/null 2>&1 \
     || orchestrator_log "WARNING: could not create or update suspect-diff label"
@@ -62,6 +70,16 @@ ORCHESTRATOR_AI_FOOTER=$'\n---\n_Created by carbotracker\'s agent skills._'
 # final line, so a human quoting an agent reply mid-body is not misread as the
 # pipeline's own output.
 ORCHESTRATOR_AI_FOOTER_END_RE="_Created by carbotracker's agent skills\._[[:space:]]*\$"
+
+# The shared jq filter that decides what counts as a review signal: only
+# comments/reviews authored by a human (GitHub user types are User / Bot /
+# Organization / Mannequin) that are not the pipeline's own footer-bearing
+# replies. Bots — GitHub Actions (e.g. the Firebase preview comment),
+# dependabot, app bots — are never review triggers, and the orchestrator's own
+# notices must not re-trigger the loop. $me is the footer regex, passed by the
+# caller with --arg. Every review-surface query (watermark, empty-plan gate)
+# goes through this fragment so the predicate cannot drift between surfaces.
+ORCHESTRATOR_REVIEW_SIGNAL_JQ='select((.user.type // "") == "User") | select((.body // "") | test($me) | not)'
 
 orchestrator_strip_ai_footer() {
   # Remove every trailing AI-source footer block (and the whitespace around it)
@@ -305,16 +323,17 @@ orchestrator_pr_latest_comment_at() {
   local pr="$1" me inline reviews general latest
   # Review surfaces: inline threads (pulls/<n>/comments), top-level review
   # submissions (pulls/<n>/reviews), and general comments on the PR
-  # conversation (issues/<n>/comments). The newest non-bot timestamp across
-  # them is the last-known-comment watermark. A comment is the pipeline's own
+  # conversation (issues/<n>/comments). The newest timestamp across them is
+  # the last-known-comment watermark. Only human-authored, non-footer comments
+  # count (see ORCHESTRATOR_REVIEW_SIGNAL_JQ): a comment is the pipeline's own
   # only when the AI-source footer ends its body (a bare `contains` would also
-  # match a human quote-reply that embeds a quoted footer mid-body); a review
-  # submission with an empty body carries no human signal and is skipped too.
-  # ISO-8601 timestamps sort lexically.
+  # match a human quote-reply that embeds a quoted footer mid-body), and a
+  # review submission with an empty body carries no human signal and is
+  # skipped too. ISO-8601 timestamps sort lexically.
   me="$ORCHESTRATOR_AI_FOOTER_END_RE"
-  inline="$(gh api "repos/{owner}/{repo}/pulls/$pr/comments" 2>/dev/null | jq -r --arg me "$me" '[.[] | select((.body // "") | test($me) | not) | .created_at] | max // empty' 2>/dev/null || true)"
-  reviews="$(gh api "repos/{owner}/{repo}/pulls/$pr/reviews" 2>/dev/null | jq -r --arg me "$me" '[.[] | select(.submitted_at != null) | select((.body // "") | test($me) | not) | select((.body // "") | test("[^[:space:]]")) | .submitted_at] | max // empty' 2>/dev/null || true)"
-  general="$(gh api "repos/{owner}/{repo}/issues/$pr/comments" 2>/dev/null | jq -r --arg me "$me" '[.[] | select((.body // "") | test($me) | not) | .created_at] | max // empty' 2>/dev/null || true)"
+  inline="$(gh api "repos/{owner}/{repo}/pulls/$pr/comments" 2>/dev/null | jq -r --arg me "$me" "[.[] | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | .created_at] | max // empty" 2>/dev/null || true)"
+  reviews="$(gh api "repos/{owner}/{repo}/pulls/$pr/reviews" 2>/dev/null | jq -r --arg me "$me" "[.[] | select(.submitted_at != null) | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | select((.body // \"\") | test(\"[^[:space:]]\")) | .submitted_at] | max // empty" 2>/dev/null || true)"
+  general="$(gh api "repos/{owner}/{repo}/issues/$pr/comments" 2>/dev/null | jq -r --arg me "$me" "[.[] | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | .created_at] | max // empty" 2>/dev/null || true)"
   latest="$inline"
   if [[ -n "$reviews" && ( -z "$latest" || "$reviews" > "$latest" ) ]]; then
     latest="$reviews"
@@ -436,11 +455,13 @@ orchestrator_review_analyze() {
 # reply posted on the thread with the AI-source footer (a general comment — a
 # null path — gets a plain PR-conversation reply). The watermark advances only
 # here, never in analyze. When the plan needs a human (a pushback or question),
-# polling is paused for the PR and a maintainer notice is posted. Analyze
-# failure, an empty plan, or a malformed or schema-invalid plan returns
-# non-zero and keeps the watermark, so the round falls through to the
-# retry/escalate path. A failed or unverifiable implement step also keeps the
-# watermark.
+# polling is paused for the PR and a maintainer notice is posted. A valid empty
+# plan (zero comments) is a successful no-op only when the daemon re-verifies
+# that no human review content exists; otherwise it keeps the watermark and
+# retries like any failed round. Analyze failure or a malformed or
+# schema-invalid plan returns non-zero and keeps the watermark, so the round
+# falls through to the retry/escalate path. A failed or unverifiable implement
+# step also keeps the watermark.
 orchestrator_review_act() {
   local number="$1" pr_number="$2" plan_file="$3" session_id="$4" worktree="$5"
   local schema count needs_human i entry comment_id path type reply body latest posted implement_count
@@ -452,8 +473,26 @@ orchestrator_review_act() {
   fi
   count="$(jq '.comments | length' "$plan_file")"
   if [[ "$count" -eq 0 ]]; then
-    orchestrator_log "review act #$number: plan is empty; keeping the watermark"
-    return 1
+    # A valid plan with zero comments is the honest answer to "what did the
+    # reviewer say?" — nothing. But the daemon never trusts the agent's claim
+    # on its own (the exit-0-no-commits lesson): it re-checks the three review
+    # surfaces with the same predicate as the watermark. If human review
+    # content exists that the plan failed to classify, the round failed and
+    # keeps the watermark; only when the observable world agrees there is
+    # nothing to review does the round succeed as a no-op — silently, with no
+    # failure notice.
+    last_comment_at="$(orchestrator_state_load "$ORCHESTRATOR_STATE_FILE" | jq -r --argjson n "$number" '[.[] | select(.ticket == $n) | .lastCommentAt // ""][0] // ""' 2>/dev/null || true)"
+    latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
+    if [[ -n "$latest" && ( -z "$last_comment_at" || "$latest" > "$last_comment_at" ) ]]; then
+      orchestrator_log "review act #$number: plan is empty but human review content exists on PR #$pr_number; keeping the watermark"
+      return 1
+    fi
+    orchestrator_log "review act #$number: plan is empty and no human review content exists on PR #$pr_number; nothing to review"
+    if [[ -n "$latest" ]]; then
+      orchestrator_state_mark_reviewed "$ORCHESTRATOR_STATE_FILE" "$number" "$latest"
+      orchestrator_log "review act #$number: advanced watermark to $latest on PR #$pr_number"
+    fi
+    return 0
   fi
   implement_count="$(jq '[.comments[] | select(.type == "implement")] | length' "$plan_file")"
   if [[ "$implement_count" -gt 0 ]]; then
@@ -1359,10 +1398,31 @@ orchestrator_poll_once() {
   orchestrator_review_poll
 }
 
+# Re-exec the daemon when this script changed on disk since it was loaded (see
+# ORCHESTRATOR_SELF_HASH). The exec replaces this bash process, so the systemd
+# unit keeps running the same PID and the fresh script re-parses everything —
+# including ct-lib.sh — before the loop continues; the durable state (state
+# file + GitHub) makes the restart safe. ORCHESTRATOR_SELF_EXEC overrides the
+# re-exec command so tests can assert the refresh without re-launching the
+# daemon. Call only between polls, never mid-poll.
+orchestrator_self_refresh() {
+  local current
+  current="$(sha256sum "${BASH_SOURCE[0]}" 2>/dev/null | cut -d' ' -f1 || true)"
+  if [[ -z "$current" || -z "$ORCHESTRATOR_SELF_HASH" || "$current" == "$ORCHESTRATOR_SELF_HASH" ]]; then
+    return 0
+  fi
+  orchestrator_log "orchestrator script changed on disk (hash $ORCHESTRATOR_SELF_HASH -> $current); re-executing to load the new code"
+  if [[ -n "$ORCHESTRATOR_SELF_EXEC" ]]; then
+    eval "$ORCHESTRATOR_SELF_EXEC"
+  fi
+  exec bash "${BASH_SOURCE[0]}"
+}
+
 orchestrator_daemon() {
   orchestrator_log "orchestrator started: poll every ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s, concurrency cap $ORCHESTRATOR_CONCURRENCY_CAP, model $ORCHESTRATOR_MODEL, state $ORCHESTRATOR_STATE_FILE"
   orchestrator_reconcile
   while true; do
+    orchestrator_self_refresh
     orchestrator_poll_once
     orchestrator_log "sleeping ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s until the next poll"
     sleep "$ORCHESTRATOR_POLL_INTERVAL_SECONDS"

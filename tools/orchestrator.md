@@ -18,6 +18,14 @@ run resumes from what actually exists on disk rather than from stale in-memory
 state. A failing `opencode run` is retried once with `--continue` before the
 ticket is escalated to a human (see [opencode failures](#opencode-failures)).
 
+Between polls the daemon also **self-refreshes**: it hashes its own script at
+load time and, when the on-disk hash differs at the top of a poll cycle, it
+re-execs itself to load the new code — including `ct-lib.sh`. This keeps a
+long-running daemon in sync with the repo it lives in (a main update once
+renamed a helper script out from under a running daemon and broke every review
+round); it never happens mid-poll, so an in-flight implement run is never
+orphaned.
+
 ## Lifecycle
 
 A ticket moves through phases as the orchestrator works it:
@@ -187,10 +195,14 @@ Each poll, after claiming work, the orchestrator walks every state entry in
 - It queries the PR's review surfaces — inline threads
   (`pulls/<n>/comments`), top-level review submissions (`pulls/<n>/reviews`),
   and general comments (`issues/<n>/comments`) — and takes the newest
-  non-pipeline timestamp as the latest comment timestamp. Comments and
-  reviews carrying the `_Created by carbotracker's agent skills._` footer are
-  the orchestrator's own output and are excluded from the watermark, so the
-  agent's replies and the failure notices can never re-trigger the loop.
+  human-authored timestamp as the latest comment timestamp. Only comments and
+  reviews authored by a `user.type == "User"` account count: bot comments
+  (GitHub Actions — e.g. the Firebase preview comment — dependabot, app bots)
+  are never review triggers, so they can neither start a round nor move the
+  watermark. Comments and reviews carrying the
+  `_Created by carbotracker's agent skills._` footer are the orchestrator's
+  own output and are excluded from the watermark, so the agent's replies and
+  the failure notices can never re-trigger the loop.
 - If that timestamp is newer than the entry's `lastCommentAt`, it runs a
   review round, split into an **analyze** and an **act** step (see ADR-0003):
   - **Analyze** — `opencode run --auto --session <sessionId>` invoking the
@@ -214,8 +226,13 @@ Each poll, after claiming work, the orchestrator walks every state entry in
     `reviewNeedsHuman` flag is set, polling pauses for the PR, and a
     maintainer notice is posted on the PR.
 - The watermark advances **only in the act step**, after the plan is applied.
-  Analyze failure, an empty plan, or a missing/malformed/schema-invalid plan
-  leaves the watermark in place.
+  A valid plan with zero comments is a **verified no-op**: the act step
+  re-lists the three review surfaces with the same predicate as the watermark,
+  and only when no human review content exists does the round succeed silently
+  (nothing posted, failure counter reset) — the agent's "nothing to review"
+  claim is never trusted on its own. If human content exists that the plan
+  failed to classify, the round fails and retries. Analyze failure or a
+  missing/malformed/schema-invalid plan leaves the watermark in place.
 - On a successful round the failure counter resets. The watermark is the
   newest human comment at the moment the act step finishes, so a comment that
   arrives after the round is picked up on the next poll.
@@ -396,12 +413,13 @@ Follow the daemon with `journalctl --user -u carbotracker-orchestrator -f`.
   recovered by creating the PR rather than re-running the agent, and a branch
   whose PR was already merged is never given a second PR.
 - Review detection compares strictly against the watermark. The watermark is
-  the newest comment that is **not** the pipeline's own output — comments and
-  reviews carrying the `_Created by carbotracker's agent skills._` footer are
-  filtered out — so a successful round never re-triggers on itself while a
-  review that lands mid-round still does. A failed round keeps the watermark
-  in place so the same review is retried — capped by
-  `ORCHESTRATOR_REVIEW_RETRIES`, after which the orchestrator backs off until
-  a new comment appears or the PR is merged.
+  the newest comment that is human-authored (`user.type == "User"`) and **not**
+  the pipeline's own output — bot comments and reviews carrying the
+  `_Created by carbotracker's agent skills._` footer are filtered out — so a
+  successful round never re-triggers on itself while a review that lands
+  mid-round still does. A failed round keeps the watermark in place so the
+  same review is retried — capped by `ORCHESTRATOR_REVIEW_RETRIES`, after
+  which the orchestrator backs off until a new comment appears or the PR is
+  merged.
 - `orchestrator_log` writes to stderr: several helpers return their value on
   stdout inside `$(...)`, so log lines must never land there.

@@ -122,7 +122,7 @@ fake_review_gh() {
   fake_command gh "if [[ \"\$1\" == \"api\" ]]; then
   case \"\$2\" in
     *reviews*) printf \"[]\n\" ;;
-    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"body\\\":\\\"human inline comment\\\"},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\"}]\n\" ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"human inline comment\\\"},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\"}]\n\" ;;
     *issues/*comments*)
       if [[ \"\$*\" == *\"-f body=\"* ]]; then
         printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
@@ -161,7 +161,7 @@ fake_review_act_gh() {
     *replies*)
       printf \"%s\n\" \"\$*\" >> \"\${FAKE_THREAD_REPLY_ARGS:-/dev/null}\"
       ;;
-    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"body\\\":\\\"human inline comment\\\"},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\"}]\n\" ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"human inline comment\\\"},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\"}]\n\" ;;
     *issues/*comments*)
       if [[ \"\$*\" == *\"-f body=\"* ]]; then
         printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
@@ -187,7 +187,7 @@ fake_review_act_gh_fail_reply_containing() {
       if [[ \"\$*\" == *\"$needle\"* ]]; then exit 1; fi
       printf \"%s\n\" \"\$*\" >> \"\${FAKE_THREAD_REPLY_ARGS:-/dev/null}\"
       ;;
-    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"body\\\":\\\"human inline comment\\\"}]\n\" ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"human inline comment\\\"}]\n\" ;;
     *issues/*comments*)
       if [[ \"\$*\" == *\"-f body=\"* ]]; then
         printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
@@ -206,7 +206,7 @@ fake_review_act_gh_all_replies_fail() {
   case \"\$2\" in
     *reviews*) printf \"[]\n\" ;;
     *replies*) exit 1 ;;
-    *pulls/*) printf \"[{\\\"created_at\\\":\\\"2026-08-13T00:07:00Z\\\",\\\"body\\\":\\\"human inline comment\\\"}]\n\" ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"2026-08-13T00:07:00Z\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"human inline comment\\\"}]\n\" ;;
     *issues/*comments*)
       if [[ \"\$*\" == *\"-f body=\"* ]]; then
         printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
@@ -244,7 +244,7 @@ elif [[ \"\$1\" == \"api\" ]]; then
     *replies*)
       printf \"%s\n\" \"\$*\" >> \"\${FAKE_THREAD_REPLY_ARGS:-/dev/null}\"
       ;;
-    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"body\\\":\\\"human inline comment\\\",\\\"id\\\":1,\\\"in_reply_to_id\\\":null},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\",\\\"id\\\":9001,\\\"in_reply_to_id\\\":3788850732}]\n\" ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"human inline comment\\\",\\\"id\\\":1,\\\"in_reply_to_id\\\":null},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\",\\\"id\\\":9001,\\\"in_reply_to_id\\\":3788850732}]\n\" ;;
     *issues/*comments*)
       if [[ \"\$*\" == *\"-f body=\"* ]]; then
         printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
@@ -275,7 +275,7 @@ elif [[ \"\$1\" == \"api\" ]]; then
     *replies*)
       printf \"%s\n\" \"\$*\" >> \"\${FAKE_THREAD_REPLY_ARGS:-/dev/null}\"
       ;;
-    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"body\\\":\\\"human inline comment\\\",\\\"id\\\":1,\\\"in_reply_to_id\\\":null}]\n\" ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"human inline comment\\\",\\\"id\\\":1,\\\"in_reply_to_id\\\":null}]\n\" ;;
     *issues/*comments*)
       if [[ \"\$*\" == *\"-f body=\"* ]]; then
         printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
@@ -303,7 +303,7 @@ elif [[ \"\$1\" == \"api\" ]]; then
     *replies*)
       printf \"%s\n\" \"\$*\" >> \"\${FAKE_THREAD_REPLY_ARGS:-/dev/null}\"
       ;;
-    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"body\\\":\\\"human inline comment\\\",\\\"id\\\":1,\\\"in_reply_to_id\\\":null},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\",\\\"id\\\":9001,\\\"in_reply_to_id\\\":null}]\n\" ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"human inline comment\\\",\\\"id\\\":1,\\\"in_reply_to_id\\\":null},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\",\\\"id\\\":9001,\\\"in_reply_to_id\\\":null}]\n\" ;;
     *issues/*comments*)
       if [[ \"\$*\" == *\"-f body=\"* ]]; then
         printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
@@ -1440,8 +1440,8 @@ test_pr_latest_comment_at_returns_newest() {
   fake_command gh 'if [[ "$1" == "api" ]]; then
   case "$2" in
     *reviews*) printf "[]\n" ;;
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"body\":\"a\"},{\"created_at\":\"2026-08-13T00:07:00Z\",\"body\":\"b\"}]\n" ;;
-    *issues/*comments*) printf "[{\"created_at\":\"2026-08-13T00:06:00Z\",\"body\":\"c\"}]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"a\"},{\"created_at\":\"2026-08-13T00:07:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"b\"}]\n" ;;
+    *issues/*comments*) printf "[{\"created_at\":\"2026-08-13T00:06:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"c\"}]\n" ;;
   esac
 fi
 exit 0'
@@ -1452,8 +1452,8 @@ test_pr_latest_comment_at_prefers_general_when_newer() {
   fake_command gh 'if [[ "$1" == "api" ]]; then
   case "$2" in
     *reviews*) printf "[]\n" ;;
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"body\":\"a\"}]\n" ;;
-    *issues/*comments*) printf "[{\"created_at\":\"2026-08-13T00:09:00Z\",\"body\":\"b\"}]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"a\"}]\n" ;;
+    *issues/*comments*) printf "[{\"created_at\":\"2026-08-13T00:09:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"b\"}]\n" ;;
   esac
 fi
 exit 0'
@@ -1463,8 +1463,8 @@ exit 0'
 test_pr_latest_comment_at_includes_review_submission() {
   fake_command gh 'if [[ "$1" == "api" ]]; then
   case "$2" in
-    *reviews*) printf "[{\"submitted_at\":\"2026-08-13T00:08:00Z\",\"body\":\"summary review\"}]\n" ;;
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"body\":\"a\"}]\n" ;;
+    *reviews*) printf "[{\"submitted_at\":\"2026-08-13T00:08:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"summary review\"}]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"a\"}]\n" ;;
     *issues/*comments*) printf "[]\n" ;;
   esac
 fi
@@ -1476,7 +1476,7 @@ test_pr_latest_comment_at_ignores_pending_reviews() {
   fake_command gh 'if [[ "$1" == "api" ]]; then
   case "$2" in
     *reviews*) printf "[{\"submitted_at\":null,\"body\":\"draft review\"}]\n" ;;
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"body\":\"a\"}]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"a\"}]\n" ;;
     *issues/*comments*) printf "[]\n" ;;
   esac
 fi
@@ -1484,13 +1484,37 @@ exit 0'
   assert_eq "pending review does not move the watermark" "2026-08-13T00:05:00Z" "$(orchestrator_pr_latest_comment_at 100)"
 }
 
+test_pr_latest_comment_at_ignores_bot_authored_comments() {
+  fake_command gh 'if [[ "$1" == "api" ]]; then
+  case "$2" in
+    *reviews*) printf "[{\"submitted_at\":\"2026-08-13T00:09:00Z\",\"user\":{\"type\":\"Bot\"},\"body\":\"deployed preview\"}]\n" ;;
+    *pulls/*) printf "[]\n" ;;
+    *issues/*comments*) printf "[{\"created_at\":\"2026-08-13T00:10:00Z\",\"user\":{\"type\":\"Bot\"},\"body\":\"Visit the preview URL\"}]\n" ;;
+  esac
+fi
+exit 0'
+  assert_eq "bot comments and bot reviews never move the watermark" "" "$(orchestrator_pr_latest_comment_at 100)"
+}
+
+test_pr_latest_comment_at_human_wins_over_bot() {
+  fake_command gh 'if [[ "$1" == "api" ]]; then
+  case "$2" in
+    *reviews*) printf "[]\n" ;;
+    *pulls/*) printf "[]\n" ;;
+    *issues/*comments*) printf "[{\"created_at\":\"2026-08-13T00:10:00Z\",\"user\":{\"type\":\"Bot\"},\"body\":\"preview url\"},{\"created_at\":\"2026-08-13T00:07:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"please fix the name\"}]\n" ;;
+  esac
+fi
+exit 0'
+  assert_eq "a newer bot comment loses to an older human comment" "2026-08-13T00:07:00Z" "$(orchestrator_pr_latest_comment_at 100)"
+}
+
 test_pr_latest_comment_at_excludes_bot_comments() {
   local footer="_Created by carbotracker's agent skills._"
   fake_command gh "if [[ \"\$1\" == \"api\" ]]; then
   case \"\$2\" in
     *reviews*) printf \"[]\n\" ;;
-    *pulls/*) printf \"[{\\\"created_at\\\":\\\"2026-08-13T00:07:00Z\\\",\\\"body\\\":\\\"human review comment\\\"},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\"}]\n\" ;;
-    *issues/*comments*) printf \"[{\\\"created_at\\\":\\\"2026-08-13T00:08:00Z\\\",\\\"body\\\":\\\"$footer\\\"}]\n\" ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"2026-08-13T00:07:00Z\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"human review comment\\\"},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"$footer\\\"}]\n\" ;;
+    *issues/*comments*) printf \"[{\\\"created_at\\\":\\\"2026-08-13T00:08:00Z\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"$footer\\\"}]\n\" ;;
   esac
 fi
 exit 0"
@@ -1508,7 +1532,7 @@ test_pr_latest_comment_at_one_surface_empty() {
   case "$2" in
     *reviews*) printf "[]\n" ;;
     *pulls/*) printf "[]\n" ;;
-    *issues/*comments*) printf "[{\"created_at\":\"2026-08-13T00:09:00Z\",\"body\":\"a\"}]\n" ;;
+    *issues/*comments*) printf "[{\"created_at\":\"2026-08-13T00:09:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"a\"}]\n" ;;
   esac
 fi
 exit 0'
@@ -1527,7 +1551,7 @@ test_pr_latest_comment_at_counts_quote_reply_as_human() {
   case \"\$2\" in
     *reviews*) printf \"[]\n\" ;;
     *pulls/*) printf \"[]\n\" ;;
-    *issues/*comments*) printf \"[{\\\"created_at\\\":\\\"2026-08-13T00:07:00Z\\\",\\\"body\\\":\\\"$footer\\\"},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$quote\\\"}]\n\" ;;
+    *issues/*comments*) printf \"[{\\\"created_at\\\":\\\"2026-08-13T00:07:00Z\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"$footer\\\"},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"$quote\\\"}]\n\" ;;
   esac
 fi
 exit 0"
@@ -1538,7 +1562,7 @@ test_pr_latest_comment_at_ignores_empty_review() {
   fake_command gh 'if [[ "$1" == "api" ]]; then
   case "$2" in
     *reviews*) printf "[{\"submitted_at\":\"2026-08-13T00:09:00Z\",\"body\":\"\"}]\n" ;;
-    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"body\":\"human inline comment\"}]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:05:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"human inline comment\"}]\n" ;;
     *issues/*comments*) printf "[]\n" ;;
   esac
 fi
@@ -1839,7 +1863,9 @@ test_review_round_implement_resolved_without_reply_keeps_watermark() {
   state_teardown
 }
 
-test_review_round_empty_plan_keeps_watermark_and_retries() {
+# An empty plan while human review content exists means the analyze run failed
+# to classify the very comment that triggered the round — fail and retry.
+test_review_round_empty_plan_with_human_content_fails() {
   state_setup
   local plan="$STATE_DIR/plan.json"
   printf '%s\n' '{"needsHuman": false, "comments": []}' > "$plan"
@@ -1852,12 +1878,87 @@ test_review_round_empty_plan_keeps_watermark_and_retries() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output rc
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
-  assert_eq "empty plan fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
-  assert_eq "empty plan increments the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
-  assert_eq "empty plan keeps the watermark" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
-  assert_contains "empty plan posts a failure notice" "attempt 1/3" "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  assert_eq "empty plan with human content fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "empty plan with human content increments the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  assert_eq "empty plan with human content keeps the watermark" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  assert_contains "empty plan with human content posts a failure notice" "attempt 1/3" "$(cat "$FAKE_PR_COMMENT_ARGS")"
   unset FAKE_PR_COMMENT_ARGS
   state_teardown
+}
+
+# A valid empty plan while no human review content exists (the incident's bot
+# preview comment scenario) is a successful no-op: the round succeeds, nothing
+# is posted, and the failure counter resets.
+test_review_round_empty_plan_without_human_content_succeeds() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments": []}' > "$plan"
+  fake_command gh "if [[ \"\$1\" == \"api\" ]]; then
+  case \"\$2\" in
+    *reviews*) printf \"[]\n\" ;;
+    *pulls/*) printf \"[]\n\" ;;
+    *issues/*comments*)
+      if [[ \"\$*\" == *\"-f body=\"* ]]; then
+        printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
+        exit 0
+      fi
+      printf \"[{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"user\\\":{\\\"type\\\":\\\"Bot\\\"},\\\"body\\\":\\\"Visit the preview URL\\\"}]\n\"
+      ;;
+  esac
+fi
+exit 0"
+  fake_review_opencode_success "" "$plan"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 2
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "empty plan without human content succeeds" "yes" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "empty plan without human content resets the failure counter" "0" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  assert_eq "empty plan without human content posts nothing" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
+  assert_eq "empty plan without human content leaves the watermark untouched" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  unset FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+# The daemon execs the plan validator by a filename baked into
+# ct-orchestrator.sh at load time; a rename on disk that forgets to update the
+# reference broke every review round in production (PR #314 incident). The
+# referenced file must exist alongside the orchestrator script.
+test_review_plan_validator_reference_resolves() {
+  local referenced validator_path
+  referenced="$(sed -nE 's/.*node "\$SCRIPT_DIR\/([A-Za-z0-9-]+\.js)".*/\1/p' "$ROOT/tools/ct-orchestrator.sh" | head -n1)"
+  validator_path="$ROOT/tools/$referenced"
+  if [[ -n "$referenced" && -f "$validator_path" ]]; then
+    pass "the validator referenced by the orchestrator exists ($validator_path)"
+  else
+    fail "the orchestrator references a missing validator script ($validator_path)"
+  fi
+}
+
+# The self-refresh must re-exec when the on-disk script hash differs from the
+# one recorded at load, and stay put otherwise. The exec target is overridden
+# with `exit 42` so the re-exec is observable without launching a daemon.
+test_self_refresh_re_execs_on_hash_change() {
+  local rc
+  (ORCHESTRATOR_SELF_HASH=stale ORCHESTRATOR_SELF_EXEC='exit 42' orchestrator_self_refresh >/dev/null 2>&1) && rc=0 || rc=$?
+  assert_eq "changed hash re-execs" "42" "$rc"
+}
+
+test_self_refresh_passes_on_matching_hash() {
+  local current rc
+  current="$(sha256sum "$ROOT/tools/ct-orchestrator.sh" | cut -d' ' -f1)"
+  (ORCHESTRATOR_SELF_HASH="$current" ORCHESTRATOR_SELF_EXEC='exit 42' orchestrator_self_refresh >/dev/null 2>&1) && rc=0 || rc=$?
+  assert_eq "matching hash does not re-exec" "0" "$rc"
+}
+
+test_self_refresh_skips_without_hash() {
+  local rc
+  (ORCHESTRATOR_SELF_HASH="" ORCHESTRATOR_SELF_EXEC='exit 42' orchestrator_self_refresh >/dev/null 2>&1) && rc=0 || rc=$?
+  assert_eq "missing recorded hash does not re-exec" "0" "$rc"
 }
 
 test_review_round_malformed_plan_keeps_watermark_and_retries() {
@@ -3292,6 +3393,8 @@ test_pr_latest_comment_at_returns_newest
 test_pr_latest_comment_at_prefers_general_when_newer
 test_pr_latest_comment_at_includes_review_submission
 test_pr_latest_comment_at_ignores_pending_reviews
+test_pr_latest_comment_at_ignores_bot_authored_comments
+test_pr_latest_comment_at_human_wins_over_bot
 test_pr_latest_comment_at_excludes_bot_comments
 test_pr_latest_comment_at_none
 test_pr_latest_comment_at_one_surface_empty
@@ -3310,7 +3413,8 @@ test_review_round_implement_with_answer_posts_reply_and_resolves
 test_review_round_implement_general_comment_resolves_without_thread
 test_review_round_implement_general_comment_without_reply_keeps_watermark
 test_review_round_implement_resolved_without_reply_keeps_watermark
-test_review_round_empty_plan_keeps_watermark_and_retries
+test_review_round_empty_plan_with_human_content_fails
+test_review_round_empty_plan_without_human_content_succeeds
 test_review_round_malformed_plan_keeps_watermark_and_retries
 test_review_round_schema_invalid_plan_keeps_watermark
 test_review_round_partial_reply_failure_does_not_duplicate
@@ -3318,6 +3422,10 @@ test_review_round_all_replies_fail_keeps_watermark_and_retries
 test_review_round_failure_increments_and_posts_notice
 test_review_round_third_failure_pauses_and_consumes
 test_review_round_after_pause_starts_fresh_budget
+test_review_plan_validator_reference_resolves
+test_self_refresh_re_execs_on_hash_change
+test_self_refresh_passes_on_matching_hash
+test_self_refresh_skips_without_hash
 test_state_add_creates_review_needs_human_false
 test_state_set_review_needs_human_updates
 test_review_poll_launches_round_on_new_comment

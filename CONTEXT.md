@@ -31,3 +31,17 @@ _Avoid_: Ratio, carb factor, insulin factor
 **Saved meal**:
 A named, immutable snapshot of a current meal's meal entries, stored by the user so it can be loaded back later (e.g. "Steffens Pasta Dream" = 250 g spaghetti, 60 g meat, 60 g bread).
 _Avoid_: Recipe, saved-this-meal
+
+### Pipeline
+
+**Review round**:
+One analyze step (headless classify into a plan) plus one act step (apply the plan) of the review loop.
+_Avoid_: Review pass, review cycle
+
+**Watermark**:
+The newest human review comment a PR's review loop has already handled.
+_Avoid_: Last-seen, cursor
+
+**Review trigger**:
+What starts a review round: only human-authored comments and reviews; bot comments (GitHub Actions previews, dependabot) never trigger.
+_Avoid_: Review signal (when it means a bot post)

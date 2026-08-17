@@ -60,7 +60,15 @@ One commit per `implement` comment, so each thread's reply cites a specific comm
 
 ### Watermark
 
-`lastCommentAt` advances only after the **act** phase applies the plan. Analyze failure / empty plan / malformed JSON falls through to the existing retry/escalate semantics.
+`lastCommentAt` advances only after the **act** phase applies the plan. Analyze failure / malformed JSON falls through to the existing retry/escalate semantics.
+
+### Trigger filter (amended 2026-08-17)
+
+Only human-authored comments and reviews count as review signals — the predicate is `user.type == "User"` (GitHub user types are User / Bot / Organization / Mannequin). Bot comments (GitHub Actions, e.g. the Firebase preview comment, dependabot, app bots) are never review triggers: they can neither start a round nor move the watermark. The predicate lives in one shared jq fragment (`ORCHESTRATOR_REVIEW_SIGNAL_JQ`) used by the watermark query on all three surfaces and by the empty-plan verification below, so it cannot drift between them. Live repro: the Firebase preview bot's comment on PR #314 triggered three doomed review rounds.
+
+### Empty plan (amended 2026-08-17)
+
+A valid plan with zero comments is a **verified no-op**, not a failure: the act phase re-lists the three review surfaces with the same predicate as the watermark, and only when no human review content exists does the round succeed silently (nothing posted, failure counter reset). The agent's claim of "nothing to review" is never trusted on its own — the same discipline as the implement step's exit-0 verification. If human review content exists that the plan failed to classify, the round fails, keeps the watermark, and retries.
 
 ## Considered options
 
@@ -74,3 +82,4 @@ One commit per `implement` comment, so each thread's reply cites a specific comm
 - `orchestrator_review_round` splits into analyze + act; the watermark only moves on a successful act.
 - `needsHuman` introduces a paused-polling state distinct from the retry-exhaustion pause.
 - Bash tests cover the plan-file contract (`tools/tests/ct-review-plan.test.sh`, validating against the JSON Schema), and the orchestrator tests (`tools/tests/ct-orchestrator.test.sh`) cover the type→action mapping and the watermark/pause behavior.
+- Bot comments are filtered from the watermark via a shared human-author predicate; a valid empty plan no-ops only after the daemon re-verifies that no human review content exists (amended 2026-08-17, see the two sections above).
