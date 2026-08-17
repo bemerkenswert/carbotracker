@@ -6,6 +6,7 @@ export const SavedMealsPageComponentActions = createActionGroup({
   events: {
     'Entered Saved Meals Page': emptyProps(),
     'Left Saved Meals Page': emptyProps(),
+    'Name Filter Changed': props<{ nameFilter: string | null }>(),
     'Saved Meal Clicked': props<{ savedMeal: SavedMeal }>(),
   },
 });

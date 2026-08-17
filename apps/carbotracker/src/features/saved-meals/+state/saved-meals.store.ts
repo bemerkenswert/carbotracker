@@ -2,11 +2,15 @@ import { EntityState, createEntityAdapter } from '@ngrx/entity';
 import { createFeature, createReducer, createSelector, on } from '@ngrx/store';
 import { SavedMeal } from '../saved-meal.model';
 import { SavedMealsApiActions } from './actions/api.actions';
-import { SavedMealPageComponentActions } from './actions/component.actions';
+import {
+  SavedMealPageComponentActions,
+  SavedMealsPageComponentActions,
+} from './actions/component.actions';
 
 interface SavedMealsState {
   savedMeals: EntityState<SavedMeal>;
   selectedSavedMealId: string | null;
+  nameFilter: string | null;
   error: string | null;
 }
 
@@ -17,6 +21,7 @@ const savedMealsEntityAdapter = createEntityAdapter<SavedMeal>({
 export const getInitialState = (): SavedMealsState => ({
   savedMeals: savedMealsEntityAdapter.getInitialState(),
   selectedSavedMealId: null,
+  nameFilter: null,
   error: null,
 });
 
@@ -24,6 +29,13 @@ export const savedMealsFeature = createFeature({
   name: 'savedMeals',
   reducer: createReducer(
     getInitialState(),
+    on(
+      SavedMealsPageComponentActions.nameFilterChanged,
+      (state, { nameFilter }): SavedMealsState => ({
+        ...state,
+        nameFilter,
+      }),
+    ),
     on(
       SavedMealPageComponentActions.selectedSavedMealChanged,
       (state, { selectedSavedMealId }): SavedMealsState => ({
