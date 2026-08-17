@@ -49,3 +49,15 @@ _Avoid_: Restart, retry
 **Restart**:
 Discarding the worktree and session and running fresh from scratch — the fallback when no resume can help, triggered by a human re-tagging the ticket.
 _Avoid_: Resume, retry
+
+**Review round**:
+One analyze step (headless classify into a plan) plus one act step (apply the plan) of the review loop.
+_Avoid_: Review pass, review cycle
+
+**Watermark**:
+The newest human review comment a PR's review loop has already handled.
+_Avoid_: Last-seen, cursor
+
+**Review trigger**:
+What starts a review round: only human-authored comments and reviews; bot comments (GitHub Actions previews, dependabot) never trigger.
+_Avoid_: Review signal (when it means a bot post)
