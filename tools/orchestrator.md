@@ -80,11 +80,12 @@ Each poll, before the review loop, the orchestrator walks every state entry in
   the close fails, the entry is **kept** so the merge is re-detected and the
   close retried on the next poll — the closure is never silently dropped.
 - **`CLOSED`** — the PR was closed without merging: the work is rejected. The
-  orchestrator prunes the worktree and branch, then escalates the issue to a
-  human — drops `in-progress`, adds `needs-triage`, and leaves a comment
-  naming the closed PR. The entry is removed only once the escalation lands,
-  so a transient `gh` failure retries next poll instead of stranding an
-  un-labelled issue.
+  orchestrator escalates the issue to a human — drops `in-progress`, adds
+  `needs-triage`, and leaves a comment naming the closed PR — then prunes the
+  worktree and branch. Uncommitted work is stashed before the prune and named
+  in the comment (see [Escalation stashing](#escalation-stashing)). The entry
+  is removed only once the escalation lands, so a transient `gh` failure
+  retries next poll instead of stranding an un-labelled issue.
 - **`OPEN`** — the merge status is checked. Both auto-merge actions share the
   merge-gate skip: a PR carrying `suspect-diff` without `human-approved` is
   skipped entirely — the labels are read fresh from GitHub each poll, so a
@@ -190,9 +191,27 @@ session. If the retry also fails, the orchestrator **escalates**: it removes
 `in-progress` and `ticket` (the `ready-for-agent` label was already removed at
 claim time), adds `needs-triage`, comments on the issue with the failure reason
 and the tail of the run's output, prunes the worktree and branch, and removes
-the entry from state. The ticket is now a human problem, not a pipeline
-retry-loop. If the escalation itself fails, the entry stays in state and the
-poll loop's normal un-claim/cleanup path removes it.
+the entry from state. Uncommitted work is stashed before the prune (see
+[Escalation stashing](#escalation-stashing)). The ticket is now a human
+problem, not a pipeline retry-loop. If the escalation itself fails, the entry
+stays in state and the poll loop's normal un-claim/cleanup path removes it.
+
+## Escalation stashing
+
+Every escalation that prunes a worktree first stashes any uncommitted work —
+tracked changes and untracked files alike (`git stash push --include-untracked`)
+— so a failed run's half-written work survives for a maintainer to recover from
+`git stash list`. The stash message follows the contract
+`carbotracker: ticket <number> uncommitted work at escalation (<ISO-8601 UTC
+timestamp>, session <id>)`; the escalation comment and the prune log line both
+name the entry. A clean or missing worktree creates no stash, and a failed
+stash never blocks the escalation — the prune proceeds without it.
+
+The stash is created before the escalation comment is posted, so the comment
+names the actual entry. If the escalation fails to land (`gh` down), the stash
+is popped again to restore the dirty worktree: the entry survives in state, the
+next poll retries the escalation, and that retry re-stashes with a fresh
+timestamp and names its own entry.
 
 ## No-commit runs: stalled vs empty
 
@@ -360,7 +379,7 @@ flowchart TD
     F1 -- yes --> F2[retry: opencode run --auto --continue /implement the issue is N]
     F2 --> F3{non-zero again?}
     F3 -- no --> F5
-    F3 -- yes --> F4[escalate: needs-triage, comment with output, prune, remove from state]
+    F3 -- yes --> F4[escalate: needs-triage, stash uncommitted work, comment with output, prune, remove from state]
     F5 -- yes --> G
     F5 -- no, work present, first invocation only --> F6[stalled run: resume once — opencode run --auto --continue]
     F5 -- no, work present, retry already resumed --> F4[escalate: no commits produced even after resuming the session]
@@ -385,7 +404,7 @@ flowchart TD
     O --> P0[gh pr view n → state]
     P0 -- MERGED --> P1[close issue: PR #n merged. Issue closed. → prune worktree/branch, remove from state]
     P1 -- close failed --> O
-    P0 -- CLOSED --> P2[escalate: drop in-progress, add needs-triage, comment → prune worktree/branch, remove from state]
+    P0 -- CLOSED --> P2[escalate: drop in-progress, add needs-triage, stash uncommitted work, comment → prune worktree/branch, remove from state]
     P0 -- OPEN --> P3
     P2 -- escalate failed --> O
     P2 --> O
