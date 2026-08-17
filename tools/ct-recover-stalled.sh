@@ -20,11 +20,13 @@ recover_usage() {
 }
 
 # The newest stash entry for the ticket: "ref<TAB>subject" or nothing. Stash
-# list is newest-first, so the first match is the ticket's latest work.
+# list is newest-first, so the first match is the ticket's latest work. The
+# grep prefix is the shared stash-message contract from ct-lib.sh, matched
+# verbatim so the tool and the orchestrator can never drift apart.
 recover_latest_stash() {
   local number="$1"
   git stash list --format='%gd%x09%gs' 2>/dev/null \
-    | grep -E "carbotracker: ticket $number uncommitted work at escalation \(" \
+    | grep -F "$(ct_stash_message_prefix "$number")" \
     | head -n 1 || true
 }
 

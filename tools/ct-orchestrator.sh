@@ -776,10 +776,16 @@ _Created by carbotracker's agent skills._"
 }
 
 orchestrator_prune_ticket() {
-  local number="$1" branch="$2" worktree="$3"
-  orchestrator_cleanup_worktree "$number" "$worktree" "$branch"
+  local number="$1" branch="$2" worktree="$3" stash_ref="${4:-}" stash_allowed="${5:-1}"
+  local ref
+  if [[ -z "$stash_ref" && "$stash_allowed" -eq 1 ]]; then
+    ref="$(orchestrator_stash_before_prune "$number" "$worktree")"
+  else
+    ref="$stash_ref"
+  fi
+  orchestrator_cleanup_worktree "$worktree" "$branch"
   orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
-  orchestrator_log "pruned #$number: worktree removed, branch deleted, removed from state"
+  orchestrator_log "pruned #$number: worktree removed, branch deleted, removed from state${ref:+ (stashed $ref)}"
 }
 
 orchestrator_merge_behind_pr() {
@@ -925,7 +931,7 @@ orchestrator_merge_poll() {
         orchestrator_log "merge detected: PR #$pr_number merged for #$number; closing issue"
         if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" \
           && gh issue close "$number" --comment "PR #$pr_number merged. Issue closed.${ORCHESTRATOR_AI_FOOTER}"; then
-          orchestrator_prune_ticket "$number" "$branch" "$worktree"
+          orchestrator_prune_ticket "$number" "$branch" "$worktree" "" 0
           orchestrator_log "closed issue #$number with merge comment"
         else
           orchestrator_log "WARNING: failed to close issue #$number; keeping entry to retry next poll"
@@ -949,8 +955,8 @@ orchestrator_merge_poll() {
 ${stash_line}
 ---
 _Created by carbotracker's agent skills._"; then
-          orchestrator_prune_ticket "$number" "$branch" "$worktree"
-          orchestrator_log "escalated #$number to needs-triage and pruned worktree"
+          orchestrator_prune_ticket "$number" "$branch" "$worktree" "$stash_ref"
+          orchestrator_log "escalated #$number to needs-triage and pruned worktree${stash_ref:+ (stashed $stash_ref)}"
         else
           orchestrator_log "WARNING: failed to escalate #$number; keeping entry to retry next poll"
         fi
@@ -1051,7 +1057,7 @@ orchestrator_stash_before_prune() {
     return 0
   fi
   session_id="$(orchestrator_opencode_session_id "carbotracker-ticket-$number")"
-  message="carbotracker: ticket $number uncommitted work at escalation ($(date -u +%Y-%m-%dT%H:%M:%SZ), session ${session_id:-none})"
+  message="$(ct_stash_message_prefix "$number")$(date -u +%Y-%m-%dT%H:%M:%SZ), session ${session_id:-none})"
   if ! git -C "$worktree" stash push --include-untracked --message "$message" >/dev/null 2>&1; then
     orchestrator_log "WARNING: failed to stash uncommitted work for #$number before pruning; work may be lost"
     return 0
@@ -1062,8 +1068,7 @@ orchestrator_stash_before_prune() {
 }
 
 orchestrator_cleanup_worktree() {
-  local number="$1" worktree="$2" branch="$3"
-  orchestrator_stash_before_prune "$number" "$worktree"
+  local worktree="$1" branch="$2"
   git worktree remove --force "$worktree" 2>/dev/null || rm -rf "$worktree"
   git branch -D "$branch" 2>/dev/null || true
 }
@@ -1155,8 +1160,8 @@ ${snippet}
 _Created by carbotracker's agent skills._"
   if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --remove-label ticket --add-label needs-triage \
     && gh issue comment "$number" --body "$body"; then
-    orchestrator_prune_ticket "$number" "$branch" "$worktree"
-    orchestrator_log "escalated #$number to needs-triage after $reason; pruned worktree and removed from state${stash_line:+ (stashed $stash_ref)}"
+    orchestrator_prune_ticket "$number" "$branch" "$worktree" "$stash_ref"
+    orchestrator_log "escalated #$number to needs-triage after $reason; pruned worktree and removed from state${stash_ref:+ (stashed $stash_ref)}"
     return 0
   fi
   orchestrator_log "WARNING: failed to escalate #$number; leaving entry in state for the poll loop to un-claim"
@@ -1177,7 +1182,7 @@ orchestrator_restore_failed_labels() {
 
 orchestrator_handle_non_opencode_failure() {
   local number="$1" branch="$2" worktree="$3" reason="$4"
-  local failures retries
+  local failures retries stash_ref
   retries="$ORCHESTRATOR_IMPLEMENTATION_RETRIES"
   orchestrator_state_mark_failed "$ORCHESTRATOR_STATE_FILE" "$number"
   failures="$(orchestrator_state_failure_count "$ORCHESTRATOR_STATE_FILE" "$number")"
@@ -1193,7 +1198,9 @@ orchestrator_handle_non_opencode_failure() {
     orchestrator_log "WARNING: failed to restore ready-for-agent on #$number; it will need manual re-labelling"
   fi
   if [[ "${CT_WORKTREE_CREATED:-0}" == "1" ]]; then
-    orchestrator_cleanup_worktree "$number" "$worktree" "$branch"
+    stash_ref="$(orchestrator_stash_before_prune "$number" "$worktree")"
+    orchestrator_cleanup_worktree "$worktree" "$branch"
+    orchestrator_log "cleaned up worktree after non-opencode failure for #$number${stash_ref:+ (stashed $stash_ref)}"
   else
     orchestrator_log "not cleaning up pre-existing worktree $worktree"
   fi
@@ -1379,7 +1386,7 @@ orchestrator_recover_pushed_branch() {
 
 orchestrator_drop_unrecoverable() {
   local number="$1" branch="$2" worktree="$3"
-  orchestrator_cleanup_worktree "$number" "$worktree" "$branch"
+  orchestrator_cleanup_worktree "$worktree" "$branch"
   if ! gh issue comment "$number" --body "The orchestrator found no recoverable work for this ticket after a restart. It has been cleaned up and removed from the pipeline. Re-tag with ready-for-agent to retry.
 ---
 _Created by carbotracker's agent skills._"; then

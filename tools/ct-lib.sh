@@ -25,6 +25,16 @@ ct_ticket_worktree() {
   printf '%s/%s-%s' "$parent" "$number" "$(slugify "$title")"
 }
 
+# The stash-message contract between the orchestrator (which stashes on
+# escalation) and the recovery tool (which greps for the entry): the fixed
+# prefix naming the ticket. The orchestrator appends the timestamp and session
+# id; the recovery tool greps for the prefix verbatim (grep -F), so the two
+# sides can never drift apart.
+ct_stash_message_prefix() {
+  local number="$1"
+  printf 'carbotracker: ticket %s uncommitted work at escalation (' "$number"
+}
+
 ct_issue_title() {
   gh issue view "$1" --json title --jq .title 2>/dev/null || true
 }

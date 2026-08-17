@@ -1493,7 +1493,7 @@ exit 1'
   state_teardown
 }
 
-test_merge_prune_stashes_uncommitted_work() {
+test_merge_prune_does_not_stash_merged_work() {
   state_setup
   fake_merge_gh "MERGED"
   fake_stash_git
@@ -1501,17 +1501,38 @@ test_merge_prune_stashes_uncommitted_work() {
   mkdir -p "$worktree"
   export FAKE_GIT_STATUS="$STATE_DIR/git_status"
   export FAKE_STASH_PUSH_ARGS="$STATE_DIR/stash_push"
-  export FAKE_STASH_LIST="$STATE_DIR/stash_list"
   export FAKE_ISSUE_EDIT_ARGS="$STATE_DIR/issue_edit"
   export FAKE_ISSUE_CLOSE_ARGS="$STATE_DIR/issue_close"
+  printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>/dev/null
+  assert_eq "merged prune creates no orphaned stash" "no" "$([[ -f "$FAKE_STASH_PUSH_ARGS" ]] && echo yes || echo no)"
+  unset FAKE_GIT_STATUS FAKE_STASH_PUSH_ARGS FAKE_ISSUE_EDIT_ARGS FAKE_ISSUE_CLOSE_ARGS
+  state_teardown
+}
+
+test_closed_pr_escalation_stashes_work() {
+  state_setup
+  fake_closed_escalate_gh
+  fake_stash_git
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_GIT_STATUS="$STATE_DIR/git_status"
+  export FAKE_STASH_PUSH_ARGS="$STATE_DIR/stash_push"
+  export FAKE_STASH_LIST="$STATE_DIR/stash_list"
+  export FAKE_ESCALATE_ARGS="$STATE_DIR/escalate"
   printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
   printf 'stash@{0}\n' > "$FAKE_STASH_LIST"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>/dev/null
-  assert_contains "merge prune stashes leftover work" "stash push --include-untracked" "$(cat "$FAKE_STASH_PUSH_ARGS")"
-  assert_contains "merge prune stash names the ticket" "carbotracker: ticket 123 uncommitted work at escalation" "$(cat "$FAKE_STASH_PUSH_ARGS")"
-  unset FAKE_GIT_STATUS FAKE_STASH_PUSH_ARGS FAKE_STASH_LIST FAKE_ISSUE_EDIT_ARGS FAKE_ISSUE_CLOSE_ARGS
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_contains "closed-pr escalation stashes the work" "stash push --include-untracked" "$(cat "$FAKE_STASH_PUSH_ARGS")"
+  assert_contains "closed-pr stash names the ticket" "carbotracker: ticket 123 uncommitted work at escalation" "$(cat "$FAKE_STASH_PUSH_ARGS")"
+  assert_contains "closed-pr escalation comment names the recovery tool" "ct-recover-stalled.sh 123" "$(cat "$FAKE_ESCALATE_ARGS")"
+  assert_contains "closed-pr escalation log names the stash ref" "stashed stash@{0}" "$output"
+  unset FAKE_GIT_STATUS FAKE_STASH_PUSH_ARGS FAKE_STASH_LIST FAKE_ESCALATE_ARGS
   state_teardown
 }
 
@@ -3762,7 +3783,8 @@ test_implement_escalates_when_resume_exits_nonzero
 test_implement_escalates_when_retry_already_resumed
 test_escalation_stashes_uncommitted_work
 test_escalation_clean_tree_creates_no_stash
-test_merge_prune_stashes_uncommitted_work
+test_merge_prune_does_not_stash_merged_work
+test_closed_pr_escalation_stashes_work
 test_implement_no_pr_skips_comment
 test_implement_no_session_stores_null
 test_implement_opens_pr_when_none_exists

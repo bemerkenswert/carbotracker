@@ -232,13 +232,15 @@ scratch — happens only when a human re-tags the ticket with `ready-for-agent`.
 
 ## Stash and recovery
 
-Whenever the orchestrator prunes a worktree that holds uncommitted work — on
-escalation, on a closed-without-merge PR, or on cleanup of a dropped entry — it
-first **stashes** that work (`git stash push --include-untracked`) so no
-recoverable change is ever lost to pruning. A clean tree produces no stash.
-The stash message is the interface between the stashing side and the recovery
-tool, so it always records the ticket number, a UTC timestamp, and the session
-id:
+Whenever the orchestrator prunes a worktree that holds uncommitted work on a
+failure or escalation — an implement failure, a closed-without-merge PR, or a
+non-opencode retry — it first **stashes** that work
+(`git stash push --include-untracked`) so no recoverable change is ever lost to
+pruning. A clean tree produces no stash, and a successfully **merged** PR is
+pruned without stashing (the work already landed; a stash entry would just
+orphan). The stash message is the interface between the stashing side and the
+recovery tool, so it always records the ticket number, a UTC timestamp, and the
+session id:
 
 ```text
 carbotracker: ticket <number> uncommitted work at escalation (<ISO-8601 UTC timestamp>, session <id>)
@@ -422,7 +424,7 @@ flowchart TD
     N1 -- no --> F4
     M --> O[merge poll: walk awaiting-review entries]
     O --> P0[gh pr view n → state]
-    P0 -- MERGED --> P1[close issue: PR #n merged. Issue closed. → stash leftover work, prune worktree/branch, remove from state]
+    P0 -- MERGED --> P1[close issue: PR #n merged. Issue closed. → prune worktree/branch, remove from state]
     P1 -- close failed --> O
     P0 -- CLOSED --> P2[escalate: stash leftover work, drop in-progress, add needs-triage, comment → prune worktree/branch, remove from state]
     P0 -- OPEN --> P3
