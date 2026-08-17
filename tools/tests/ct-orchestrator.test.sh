@@ -1259,6 +1259,49 @@ exit 0'
   state_teardown
 }
 
+test_implement_escalates_opencode_failure_preserves_commits() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
+  exit 0
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_COMMENT"
+  exit 0
+fi
+exit 1'
+  fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  mkdir -p "$3"
+elif [[ "$1" == "worktree" && "$2" == "remove" ]]; then
+  rm -rf "$3" "$4"
+elif [[ "$1" == "rev-parse" ]]; then
+  exit 0
+elif [[ "$1" == "rev-list" ]]; then
+  printf "1\n"
+elif [[ "$1" == "stash" ]]; then
+  printf "%s\n" "$*" >> "${FAKE_GIT_STASH_ARGS:-/dev/null}"
+elif [[ "$1" == "branch" && "$2" == "-D" ]]; then
+  exit 0
+fi
+exit 0'
+  fake_command npm 'exit 0'
+  fake_command opencode 'exit 1'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit"
+  export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "opencode failure on a branch with commits fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
+  assert_eq "opencode failure on a branch with commits keeps the worktree" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_eq "opencode failure on a branch with commits removes the state entry" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "opencode failure on a branch with commits names the preserved branch" "ticket/10-alpha" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_contains "opencode failure on a branch with commits says the work was preserved" "Committed work was preserved" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_contains "opencode failure on a branch with commits still adds needs-triage" "--add-label needs-triage" "$(cat "$FAKE_ESCALATE_EDIT")"
+  unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  state_teardown
+}
+
 test_implement_escalates_empty_run_without_resume() {
   state_setup
   fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
@@ -1779,6 +1822,126 @@ test_non_opencode_failure_escalates_at_bound() {
   assert_contains "bound failure adds triage label" "--add-label needs-triage" "$(cat "$FAKE_ESCALATE_EDIT")"
   assert_contains "bound failure posts comment" "attempt 2/2" "$(cat "$FAKE_ESCALATE_COMMENT")"
   unset FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  state_teardown
+}
+
+test_non_opencode_failure_preserves_worktree_below_bound() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_RETRY_EDIT"
+fi
+exit 0'
+  fake_stalled_git
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  mkdir -p "$worktree"
+  export FAKE_REVLIST_SEQ="$STATE_DIR/revlist"
+  printf '1\n' > "$FAKE_REVLIST_SEQ"
+  export FAKE_RETRY_EDIT="$STATE_DIR/retry_edit"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_IMPLEMENTATION_RETRIES=3 \
+    orchestrator_handle_non_opencode_failure 10 "$branch" "$worktree" "push failed" 2>&1)"
+  assert_eq "push-failure retry keeps the worktree" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_eq "push-failure retry keeps the state entry" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "push-failure retry keeps the failed phase" "failed" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  assert_contains "push-failure retry restores ready-for-agent" "--add-label ready-for-agent" "$(cat "$FAKE_RETRY_EDIT")"
+  assert_contains "push-failure retry logs the preserved worktree" "keeping #10 worktree and branch" "$output"
+  unset FAKE_REVLIST_SEQ FAKE_RETRY_EDIT
+  state_teardown
+}
+
+test_non_opencode_failure_at_bound_preserves_commits() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_EDIT"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  printf "%s\n" "$*" > "$FAKE_ESCALATE_COMMENT"
+fi
+exit 0'
+  fake_stalled_git
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  mkdir -p "$worktree"
+  export FAKE_REVLIST_SEQ="$STATE_DIR/revlist"
+  printf '1\n' > "$FAKE_REVLIST_SEQ"
+  export FAKE_ESCALATE_EDIT="$STATE_DIR/escalate_edit" FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_IMPLEMENTATION_RETRIES=1 \
+    orchestrator_handle_non_opencode_failure 10 "$branch" "$worktree" "push failed" >/dev/null 2>&1
+  assert_eq "at-bound push failure removes the state entry" "0" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "at-bound push failure keeps the worktree" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_contains "at-bound push failure adds triage label" "--add-label needs-triage" "$(cat "$FAKE_ESCALATE_EDIT")"
+  assert_contains "at-bound push failure names the preserved branch" "ticket/10-alpha" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_contains "at-bound push failure names the preserved worktree" "$worktree" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  assert_contains "at-bound push failure says the work was preserved" "Committed work was preserved" "$(cat "$FAKE_ESCALATE_COMMENT")"
+  unset FAKE_REVLIST_SEQ FAKE_ESCALATE_EDIT FAKE_ESCALATE_COMMENT
+  state_teardown
+}
+
+test_non_opencode_failure_clean_failure_still_cleans_up() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "issue" && "$2" == "edit" ]]; then
+  exit 0
+fi
+exit 0'
+  fake_command git 'if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "worktree" && "$2" == "remove" ]]; then
+  rm -rf "$3" "$4"
+elif [[ "$1" == "rev-list" ]]; then
+  printf "0\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  export CT_WORKTREE_CREATED=1
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_IMPLEMENTATION_RETRIES=3 \
+    orchestrator_handle_non_opencode_failure 10 "$branch" "$worktree" "npm ci failed" 2>&1)"
+  assert_eq "clean failure still removes the worktree" "no" "$([[ -d "$worktree" ]] && echo yes || echo no)"
+  assert_eq "clean failure keeps the state entry" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "clean failure still keeps the failed phase" "kept #10 in failed phase" "$output"
+  unset CT_WORKTREE_CREATED
+  state_teardown
+}
+
+test_implement_reuses_existing_worktree_on_retry() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  printf "[{\"number\":42}]\n"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  exit 0
+fi
+exit 0'
+  fake_command git 'full_args="$*"
+if [[ "$1" == "-C" ]]; then shift 2; fi
+if [[ "$1" == "worktree" && "$2" == "add" ]]; then
+  exit 1
+elif [[ "$1" == "rev-parse" ]]; then
+  exit 0
+elif [[ "$1" == "rev-list" ]]; then
+  printf "1\n"
+elif [[ "$1" == "push" && -n "${FAKE_GIT_PUSH_FILE:-}" ]]; then
+  printf "%s\n" "$full_args" > "$FAKE_GIT_PUSH_FILE"
+fi
+exit 0'
+  fake_command npm 'exit 0'
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  exit 0
+elif [[ "$1" == "session" ]]; then
+  printf "[{\"id\":\"ses_abc\",\"title\":\"carbotracker-ticket-10\",\"created\":1}]\n"
+fi
+exit 0'
+  local branch="ticket/10-alpha" worktree="$WT_PARENT/10-alpha"
+  mkdir -p "$worktree"
+  export FAKE_GIT_PUSH_FILE="$STATE_DIR/git_push"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_implement 10 "Alpha" "$branch" "$worktree" 2>&1)"
+  assert_contains "retry reuses the existing worktree" "reusing worktree" "$output"
+  assert_eq "retry completes with a pr" "42" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
+  assert_eq "retry transitions to awaiting review" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  assert_contains "retry pushes the preserved branch" "push -u origin ticket/10-alpha" "$(cat "$FAKE_GIT_PUSH_FILE")"
+  unset FAKE_GIT_PUSH_FILE
   state_teardown
 }
 
@@ -4388,6 +4551,7 @@ test_implement_fails_when_worktree_fails
 test_implement_fails_when_npm_ci_fails
 test_implement_retries_opencode_with_continue
 test_implement_escalates_after_two_opencode_failures
+test_implement_escalates_opencode_failure_preserves_commits
 test_implement_escalates_empty_run_without_resume
 test_implement_resumes_stalled_run_once_and_finishes
 test_implement_escalates_when_resume_still_commitless
@@ -4416,6 +4580,10 @@ test_poll_once_skips_when_cap_full
 test_poll_once_removes_entry_on_failed_implement
 test_poll_once_restores_ready_for_agent_on_failed_implement
 test_non_opencode_failure_escalates_at_bound
+test_non_opencode_failure_preserves_worktree_below_bound
+test_non_opencode_failure_at_bound_preserves_commits
+test_non_opencode_failure_clean_failure_still_cleans_up
+test_implement_reuses_existing_worktree_on_retry
 test_reconcile_skips_failed_entry
 test_poll_once_cleans_up_worktree_after_failed_implement
 test_poll_once_does_not_cleanup_preexisting_worktree
