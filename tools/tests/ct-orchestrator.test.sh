@@ -1409,7 +1409,8 @@ exit 1'
 
 # Fake git for the stash-on-escalation tests: `status --porcelain` returns
 # $FAKE_GIT_STATUS (absent/empty means clean), `stash push` captures its args to
-# $FAKE_STASH_PUSH_ARGS and clears the status (the tree is clean afterwards),
+# $FAKE_STASH_PUSH_ARGS and writes the entry to $FAKE_STASH_LIST (so a later
+# `stash list` — e.g. from the escalation's existing-stash probe — sees it),
 # `stash list` returns $FAKE_STASH_LIST, and worktree removal + branch deletion
 # succeed.
 fake_stash_git() {
@@ -1422,9 +1423,16 @@ elif [[ "$1" == "status" ]]; then
   cat "${FAKE_GIT_STATUS:-/dev/null}" 2>/dev/null || true
 elif [[ "$1" == "stash" && "$2" == "push" ]]; then
   printf "%s\n" "$*" >> "${FAKE_STASH_PUSH_ARGS:-/dev/null}"
+  all="$*"
+  msg="${all#*--message }"
+  printf "stash@{0}\tOn feat: %s\n" "$msg" > "${FAKE_STASH_LIST:-/dev/null}"
   > "${FAKE_GIT_STATUS:-/dev/null}" 2>/dev/null || true
 elif [[ "$1" == "stash" && "$2" == "list" ]]; then
-  cat "${FAKE_STASH_LIST:-/dev/null}" 2>/dev/null || true
+  if [[ "$*" == *"%gs"* ]]; then
+    cat "${FAKE_STASH_LIST:-/dev/null}" 2>/dev/null || true
+  else
+    cut -f1 "${FAKE_STASH_LIST:-/dev/null}" 2>/dev/null || true
+  fi
 elif [[ "$1" == "rev-parse" ]]; then
   exit 0
 fi
@@ -1451,7 +1459,6 @@ exit 1'
   export FAKE_ESCALATE_COMMENT="$STATE_DIR/escalate_comment"
   mkdir -p "$worktree"
   printf ' M src/feature.ts\n?? new-file.ts\n' > "$FAKE_GIT_STATUS"
-  printf 'stash@{0}\n' > "$FAKE_STASH_LIST"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 "$branch" "$worktree"
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_escalate_failure 10 "$branch" "$worktree" "" "no commits produced" 2>&1)"
@@ -1523,7 +1530,6 @@ test_closed_pr_escalation_stashes_work() {
   export FAKE_STASH_LIST="$STATE_DIR/stash_list"
   export FAKE_ESCALATE_ARGS="$STATE_DIR/escalate"
   printf ' M src/feature.ts\n' > "$FAKE_GIT_STATUS"
-  printf 'stash@{0}\n' > "$FAKE_STASH_LIST"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output

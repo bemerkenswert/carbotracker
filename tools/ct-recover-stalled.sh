@@ -19,15 +19,11 @@ recover_usage() {
   echo "interactive opencode session in the worktree."
 }
 
-# The newest stash entry for the ticket: "ref<TAB>subject" or nothing. Stash
-# list is newest-first, so the first match is the ticket's latest work. The
-# grep prefix is the shared stash-message contract from ct-lib.sh, matched
-# verbatim so the tool and the orchestrator can never drift apart.
+# The newest stash entry for the ticket: "ref<TAB>subject" or nothing — the
+# same selection the orchestrator uses when it names the stash in escalation
+# comments, so recovery always starts from the entry the escalation pointed at.
 recover_latest_stash() {
-  local number="$1"
-  git stash list --format='%gd%x09%gs' 2>/dev/null \
-    | grep -F "$(ct_stash_message_prefix "$number")" \
-    | head -n 1 || true
+  ct_ticket_stash_line "$1"
 }
 
 # The session id recorded in a stash subject, empty when the message has none.

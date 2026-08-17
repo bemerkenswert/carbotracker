@@ -35,6 +35,17 @@ ct_stash_message_prefix() {
   printf 'carbotracker: ticket %s uncommitted work at escalation (' "$number"
 }
 
+# The newest stash entry for a ticket — "ref<TAB>subject" or nothing. Stash
+# list is newest-first, so the first match is the ticket's latest work. The
+# shared consumer for both the recovery tool and the orchestrator's escalation
+# comments, so they can never select different entries for the same ticket.
+ct_ticket_stash_line() {
+  local number="$1"
+  git stash list --format='%gd%x09%gs' 2>/dev/null \
+    | grep -F "$(ct_stash_message_prefix "$number")" \
+    | head -n 1 || true
+}
+
 ct_issue_title() {
   gh issue view "$1" --json title --jq .title 2>/dev/null || true
 }

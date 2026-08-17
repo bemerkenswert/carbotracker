@@ -776,16 +776,34 @@ _Created by carbotracker's agent skills._"
 }
 
 orchestrator_prune_ticket() {
-  local number="$1" branch="$2" worktree="$3" stash_ref="${4:-}" stash_allowed="${5:-1}"
-  local ref
-  if [[ -z "$stash_ref" && "$stash_allowed" -eq 1 ]]; then
-    ref="$(orchestrator_stash_before_prune "$number" "$worktree")"
-  else
-    ref="$stash_ref"
-  fi
+  local number="$1" branch="$2" worktree="$3"
   orchestrator_cleanup_worktree "$worktree" "$branch"
   orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
-  orchestrator_log "pruned #$number: worktree removed, branch deleted, removed from state${ref:+ (stashed $ref)}"
+  orchestrator_log "pruned #$number: worktree removed, branch deleted, removed from state"
+}
+
+# The escalation-comment line naming a stashed entry, or empty when no stash
+# exists — shared by every escalation surface so the wording cannot drift.
+orchestrator_stash_line() {
+  local stash_ref="$1" number="$2"
+  if [[ -n "$stash_ref" ]]; then
+    printf '\nUncommitted work was stashed as `%s` before pruning and can be recovered in place with `ct-recover-stalled.sh %s`.' "$stash_ref" "$number"
+  fi
+}
+
+# Find the ticket's existing stash entry (from a previous failed escalation) or
+# create a fresh one, printing the stash ref or nothing. Re-uses the same
+# selection the recovery tool uses, so a retried escalation names the stash it
+# will actually recover from.
+orchestrator_stash_for_escalation() {
+  local number="$1" worktree="$2"
+  local line
+  line="$(ct_ticket_stash_line "$number")"
+  if [[ -n "$line" ]]; then
+    printf '%s' "${line%%$'\t'*}"
+    return 0
+  fi
+  orchestrator_stash_before_prune "$number" "$worktree"
 }
 
 orchestrator_merge_behind_pr() {
@@ -931,7 +949,7 @@ orchestrator_merge_poll() {
         orchestrator_log "merge detected: PR #$pr_number merged for #$number; closing issue"
         if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" \
           && gh issue close "$number" --comment "PR #$pr_number merged. Issue closed.${ORCHESTRATOR_AI_FOOTER}"; then
-          orchestrator_prune_ticket "$number" "$branch" "$worktree" "" 0
+          orchestrator_prune_ticket "$number" "$branch" "$worktree"
           orchestrator_log "closed issue #$number with merge comment"
         else
           orchestrator_log "WARNING: failed to close issue #$number; keeping entry to retry next poll"
@@ -945,17 +963,14 @@ orchestrator_merge_poll() {
         # removed only once the escalation lands, so a transient gh failure
         # retries next poll instead of stranding an un-labelled issue.
         orchestrator_log "PR #$pr_number closed without merge for #$number; pruning worktree and escalating to triage"
-        stash_ref="$(orchestrator_stash_before_prune "$number" "$worktree")"
-        stash_line=""
-        if [[ -n "$stash_ref" ]]; then
-          stash_line="$(printf '\nUncommitted work was stashed as `%s` before pruning and can be recovered in place with `ct-recover-stalled.sh %s`.' "$stash_ref" "$number")"
-        fi
+        stash_ref="$(orchestrator_stash_for_escalation "$number" "$worktree")"
+        stash_line="$(orchestrator_stash_line "$stash_ref" "$number")"
         if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --add-label needs-triage \
           && gh issue comment "$number" --body "PR #$pr_number was closed without merging. Escalated to needs-triage for human review.
 ${stash_line}
 ---
 _Created by carbotracker's agent skills._"; then
-          orchestrator_prune_ticket "$number" "$branch" "$worktree" "$stash_ref"
+          orchestrator_prune_ticket "$number" "$branch" "$worktree"
           orchestrator_log "escalated #$number to needs-triage and pruned worktree${stash_ref:+ (stashed $stash_ref)}"
         else
           orchestrator_log "WARNING: failed to escalate #$number; keeping entry to retry next poll"
@@ -1143,16 +1158,13 @@ orchestrator_escalate_opencode_failure() {
 orchestrator_escalate_failure() {
   local number="$1" branch="$2" worktree="$3" log_file="$4" reason="$5"
   local tail snippet body stash_ref stash_line
-  stash_ref="$(orchestrator_stash_before_prune "$number" "$worktree")"
+  stash_ref="$(orchestrator_stash_for_escalation "$number" "$worktree")"
   tail="$(tail -n 30 "$log_file" 2>/dev/null || true)"
   snippet=""
   if [[ -n "$tail" ]]; then
     snippet="$(printf '\n```\n%s\n```' "$tail")"
   fi
-  stash_line=""
-  if [[ -n "$stash_ref" ]]; then
-    stash_line="$(printf '\nUncommitted work was stashed as `%s` before pruning and can be recovered in place with `ct-recover-stalled.sh %s`.' "$stash_ref" "$number")"
-  fi
+  stash_line="$(orchestrator_stash_line "$stash_ref" "$number")"
   body="Automated implementation of #$number failed: $reason. Escalated to needs-triage for human review.
 ${stash_line}
 ${snippet}
@@ -1160,7 +1172,7 @@ ${snippet}
 _Created by carbotracker's agent skills._"
   if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --remove-label ticket --add-label needs-triage \
     && gh issue comment "$number" --body "$body"; then
-    orchestrator_prune_ticket "$number" "$branch" "$worktree" "$stash_ref"
+    orchestrator_prune_ticket "$number" "$branch" "$worktree"
     orchestrator_log "escalated #$number to needs-triage after $reason; pruned worktree and removed from state${stash_ref:+ (stashed $stash_ref)}"
     return 0
   fi

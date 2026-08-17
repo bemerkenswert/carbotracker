@@ -252,7 +252,9 @@ even after several tickets interleave. The escalation comment and the prune log
 line name the stash entry (`stash@{n}`) so a triager knows recoverable work
 exists and where it is.
 
-A maintainer recovers a stalled ticket in place with a single command:
+A maintainer recovers a stalled ticket in place with a single command (run from
+inside a clone of the repo, so `git stash list` and `git fetch` have a
+repository to work against):
 
 ```bash
 ct-recover-stalled.sh <ticket>
