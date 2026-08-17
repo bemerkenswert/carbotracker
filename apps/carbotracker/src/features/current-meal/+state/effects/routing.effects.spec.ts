@@ -1,27 +1,41 @@
-import { Action } from '@ngrx/store';
+import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { Subject, of } from 'rxjs';
+import { provideMockActions } from '@ngrx/effects/testing';
+import { Action } from '@ngrx/store';
+import { provideMockStore } from '@ngrx/store/testing';
+import { of, Subject } from 'rxjs';
 import { CurrentMealApiActions } from '../actions/api.actions';
 import {
-  EditMealEntryPageComponentActions,
   CreateMealEntryPageComponentActions,
+  EditMealEntryPageComponentActions,
 } from '../actions/component.actions';
 import { CurrentMealRouterEffectsActions } from '../actions/routing.actions';
 import { navigateToCurrentMeal$ } from './routing.effects';
 
-const buildRouter = (): Router =>
-  ({
-    navigate: jest.fn(() => of(true)),
-  }) as unknown as Router;
-
 describe('navigateToCurrentMeal$', () => {
+  let actions$: Subject<Action>;
+  let router: jest.Mocked<Router>;
+
+  beforeEach(() => {
+    actions$ = new Subject<Action>();
+    router = {
+      navigate: jest.fn(() => of(true)),
+    } as unknown as jest.Mocked<Router>;
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideMockActions(() => actions$),
+        provideMockStore(),
+        { provide: Router, useValue: router },
+      ],
+    });
+  });
+
   it('navigates to the current meal page after a meal entry is added successfully', () => {
-    const router = buildRouter();
-    const actions$ = new Subject<Action>();
     const results: Action[] = [];
 
-    navigateToCurrentMeal$(actions$.asObservable(), router).subscribe(
-      (action) => results.push(action),
+    TestBed.runInInjectionContext(() =>
+      navigateToCurrentMeal$().subscribe((action) => results.push(action)),
     );
 
     actions$.next(CurrentMealApiActions.addMealEntrySuccessful());
@@ -33,10 +47,7 @@ describe('navigateToCurrentMeal$', () => {
   });
 
   it('does not navigate on the create meal entry page save click', () => {
-    const router = buildRouter();
-    const actions$ = new Subject<Action>();
-
-    navigateToCurrentMeal$(actions$.asObservable(), router).subscribe();
+    TestBed.runInInjectionContext(() => navigateToCurrentMeal$().subscribe());
 
     actions$.next(
       CreateMealEntryPageComponentActions.saveClicked({
@@ -54,12 +65,10 @@ describe('navigateToCurrentMeal$', () => {
   });
 
   it('navigates to the current meal page on edit meal entry page actions', () => {
-    const router = buildRouter();
-    const actions$ = new Subject<Action>();
     const results: Action[] = [];
 
-    navigateToCurrentMeal$(actions$.asObservable(), router).subscribe(
-      (action) => results.push(action),
+    TestBed.runInInjectionContext(() =>
+      navigateToCurrentMeal$().subscribe((action) => results.push(action)),
     );
 
     actions$.next(EditMealEntryPageComponentActions.goBackIconClicked());
