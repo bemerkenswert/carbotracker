@@ -870,11 +870,19 @@ _Created by carbotracker's agent skills._"; then
   done < <(orchestrator_awaiting_review_entries)
 }
 
+# Drop a ticket's state entry and persisted review plan. The shared tail of the
+# prune and preserve-work escalation paths: both end a ticket's lifecycle in the
+# pipeline, differing only in whether the worktree/branch survive.
+orchestrator_drop_state_entry() {
+  local number="$1"
+  orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
+  rm -f "$(dirname "$ORCHESTRATOR_STATE_FILE")/review-plan-$number.json"
+}
+
 orchestrator_prune_ticket() {
   local number="$1" branch="$2" worktree="$3" stash_entry="${4:-}"
   orchestrator_cleanup_worktree "$worktree" "$branch"
-  orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
-  rm -f "$(dirname "$ORCHESTRATOR_STATE_FILE")/review-plan-$number.json"
+  orchestrator_drop_state_entry "$number"
   if [[ -n "$stash_entry" ]]; then
     orchestrator_log "pruned #$number: worktree removed, branch deleted, removed from state; uncommitted work stashed as $stash_entry"
   else
@@ -1264,14 +1272,24 @@ orchestrator_resume_stalled_run() {
 # enforced in one place.
 orchestrator_escalate_opencode_failure() {
   local number="$1" branch="$2" worktree="$3" log_file="$4" reason="$5"
+  local preserve_work=""
   CT_IMPLEMENTATION_FAILURE_KIND=opencode
-  orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "$reason"
+  # A retry that hits an opencode failure in a worktree whose branch holds
+  # unpushed commits (e.g. a push/PR failure was preserved for the retry) must
+  # not destroy those commits: escalate with the worktree and branch kept so
+  # the committed work survives for a human. Commit-less failures (empty or
+  # stalled runs) prune as before — their uncommitted work is protected by the
+  # stash.
+  if orchestrator_branch_has_commits "$worktree" "$branch"; then
+    preserve_work=preserve
+  fi
+  orchestrator_escalate_failure "$number" "$branch" "$worktree" "$log_file" "$reason" "$preserve_work"
   rm -f "$log_file"
   return 1
 }
 
 orchestrator_escalate_failure() {
-  local number="$1" branch="$2" worktree="$3" log_file="$4" reason="$5"
+  local number="$1" branch="$2" worktree="$3" log_file="$4" reason="$5" preserve_work="${6:-}"
   local tail body stash_entry
   # Stash before posting so the escalation comment can name the entry. When the
   # stash fails the escalation is deferred: pruning would destroy the very work
@@ -1282,7 +1300,17 @@ orchestrator_escalate_failure() {
   tail="$(tail -n 30 "$log_file" 2>/dev/null || true)"
   body="Automated implementation of #$number failed: $reason. Escalated to needs-triage for human review."
   if [[ -n "$stash_entry" ]]; then
-    body+=$'\n'"Uncommitted work was stashed before pruning: \`${stash_entry}\`."
+    if [[ "$preserve_work" == "preserve" ]]; then
+      body+=$'\n'"Uncommitted work was stashed for recovery: \`${stash_entry}\`."
+    else
+      body+=$'\n'"Uncommitted work was stashed before pruning: \`${stash_entry}\`."
+    fi
+  fi
+  if [[ "$preserve_work" == "preserve" ]]; then
+    # The branch holds unpushed commits (a push/PR failure): pruning would
+    # destroy committed work, so the worktree and branch are left in place and
+    # the comment names them for a human to recover.
+    body+=$'\n'"Committed work was preserved: branch \`${branch}\` and worktree \`${worktree}\` were left in place."
   fi
   if [[ -n "$tail" ]]; then
     body+="$(printf '\n```\n%s\n```' "$tail")"
@@ -1290,8 +1318,13 @@ orchestrator_escalate_failure() {
   body+=$'\n---\n_Created by carbotracker\'s agent skills._'
   if gh issue edit "$number" --remove-label "$ORCHESTRATOR_IN_PROGRESS_LABEL" --remove-label ticket --add-label needs-triage \
     && gh issue comment "$number" --body "$body"; then
-    orchestrator_prune_ticket "$number" "$branch" "$worktree" "$stash_entry"
-    orchestrator_log "escalated #$number to needs-triage after $reason; pruned worktree and removed from state"
+    if [[ "$preserve_work" == "preserve" ]]; then
+      orchestrator_drop_state_entry "$number"
+      orchestrator_log "escalated #$number to needs-triage after $reason; kept worktree and branch with their commits"
+    else
+      orchestrator_prune_ticket "$number" "$branch" "$worktree" "$stash_entry"
+      orchestrator_log "escalated #$number to needs-triage after $reason; pruned worktree and removed from state"
+    fi
     return 0
   fi
   orchestrator_restore_stash_after_failed_escalation "$number" "$worktree" "$stash_entry"
@@ -1313,13 +1346,22 @@ orchestrator_restore_failed_labels() {
 
 orchestrator_handle_non_opencode_failure() {
   local number="$1" branch="$2" worktree="$3" reason="$4"
-  local failures retries
+  local failures retries preserve_work
   retries="$ORCHESTRATOR_IMPLEMENTATION_RETRIES"
   orchestrator_state_mark_failed "$ORCHESTRATOR_STATE_FILE" "$number"
   failures="$(orchestrator_state_failure_count "$ORCHESTRATOR_STATE_FILE" "$number")"
+  # A failure after the branch holds unpushed commits (push/PR setup) must
+  # never destroy those commits: the worktree and branch are kept so the retry
+  # can reuse them. Failures that genuinely left nothing behind (worktree
+  # creation, dependency install) clean up exactly as before.
+  if orchestrator_worktree_has_work "$worktree" "$branch"; then
+    preserve_work=preserve
+  else
+    preserve_work=""
+  fi
   if [[ "$failures" -ge "$retries" ]]; then
     orchestrator_escalate_failure "$number" "$branch" "$worktree" "" \
-      "non-opencode failure (attempt $failures/$retries): $reason"
+      "non-opencode failure (attempt $failures/$retries): $reason" "$preserve_work"
     return
   fi
 
@@ -1328,7 +1370,9 @@ orchestrator_handle_non_opencode_failure() {
   else
     orchestrator_log "WARNING: failed to restore ready-for-agent on #$number; it will need manual re-labelling"
   fi
-  if [[ "${CT_WORKTREE_CREATED:-0}" == "1" ]]; then
+  if [[ "$preserve_work" == "preserve" ]]; then
+    orchestrator_log "keeping #$number worktree and branch for the retry: unpushed commits survive"
+  elif [[ "${CT_WORKTREE_CREATED:-0}" == "1" ]]; then
     orchestrator_cleanup_worktree "$worktree" "$branch"
   else
     orchestrator_log "not cleaning up pre-existing worktree $worktree"
@@ -1368,7 +1412,14 @@ orchestrator_implement() {
   CT_IMPLEMENTATION_FAILURE_KIND=non-opencode
 
   orchestrator_log "implementing #$number: creating worktree $worktree (branch $branch)"
-  if ! ct_worktree_add "$worktree" "$branch"; then
+  # A previous non-opencode failure (push/PR setup) left the worktree and branch
+  # in place to preserve unpushed commits; reuse it instead of failing on the
+  # worktree-already-exists guard inside ct_worktree_add. CT_WORKTREE_CREATED
+  # stays 0 for a reused worktree, so a later clean-up only ever removes
+  # worktrees this run actually created.
+  if [[ -d "$worktree" ]] && git -C "$worktree" rev-parse --verify -q "refs/heads/$branch" >/dev/null 2>&1; then
+    orchestrator_log "reusing worktree $worktree (branch $branch) from a previous non-opencode retry"
+  elif ! ct_worktree_add "$worktree" "$branch"; then
     orchestrator_log "ERROR: worktree creation failed for #$number"
     return 1
   fi

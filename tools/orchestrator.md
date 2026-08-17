@@ -491,10 +491,15 @@ flowchart TD
     J --> K[gh pr list --head branch → prNumber]
     K --> L[state: sessionId + prNumber, phase awaiting review]
     L --> M[gh issue comment: Started implementation. PR #N created.]
-    F -- failure --> N[failureCount++, phase failed, un-claim + clean up]
-    N --> N1{failureCount below bound?}
-    N1 -- yes --> N2[restore ready-for-agent; retry on next poll]
+    F -- failure --> N[failureCount++, phase failed, un-claim]
+    N --> N0{unpushed commits / work in worktree?}
+    N0 -- yes --> N3[keep worktree and branch for the retry]
+    N0 -- no --> N4[remove worktree and branch]
+    N3 --> N1{failureCount below bound?}
+    N4 --> N1
+    N1 -- yes --> N2[restore ready-for-agent; retry reuses the worktree on next poll]
     N1 -- no --> F4
+    N3 -- no (at bound) --> F4[escalate: needs-triage, stash uncommitted work, comment naming branch/worktree; keep worktree and branch]
     M --> O[merge poll: walk awaiting-review entries]
     O --> P0[gh pr view n → state]
     P0 -- MERGED --> P1[close issue: PR #n merged. Issue closed. → prune worktree/branch, remove from state]
@@ -560,16 +565,25 @@ Follow the daemon with `journalctl --user -u carbotracker-orchestrator -f`.
   `ct_ticket_worktree` helpers (in `ct-lib.sh`) and handed to
   `ct_worktree_add`, so the state file, the actual worktree, and the recovery
   tool can never derive different paths for the same ticket.
-- A failed step records a `failed` state and removes the worktree and branch, so
-  the next poll starts clean while the failure count survives a restart. Below
-  the implementation retry bound the ticket is restored to `ready-for-agent`;
-  at the bound it is escalated to `needs-triage`. Cleanup is guarded:
-  only a worktree this run actually created (`CT_WORKTREE_CREATED`) is
-  removed, so a parallel orchestrator that loses the claim race never deletes
-  the winner's worktree. When `opencode` itself fails, the failure is not
-  retried by re-claiming: the run is retried once in place with `--continue`,
-  then the ticket is escalated to `needs-triage` so a broken ticket stops
-  consuming pipeline effort (see [opencode failures](#opencode-failures)).
+- A failed step records a `failed` state. Below the implementation retry bound
+  the ticket is restored to `ready-for-agent`; at the bound it is escalated to
+  `needs-triage`. Cleanup depends on whether the failure left recoverable work:
+  when the branch holds unpushed commits (a push/PR failure after the agent
+  committed), the worktree and branch are **kept** so the retry reuses them and
+  their commits survive; only a failure that genuinely left nothing behind
+  (worktree creation, dependency install) removes the worktree and branch. The
+  at-bound escalation of a commit-producing failure preserves the work too:
+  the comment names the branch and worktree for a human, and the entry is
+  dropped from state without pruning. Cleanup is guarded: only a worktree this
+  run actually created (`CT_WORKTREE_CREATED`) is removed, so a parallel
+  orchestrator that loses the claim race never deletes the winner's worktree.
+  When `opencode` itself fails, the failure is not retried by re-claiming: the
+  run is retried once in place with `--continue`, then the ticket is escalated
+  to `needs-triage` so a broken ticket stops consuming pipeline effort (see
+  [opencode failures](#opencode-failures)). That opencode escalation preserves
+  the worktree and branch whenever the branch holds unpushed commits, so a
+  retry that fails inside opencode never destroys the preserved commits
+  either.
 - Recovery never trusts the state file's phase: `orchestrator_reconcile`
   derives the phase from `git status`, `git log`, `git ls-remote`, and
   `gh pr list --state all`. `prNumber` from the state file is ignored in
