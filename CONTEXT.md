@@ -31,3 +31,21 @@ _Avoid_: Ratio, carb factor, insulin factor
 **Saved meal**:
 A named, immutable snapshot of a current meal's meal entries, stored by the user so it can be loaded back later (e.g. "Steffens Pasta Dream" = 250 g spaghetti, 60 g meat, 60 g bread).
 _Avoid_: Recipe, saved-this-meal
+
+## Pipeline
+
+**Stalled run**:
+A headless implement run that exits 0 without commits but leaves uncommitted work behind. The pipeline classifies it so the session gets exactly one resume instead of escalating and discarding recoverable work.
+_Avoid_: Failure, restart
+
+**Empty run**:
+A headless implement run that exits 0 without commits and leaves a clean tree. Escalated immediately; its session is never resumed.
+_Avoid_: Stalled run, failure
+
+**Resume**:
+Continuing the existing opencode session (via `--continue`) so the agent can finish and commit, reusing its context. A stalled run gets exactly one.
+_Avoid_: Restart, retry
+
+**Restart**:
+Discarding the worktree and session and running fresh from scratch — the fallback when no resume can help, triggered by a human re-tagging the ticket.
+_Avoid_: Resume, retry
