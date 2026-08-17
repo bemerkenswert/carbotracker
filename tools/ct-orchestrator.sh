@@ -280,17 +280,20 @@ orchestrator_opencode_session_id() {
 }
 
 orchestrator_pr_number_for_branch() {
-  local branch="$1"
+  local branch="$1" json
   # --state all so a merged or closed PR for the branch still counts: during
   # crash recovery the orchestrator must never open a duplicate PR for a
-  # branch that already has one in any state.
-  gh pr list --head "$branch" --state all --json number 2>/dev/null \
-    | jq -r 'sort_by(.number) | reverse | .[0].number // empty' 2>/dev/null || true
+  # branch that already has one in any state. Fails closed — when gh is down
+  # the caller defers rather than assuming "no PR" and creating a duplicate.
+  if ! json="$(orchestrator_gh "listing PRs for branch $branch" gh pr list --head "$branch" --state all --json number)"; then
+    return 1
+  fi
+  printf '%s' "$json" | jq -r 'sort_by(.number) | reverse | .[0].number // empty' 2>/dev/null || true
 }
 
 orchestrator_pr_field() {
   local pr="$1" field="$2"
-  gh pr view "$pr" --json "$field" --jq ".$field" 2>/dev/null || true
+  orchestrator_gh "reading $field of PR #$pr" gh pr view "$pr" --json "$field" --jq ".$field"
 }
 
 orchestrator_pr_state() {
@@ -320,7 +323,7 @@ orchestrator_labels_are_suspect() {
 }
 
 orchestrator_pr_latest_comment_at() {
-  local pr="$1" me inline reviews general latest
+  local pr="$1" me inline reviews general latest inline_raw reviews_raw general_raw
   # Review surfaces: inline threads (pulls/<n>/comments), top-level review
   # submissions (pulls/<n>/reviews), and general comments on the PR
   # conversation (issues/<n>/comments). The newest timestamp across them is
@@ -329,11 +332,22 @@ orchestrator_pr_latest_comment_at() {
   # only when the AI-source footer ends its body (a bare `contains` would also
   # match a human quote-reply that embeds a quoted footer mid-body), and a
   # review submission with an empty body carries no human signal and is
-  # skipped too. ISO-8601 timestamps sort lexically.
+  # skipped too. ISO-8601 timestamps sort lexically. Fails closed: any surface
+  # read that fails aborts the probe so a caller never mistakes an outage for
+  # "no comments".
   me="$ORCHESTRATOR_AI_FOOTER_END_RE"
-  inline="$(gh api "repos/{owner}/{repo}/pulls/$pr/comments" 2>/dev/null | jq -r --arg me "$me" "[.[] | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | .created_at] | max // empty" 2>/dev/null || true)"
-  reviews="$(gh api "repos/{owner}/{repo}/pulls/$pr/reviews" 2>/dev/null | jq -r --arg me "$me" "[.[] | select(.submitted_at != null) | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | select((.body // \"\") | test(\"[^[:space:]]\")) | .submitted_at] | max // empty" 2>/dev/null || true)"
-  general="$(gh api "repos/{owner}/{repo}/issues/$pr/comments" 2>/dev/null | jq -r --arg me "$me" "[.[] | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | .created_at] | max // empty" 2>/dev/null || true)"
+  if ! inline_raw="$(orchestrator_gh "reading inline comments on PR #$pr" gh api "repos/{owner}/{repo}/pulls/$pr/comments")"; then
+    return 1
+  fi
+  if ! reviews_raw="$(orchestrator_gh "reading reviews on PR #$pr" gh api "repos/{owner}/{repo}/pulls/$pr/reviews")"; then
+    return 1
+  fi
+  if ! general_raw="$(orchestrator_gh "reading general comments on PR #$pr" gh api "repos/{owner}/{repo}/issues/$pr/comments")"; then
+    return 1
+  fi
+  inline="$(printf '%s' "$inline_raw" | jq -r --arg me "$me" "[.[] | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | .created_at] | max // empty" 2>/dev/null || true)"
+  reviews="$(printf '%s' "$reviews_raw" | jq -r --arg me "$me" "[.[] | select(.submitted_at != null) | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | select((.body // \"\") | test(\"[^[:space:]]\")) | .submitted_at] | max // empty" 2>/dev/null || true)"
+  general="$(printf '%s' "$general_raw" | jq -r --arg me "$me" "[.[] | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | .created_at] | max // empty" 2>/dev/null || true)"
   latest="$inline"
   if [[ -n "$reviews" && ( -z "$latest" || "$reviews" > "$latest" ) ]]; then
     latest="$reviews"
@@ -344,9 +358,28 @@ orchestrator_pr_latest_comment_at() {
   printf '%s' "$latest"
 }
 
+# Run a gh invocation, printing its stdout on success and logging a warning with
+# the gh error on failure. Returns gh's exit status, so a caller can distinguish
+# a failed read from an empty one (fail-closed). Every correctness-critical gh
+# call goes through here so an outage's 503s are visible in the journal instead
+# of swallowed.
+orchestrator_gh() {
+  local desc="$1" out rc err
+  shift
+  err="$(mktemp "${TMPDIR:-/tmp}/ct-gh-err.XXXXXX")"
+  out="$("$@" 2>"$err")"
+  rc=$?
+  if [[ $rc -ne 0 ]]; then
+    orchestrator_log "WARNING: $desc failed: $(tr '\n' ' ' <"$err")"
+  fi
+  rm -f "$err"
+  printf '%s' "$out"
+  return $rc
+}
+
 orchestrator_pr_post_comment() {
   local pr="$1" body="$2"
-  gh api "repos/{owner}/{repo}/issues/$pr/comments" -f body="$body" >/dev/null 2>&1
+  orchestrator_gh "posting comment on PR #$pr" gh api "repos/{owner}/{repo}/issues/$pr/comments" -f body="$body" >/dev/null
 }
 
 orchestrator_check_suspect_diff() {
@@ -415,7 +448,27 @@ _Created by carbotracker's agent skills._"; then
 
 orchestrator_pr_reply_to_thread() {
   local pr="$1" comment_id="$2" body="$3"
-  gh api "repos/{owner}/{repo}/pulls/$pr/comments/$comment_id/replies" -f body="$body" >/dev/null 2>&1
+  orchestrator_gh "replying to comment $comment_id on PR #$pr" gh api "repos/{owner}/{repo}/pulls/$pr/comments/$comment_id/replies" -f body="$body" >/dev/null
+}
+
+# True when a reply to a comment already exists, so a resumed or retried act
+# step never double-posts: an inline thread comment counts as replied when some
+# footer-bearing reply is threaded to it (in_reply_to_id), and a general
+# comment counts as replied when a footer-bearing PR-conversation comment starts
+# with the planned reply body (issue comments carry no threading).
+orchestrator_pr_reply_already_posted() {
+  local pr="$1" comment_id="$2" path="$3" reply="$4"
+  local me
+  me="$ORCHESTRATOR_AI_FOOTER_END_RE"
+  if [[ "$path" == "null" || -z "$path" ]]; then
+    orchestrator_gh "reading general comments on PR #$pr" gh api "repos/{owner}/{repo}/issues/$pr/comments" \
+      | jq -e --arg me "$me" --arg reply "$reply" \
+        'any(.[]; ((.body // "") | test($me)) and ((.body // "") | startswith($reply)))' >/dev/null 2>&1
+  else
+    orchestrator_gh "reading inline comments on PR #$pr" gh api "repos/{owner}/{repo}/pulls/$pr/comments" \
+      | jq -e --arg id "$comment_id" --arg me "$me" \
+        'any(.[]; ((.in_reply_to_id // 0) | tostring) == $id and ((.body // "") | test($me)))' >/dev/null 2>&1
+  fi
 }
 
 # Run one headless opencode session in the worktree — the ticket's original
@@ -482,7 +535,10 @@ orchestrator_review_act() {
     # nothing to review does the round succeed as a no-op — silently, with no
     # failure notice.
     last_comment_at="$(orchestrator_state_load "$ORCHESTRATOR_STATE_FILE" | jq -r --argjson n "$number" '[.[] | select(.ticket == $n) | .lastCommentAt // ""][0] // ""' 2>/dev/null || true)"
-    latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
+    if ! latest="$(orchestrator_pr_latest_comment_at "$pr_number")"; then
+      orchestrator_log "review act #$number: could not re-verify review surfaces on PR #$pr_number; keeping the watermark"
+      return 1
+    fi
     if [[ -n "$latest" && ( -z "$last_comment_at" || "$latest" > "$last_comment_at" ) ]]; then
       orchestrator_log "review act #$number: plan is empty but human review content exists on PR #$pr_number; keeping the watermark"
       return 1
@@ -519,7 +575,12 @@ orchestrator_review_act() {
     reply="$(orchestrator_strip_ai_footer "$reply")"
     body="${reply}
 ${ORCHESTRATOR_AI_FOOTER}"
-    if [[ "$path" == "null" || -z "$path" ]]; then
+    # Dedup guard: a resumed or retried act step must never double-post a reply
+    # a previous partial run already landed.
+    if orchestrator_pr_reply_already_posted "$pr_number" "$comment_id" "$path" "$reply"; then
+      posted=$((posted + 1))
+      orchestrator_log "review act #$number: reply to comment $comment_id on PR #$pr_number already posted; skipping ($type)"
+    elif [[ "$path" == "null" || -z "$path" ]]; then
       if orchestrator_pr_post_comment "$pr_number" "$body"; then
         posted=$((posted + 1))
         orchestrator_log "review act #$number: replied to general comment $comment_id on PR #$pr_number ($type)"
@@ -539,8 +600,9 @@ ${ORCHESTRATOR_AI_FOOTER}"
     orchestrator_log "ERROR: no reply posted on PR #$pr_number; keeping the watermark"
     return 1
   fi
-  latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
-  if [[ -n "$latest" ]]; then
+  if ! latest="$(orchestrator_pr_latest_comment_at "$pr_number")"; then
+    orchestrator_log "WARNING: review act #$number: could not read the watermark on PR #$pr_number; the next poll will re-check"
+  elif [[ -n "$latest" ]]; then
     orchestrator_state_mark_reviewed "$ORCHESTRATOR_STATE_FILE" "$number" "$latest"
     orchestrator_log "review act #$number: advanced watermark to $latest on PR #$pr_number"
   fi
@@ -675,7 +737,7 @@ orchestrator_pr_has_new_agent_general_comment() {
 
 orchestrator_review_round() {
   local number="$1" session_id="$2" pr_number="$3" worktree="$4"
-  local failures retries latest body plan_file temp_plan
+  local failures retries latest body plan_file persistent_plan pr_state analyze_failed
   retries="${ORCHESTRATOR_REVIEW_RETRIES:-3}"
   failures="$(orchestrator_state_review_failures "$ORCHESTRATOR_STATE_FILE" "$number")"
   if [[ "$failures" -ge "$retries" ]]; then
@@ -683,20 +745,44 @@ orchestrator_review_round() {
     failures=0
     orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" 0
   fi
-  plan_file="${ORCHESTRATOR_REVIEW_PLAN_FILE:-}"
-  temp_plan=""
-  if [[ -z "$plan_file" ]]; then
-    temp_plan="$(mktemp "${TMPDIR:-/tmp}/carbotracker-review-plan.XXXXXX")"
-    plan_file="$temp_plan"
+  # The PR gate: a round is never launched on a PR that is merged or closed
+  # (the merge poll owns those entries), and an unreadable state defers the
+  # round quietly — an outage must not burn tokens or spam notices on a PR the
+  # daemon cannot reason about.
+  if ! pr_state="$(orchestrator_pr_state "$pr_number")"; then
+    orchestrator_log "review #$number: could not determine state of PR #$pr_number; deferring the round"
+    return 0
   fi
-  if orchestrator_review_analyze "$number" "$session_id" "$pr_number" "$worktree" "$plan_file" \
+  if [[ "$pr_state" == "MERGED" || "$pr_state" == "CLOSED" ]]; then
+    orchestrator_log "review #$number: PR #$pr_number is $pr_state; skipping the review round"
+    return 0
+  fi
+  # The plan file is the handoff between analyze and act. By default it lives
+  # next to the state file (a persistent directory, unlike /tmp), so a daemon
+  # restart or a failed act step resumes from the act phase instead of burning
+  # a fresh analyze. An ORCHESTRATOR_REVIEW_PLAN_FILE override keeps the
+  # embedding/test behavior unchanged.
+  plan_file="${ORCHESTRATOR_REVIEW_PLAN_FILE:-}"
+  persistent_plan=""
+  if [[ -z "$plan_file" ]]; then
+    persistent_plan="$(dirname "$ORCHESTRATOR_STATE_FILE")/review-plan-$number.json"
+    plan_file="$persistent_plan"
+  fi
+  analyze_failed=""
+  if [[ -z "$persistent_plan" || ! -f "$persistent_plan" ]]; then
+    if ! orchestrator_review_analyze "$number" "$session_id" "$pr_number" "$worktree" "$plan_file"; then
+      analyze_failed=1
+    fi
+  else
+    orchestrator_log "review #$number: resuming from persisted plan $persistent_plan"
+  fi
+  if [[ -z "$analyze_failed" ]] \
       && orchestrator_review_act "$number" "$pr_number" "$plan_file" "$session_id" "$worktree"; then
-    rm -f "$temp_plan"
+    rm -f "$persistent_plan"
     orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" 0
     orchestrator_log "review #$number: round succeeded on PR #$pr_number"
     return 0
   fi
-  rm -f "$temp_plan"
   failures=$((failures + 1))
   orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" "$failures"
   body="Automated review round failed (attempt $failures/$retries) on PR #$pr_number. The orchestrator will retry.${ORCHESTRATOR_AI_FOOTER}"
@@ -706,6 +792,9 @@ orchestrator_review_round() {
     orchestrator_log "WARNING: failed to post failure notice on PR #$pr_number"
   fi
   if [[ "$failures" -ge "$retries" ]]; then
+    # The round is abandoned: the plan's analysis can only stale, and a newer
+    # human comment — the thing that resumes a paused PR — needs a fresh plan.
+    rm -f "$persistent_plan"
     latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
     if [[ -n "$latest" ]]; then
       orchestrator_state_mark_reviewed "$ORCHESTRATOR_STATE_FILE" "$number" "$latest"
@@ -751,7 +840,10 @@ _Created by carbotracker's agent skills._"
       continue
     fi
 
-    latest="$(orchestrator_pr_latest_comment_at "$pr_number")"
+    if ! latest="$(orchestrator_pr_latest_comment_at "$pr_number")"; then
+      orchestrator_log "review #$number: could not read review surfaces on PR #$pr_number; deferring"
+      continue
+    fi
     if [[ -z "$latest" ]]; then
       orchestrator_log "review #$number: no comments on PR #$pr_number"
       continue
@@ -779,6 +871,7 @@ orchestrator_prune_ticket() {
   local number="$1" branch="$2" worktree="$3" stash_entry="${4:-}"
   orchestrator_cleanup_worktree "$worktree" "$branch"
   orchestrator_state_remove "$ORCHESTRATOR_STATE_FILE" "$number"
+  rm -f "$(dirname "$ORCHESTRATOR_STATE_FILE")/review-plan-$number.json"
   if [[ -n "$stash_entry" ]]; then
     orchestrator_log "pruned #$number: worktree removed, branch deleted, removed from state; uncommitted work stashed as $stash_entry"
   else
@@ -1079,12 +1172,18 @@ orchestrator_push_and_open_pr() {
     orchestrator_log "ERROR: git push failed for #$number"
     return 1
   fi
-  pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+  if ! pr_number="$(orchestrator_pr_number_for_branch "$branch")"; then
+    orchestrator_log "ERROR: could not determine PR for branch $branch after pushing; deferring PR creation"
+    return 1
+  fi
   if [[ -z "$pr_number" ]]; then
     if ! orchestrator_create_pr "$number" "$title" "$branch"; then
       return 1
     fi
-    pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+    if ! pr_number="$(orchestrator_pr_number_for_branch "$branch")"; then
+      orchestrator_log "ERROR: could not confirm PR for branch $branch after creation; deferring"
+      return 1
+    fi
   fi
   orchestrator_check_suspect_diff "$number" "$pr_number" "$worktree"
   orchestrator_check_overlap "$number" "$pr_number" "$worktree"
@@ -1395,12 +1494,20 @@ orchestrator_recover_pushed_branch() {
   if [[ -z "$session_id" ]]; then
     session_id="$(orchestrator_opencode_session_id "carbotracker-ticket-$number")"
   fi
-  pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+  # Fail closed: when the PR lookup fails (gh down), do not assume "no PR" and
+  # create a duplicate — defer and let the next poll's reconcile retry.
+  if ! pr_number="$(orchestrator_pr_number_for_branch "$branch")"; then
+    orchestrator_log "ERROR: could not determine PR for branch $branch while recovering; deferring"
+    return 1
+  fi
   if [[ -z "$pr_number" ]]; then
     if ! orchestrator_create_pr "$number" "$title" "$branch"; then
       return 1
     fi
-    pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+    if ! pr_number="$(orchestrator_pr_number_for_branch "$branch")"; then
+      orchestrator_log "ERROR: could not confirm PR for branch $branch after creation; deferring"
+      return 1
+    fi
   fi
   orchestrator_check_suspect_diff "$number" "$pr_number" "$worktree"
   orchestrator_check_overlap "$number" "$pr_number" "$worktree"
@@ -1426,7 +1533,7 @@ _Created by carbotracker's agent skills._"; then
 }
 
 orchestrator_reconcile() {
-  local line number title branch worktree session_id pr_number
+  local line number title branch worktree session_id pr_number plan_file plan_ticket tickets
   orchestrator_log "reconciling state file against observable git facts"
   while IFS= read -r line; do
     number="$(printf '%s' "$line" | jq -r '.ticket')"
@@ -1440,15 +1547,17 @@ orchestrator_reconcile() {
     if [[ "$session_id" == "null" ]]; then
       session_id=""
     fi
-    title="$(gh issue view "$number" --json title --jq .title 2>/dev/null || true)"
-    if [[ -z "$title" ]]; then
+    if ! title="$(orchestrator_gh "resolving issue #$number" gh issue view "$number" --json title --jq .title)"; then
       # gh is transiently down (or the issue is gone): do not destroy state —
-      # leave the entry untouched so the next restart re-inspects it.
-      orchestrator_log "WARNING: could not resolve issue #$number; skipping entry until the next restart"
+      # leave the entry untouched so the next poll's reconcile re-inspects it.
+      orchestrator_log "WARNING: could not resolve issue #$number; skipping entry until the next poll"
       continue
     fi
 
-    pr_number="$(orchestrator_pr_number_for_branch "$branch")"
+    if ! pr_number="$(orchestrator_pr_number_for_branch "$branch")"; then
+      orchestrator_log "WARNING: could not determine PR for branch $branch; skipping entry until the next poll"
+      continue
+    fi
     if [[ -n "$pr_number" ]]; then
       if [[ -z "$session_id" ]]; then
         session_id="$(orchestrator_opencode_session_id "carbotracker-ticket-$number")"
@@ -1479,6 +1588,19 @@ orchestrator_reconcile() {
     orchestrator_log "recovered #$number: nothing recoverable; cleaning up"
     orchestrator_drop_unrecoverable "$number" "$branch" "$worktree"
   done < <(orchestrator_state_load "$ORCHESTRATOR_STATE_FILE" | jq -c '.[]')
+
+  # Sweep orphaned persisted plans: a plan whose ticket is no longer in state
+  # can only stale. Plans for live tickets are left for the review round.
+  tickets="$(orchestrator_state_load "$ORCHESTRATOR_STATE_FILE" | jq -r '[.[].ticket] | join(" ")' 2>/dev/null || true)"
+  for plan_file in "$(dirname "$ORCHESTRATOR_STATE_FILE")"/review-plan-*.json; do
+    [[ -f "$plan_file" ]] || continue
+    plan_ticket="${plan_file##*/review-plan-}"
+    plan_ticket="${plan_ticket%.json}"
+    if ! [[ " $tickets " == *" $plan_ticket "* ]]; then
+      rm -f "$plan_file"
+      orchestrator_log "removed orphaned review plan $plan_file (ticket $plan_ticket no longer in state)"
+    fi
+  done
 }
 
 orchestrator_poll_once() {
@@ -1563,9 +1685,14 @@ orchestrator_self_refresh() {
 
 orchestrator_daemon() {
   orchestrator_log "orchestrator started: poll every ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s, concurrency cap $ORCHESTRATOR_CONCURRENCY_CAP, model $ORCHESTRATOR_MODEL, state $ORCHESTRATOR_STATE_FILE"
-  orchestrator_reconcile
   while true; do
     orchestrator_self_refresh
+    # Reconcile at the top of every poll, not just at startup: a transiently
+    # failed recovery (e.g. PR creation during a gh outage) retries on the poll
+    # cadence instead of waiting for a restart. Safe because all implement and
+    # review work is synchronous within a poll, so no entry is ever mid-flight
+    # when a poll-boundary reconcile observes it.
+    orchestrator_reconcile
     orchestrator_poll_once
     orchestrator_log "sleeping ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s until the next poll"
     sleep "$ORCHESTRATOR_POLL_INTERVAL_SECONDS"

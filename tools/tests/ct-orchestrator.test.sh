@@ -2533,6 +2533,326 @@ test_review_round_after_pause_starts_fresh_budget() {
   state_teardown
 }
 
+# Fake gh for the review-round PR gate: `pr view` returns the given state ($1,
+# or "FAIL" to simulate a gh outage) and the api surfaces mirror fake_review_act_gh
+# with one human inline comment at $2.
+fake_review_round_gh() {
+  local state="${1:-OPEN}" latest="${2:-2026-08-13T00:07:00Z}"
+  local footer="_Created by carbotracker's agent skills._"
+  fake_command gh "if [[ \"\$1\" == \"pr\" && \"\$2\" == \"view\" ]]; then
+  if [[ \"$state\" == \"FAIL\" ]]; then
+    echo \"HTTP 503: no server\" >&2
+    exit 1
+  fi
+  printf \"$state\n\"
+  exit 0
+elif [[ \"\$1\" == \"api\" ]]; then
+  case \"\$2\" in
+    *reviews*) printf \"[]\n\" ;;
+    *replies*)
+      printf \"%s\n\" \"\$*\" >> \"\${FAKE_THREAD_REPLY_ARGS:-/dev/null}\"
+      ;;
+    *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"human inline comment\\\",\\\"id\\\":1,\\\"in_reply_to_id\\\":null}]\n\" ;;
+    *issues/*comments*)
+      if [[ \"\$*\" == *\"-f body=\"* ]]; then
+        printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
+        exit 0
+      fi
+      printf \"[]\n\"
+      ;;
+  esac
+fi
+exit 0"
+}
+
+# Like fake_review_round_gh, but every general-comment POST exits 1 (simulating
+# a posting outage) so the act step fails.
+fake_review_round_gh_fail_post() {
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  printf "OPEN\n"
+  exit 0
+elif [[ "$1" == "api" ]]; then
+  case "$2" in
+    *reviews*) printf "[]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:07:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"human comment\",\"id\":1,\"in_reply_to_id\":null}]\n" ;;
+    *issues/*comments*)
+      if [[ "$*" == *"-f body="* ]]; then
+        echo "boom 503 from gh" >&2
+        exit 1
+      fi
+      printf "[]\n"
+      ;;
+  esac
+fi
+exit 0'
+}
+
+# Fake opencode that appends every `run` invocation to $FAKE_OPENCODE_LOG, so a
+# test can assert that no analyze was launched.
+fake_opencode_recorder() {
+  fake_command opencode 'if [[ "$1" == "run" ]]; then
+  printf "%s\n" "$*" >> "${FAKE_OPENCODE_LOG:-/dev/null}"
+  exit 0
+fi
+exit 0'
+}
+
+test_review_round_skips_merged_pr() {
+  state_setup
+  fake_review_round_gh "MERGED"
+  fake_opencode_recorder
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 1
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)"
+  assert_eq "merged pr launches no analyze" "" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null || true)"
+  assert_eq "merged pr leaves the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  assert_eq "merged pr posts no notice" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
+  assert_contains "merged pr logs the skip" "PR #456 is MERGED" "$output"
+  unset FAKE_OPENCODE_LOG FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_skips_closed_pr() {
+  state_setup
+  fake_review_round_gh "CLOSED"
+  fake_opencode_recorder
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)"
+  assert_eq "closed pr launches no analyze" "" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null || true)"
+  assert_contains "closed pr logs the skip" "PR #456 is CLOSED" "$output"
+  unset FAKE_OPENCODE_LOG
+  state_teardown
+}
+
+test_review_round_defers_when_state_unreadable() {
+  state_setup
+  fake_review_round_gh "FAIL"
+  fake_opencode_recorder
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 1
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)"
+  assert_eq "unreadable state launches no analyze" "" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null || true)"
+  assert_eq "unreadable state leaves the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  assert_eq "unreadable state posts no notice" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
+  assert_contains "unreadable state defers" "could not determine state of PR #456" "$output"
+  assert_contains "unreadable state logs the gh error" "HTTP 503" "$output"
+  unset FAKE_OPENCODE_LOG FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_resumes_from_persisted_plan() {
+  state_setup
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 999, "path": null, "line": null, "type": "answer", "reply": "Covered in the PR description.", "confidence": 0.9}]}' > "$STATE_DIR/review-plan-123.json"
+  fake_review_round_gh "OPEN"
+  fake_opencode_recorder
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)"
+  assert_eq "resume skips the analyze step" "" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null || true)"
+  assert_contains "resume replies from the persisted plan" "Covered in the PR description." "$(cat "$FAKE_PR_COMMENT_ARGS")"
+  assert_eq "plan deleted on success" "no" "$([[ -f "$STATE_DIR/review-plan-123.json" ]] && echo yes || echo no)"
+  assert_contains "resume logged" "resuming from persisted plan" "$output"
+  assert_eq "resume advances the watermark" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
+  unset FAKE_OPENCODE_LOG FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_review_round_keeps_plan_on_act_failure() {
+  state_setup
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 999, "path": null, "line": null, "type": "answer", "reply": "Covered in the PR description.", "confidence": 0.9}]}' > "$STATE_DIR/review-plan-123.json"
+  fake_review_round_gh_fail_post
+  fake_opencode_recorder
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "failed round keeps the persisted plan" "yes" "$([[ -f "$STATE_DIR/review-plan-123.json" ]] && echo yes || echo no)"
+  assert_eq "failed round increments failures" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  unset FAKE_OPENCODE_LOG
+  state_teardown
+}
+
+test_review_round_deletes_plan_at_retry_cap() {
+  state_setup
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 999, "path": null, "line": null, "type": "answer", "reply": "Covered in the PR description.", "confidence": 0.9}]}' > "$STATE_DIR/review-plan-123.json"
+  fake_review_round_gh_fail_post
+  fake_opencode_recorder
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 2
+  local output rc
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  assert_eq "abandoned round deletes the plan" "no" "$([[ -f "$STATE_DIR/review-plan-123.json" ]] && echo yes || echo no)"
+  assert_eq "abandoned round hits the cap" "3" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
+  state_teardown
+}
+
+test_review_act_dedups_thread_reply() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  write_answer_plan "$plan"
+  local footer="_Created by carbotracker's agent skills._"
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  printf "OPEN\n"
+  exit 0
+elif [[ "$1" == "api" ]]; then
+  case "$2" in
+    *reviews*) printf "[]\n" ;;
+    *replies*)
+      printf "%s\n" "$*" >> "${FAKE_THREAD_REPLY_ARGS:-/dev/null}"
+      ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:09:00Z\",\"body\":\"_Created by carbotracker'"'"'s agent skills._\",\"id\":9001,\"in_reply_to_id\":3788850731}]\n" ;;
+    *issues/*comments*) printf "[]\n" ;;
+  esac
+fi
+exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_THREAD_REPLY_ARGS="$STATE_DIR/thread_reply"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>/dev/null
+  assert_eq "already-replied thread comment is not re-posted" "" "$(cat "$FAKE_THREAD_REPLY_ARGS" 2>/dev/null || true)"
+  unset FAKE_THREAD_REPLY_ARGS
+  state_teardown
+}
+
+test_review_act_dedups_general_reply() {
+  state_setup
+  local plan="$STATE_DIR/plan.json"
+  printf '%s\n' '{"needsHuman": false, "comments": [{"commentId": 999, "path": null, "line": null, "type": "answer", "reply": "Covered in the PR description.", "confidence": 0.9}]}' > "$plan"
+  local footer="_Created by carbotracker's agent skills._"
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "view" ]]; then
+  printf "OPEN\n"
+  exit 0
+elif [[ "$1" == "api" ]]; then
+  case "$2" in
+    *reviews*) printf "[]\n" ;;
+    *pulls/*) printf "[{\"created_at\":\"2026-08-13T00:07:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"human comment\",\"id\":1,\"in_reply_to_id\":null}]\n" ;;
+    *issues/*comments*)
+      if [[ "$*" == *"-f body="* ]]; then
+        printf "%s\n" "$*" >> "${FAKE_PR_COMMENT_ARGS:-/dev/null}"
+        exit 0
+      fi
+      printf "[{\"id\":9001,\"body\":\"Covered in the PR description. _Created by carbotracker'"'"'s agent skills._\"}]\n"
+      ;;
+  esac
+fi
+exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>/dev/null
+  assert_eq "already-replied general comment is not re-posted" "" "$(cat "$FAKE_PR_COMMENT_ARGS" 2>/dev/null || true)"
+  unset FAKE_PR_COMMENT_ARGS
+  state_teardown
+}
+
+test_gh_failure_logged() {
+  state_setup
+  fake_command gh 'echo "boom 503 from gh" >&2; exit 1'
+  local output rc
+  output="$(orchestrator_pr_post_comment 456 "hi" 2>&1)" && rc=0 || rc=$?
+  assert_contains "post failure logs the gh error" "boom 503 from gh" "$output"
+  assert_eq "post failure returns non-zero" "1" "$rc"
+  state_teardown
+}
+
+test_reconcile_defers_when_pr_lookup_fails() {
+  state_setup
+  fake_reconcile_git 0 no no
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  echo "HTTP 503: no server" >&2
+  exit 1
+elif [[ "$1" == "issue" && "$2" == "view" ]]; then
+  printf "Some Title\n"
+fi
+exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc ""
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>&1)"
+  assert_eq "entry kept when pr lookup fails" "1" "$(jq 'length' "$TEST_STATE")"
+  assert_contains "deferral logged" "could not determine PR for branch" "$output"
+  assert_contains "gh error visible in the journal" "HTTP 503" "$output"
+  state_teardown
+}
+
+test_reconcile_retries_failed_recovery_next_poll() {
+  state_setup
+  fake_reconcile_git 0 no yes
+  fake_command npm 'exit 0'
+  fake_reconcile_opencode ses_old
+  fake_command gh 'if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  if [[ -f "$FAKE_GH_UP" ]]; then
+    printf "[{\"number\":50}]\n"
+  else
+    echo "HTTP 503" >&2
+    exit 1
+  fi
+elif [[ "$1" == "issue" && "$2" == "view" ]]; then
+  printf "Some Title\n"
+elif [[ "$1" == "issue" && "$2" == "comment" ]]; then
+  exit 0
+fi
+exit 0'
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_GH_UP="$STATE_DIR/gh_up"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_old ""
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>/dev/null
+  assert_eq "first poll defers on the outage" "" "$(jq -r '.[0].prNumber // ""' "$TEST_STATE")"
+  touch "$FAKE_GH_UP"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>/dev/null
+  assert_eq "next poll recovers the branch" "50" "$(jq -r '.[0].prNumber' "$TEST_STATE")"
+  assert_eq "recovered branch reaches awaiting review" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  unset FAKE_GH_UP
+  state_teardown
+}
+
+test_reconcile_sweeps_orphaned_plan() {
+  state_setup
+  printf '{}' > "$STATE_DIR/review-plan-999.json"
+  fake_command gh 'exit 0'
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" orchestrator_reconcile 2>&1)"
+  assert_eq "orphaned plan removed" "no" "$([[ -f "$STATE_DIR/review-plan-999.json" ]] && echo yes || echo no)"
+  assert_contains "orphan sweep logged" "removed orphaned review plan" "$output"
+  state_teardown
+}
+
 test_state_add_creates_review_failures_zero() {
   state_setup
   orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$WT_PARENT/123-foo"
@@ -3942,6 +4262,18 @@ test_review_round_all_replies_fail_keeps_watermark_and_retries
 test_review_round_failure_increments_and_posts_notice
 test_review_round_third_failure_pauses_and_consumes
 test_review_round_after_pause_starts_fresh_budget
+test_review_round_skips_merged_pr
+test_review_round_skips_closed_pr
+test_review_round_defers_when_state_unreadable
+test_review_round_resumes_from_persisted_plan
+test_review_round_keeps_plan_on_act_failure
+test_review_round_deletes_plan_at_retry_cap
+test_review_act_dedups_thread_reply
+test_review_act_dedups_general_reply
+test_gh_failure_logged
+test_reconcile_defers_when_pr_lookup_fails
+test_reconcile_retries_failed_recovery_next_poll
+test_reconcile_sweeps_orphaned_plan
 test_review_plan_validator_reference_resolves
 test_self_refresh_re_execs_on_hash_change
 test_self_refresh_passes_on_matching_hash
