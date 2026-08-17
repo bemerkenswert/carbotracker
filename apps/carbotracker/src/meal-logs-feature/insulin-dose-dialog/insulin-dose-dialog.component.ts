@@ -4,14 +4,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { toLocalDateTimeString } from '../date.util';
 import { InsulinDoseDialogResult } from './insulin-dose-dialog.model';
-
-const toLocalDateTimeString = (date: Date): string => {
-  const pad = (value: number) => `${value}`.padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
-    date.getDate(),
-  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-};
 
 @Component({
   selector: 'carbotracker-insulin-dose-dialog',
