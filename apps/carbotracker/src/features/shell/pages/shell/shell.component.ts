@@ -32,6 +32,11 @@ const selectIsSavedMealsRoute = createSelector(
   (url): boolean => url.startsWith('/app/saved-meals'),
 );
 
+const selectIsHistoryRoute = createSelector(
+  getRouterSelectors().selectUrl,
+  (url): boolean => url.startsWith('/app/history'),
+);
+
 const selectIsSettingsRoute = createSelector(
   getRouterSelectors().selectUrl,
   (url): boolean => url.startsWith('/app/settings'),
@@ -57,6 +62,12 @@ const getNavItems = () => {
       isActive: store.selectSignal(selectIsSavedMealsRoute),
       icon: 'menu_book_2',
       label: 'Saved meals',
+    },
+    {
+      onClick: () => store.dispatch(ShellComponentActions.historyClicked()),
+      isActive: store.selectSignal(selectIsHistoryRoute),
+      icon: 'history',
+      label: 'History',
     },
     {
       onClick: () => store.dispatch(ShellComponentActions.settingsClicked()),

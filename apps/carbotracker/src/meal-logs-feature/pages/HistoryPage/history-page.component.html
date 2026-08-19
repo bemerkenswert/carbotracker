@@ -1,0 +1,46 @@
+<ctui-toolbar title="History"></ctui-toolbar>
+<mat-calendar
+  [dateClass]="dateClass()"
+  [selected]="selectedDate()"
+  (selectedChange)="onDateSelected($event)"
+></mat-calendar>
+@if (viewModel().mealLogsForSelectedDate.length > 0) {
+  <mat-nav-list>
+    @for (mealLog of viewModel().mealLogsForSelectedDate; track mealLog.id) {
+      <mat-list-item>
+        @if (mealLog.type === 'insulin-dose') {
+          <mat-icon matListItemIcon>medication</mat-icon>
+        } @else {
+          <mat-icon matListItemIcon>restaurant</mat-icon>
+        }
+        <h4 matListItemTitle>
+          @if (mealLog.type === 'insulin-dose') {
+            {{ mealLog.insulin | number: '1.0-1' }} I.U.
+          } @else {
+            {{ mealLog.mealType }} ·
+            {{ mealLog.actualInsulin | number: '1.0-1' }} I.U.
+          }
+        </h4>
+        <p matListItemLine>
+          {{ mealLog.createdAt | date: 'short' }}
+        </p>
+        @if (mealLog.note) {
+          <p matListItemLine>{{ mealLog.note }}</p>
+        }
+      </mat-list-item>
+    }
+  </mat-nav-list>
+} @else {
+  <p>No entries for this day.</p>
+}
+
+<button
+  (click)="onLogInsulinDoseClick()"
+  color="primary"
+  ctuiFixedPosition
+  mat-fab
+  matTooltip="Log insulin dose"
+  type="button"
+>
+  <mat-icon>add</mat-icon>
+</button>

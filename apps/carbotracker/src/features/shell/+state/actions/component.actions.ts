@@ -6,6 +6,7 @@ export const ShellComponentActions = createActionGroup({
     'Products Clicked': emptyProps(),
     'Current Meal Clicked': emptyProps(),
     'Saved Meals Clicked': emptyProps(),
+    'History Clicked': emptyProps(),
     'Settings Clicked': emptyProps(),
   },
 });

@@ -51,5 +51,18 @@ service cloud.firestore {
       allow read, update, delete: if isSavedMealOwner(request, resource)
       allow create: if savedMealCreatorIsRequester(request)
     }
+
+    match /meal-logs/{mealLogId} {
+      function isMealLogOwner(request, resource) {
+        return request.auth.uid == resource.data.creator;
+      }
+
+      function mealLogCreatorIsRequester(request) {
+        return request.resource.data.creator == request.auth.uid;
+      }
+
+      allow read, update, delete: if isMealLogOwner(request, resource)
+      allow create: if mealLogCreatorIsRequester(request)
+    }
   }
 }
