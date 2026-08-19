@@ -1,0 +1,26 @@
+<ctui-toolbar
+  [title]="viewModel().pageTitle"
+  [showBackwardNavigation]="true"
+  (backwardNavigation)="onGoBack()"
+>
+</ctui-toolbar>
+<form [formGroup]="formGroup" (ngSubmit)="onSubmit()">
+  <mat-form-field>
+    <mat-label>Product name</mat-label>
+    <input [formControl]="formGroup.controls.name" type="text" matInput />
+  </mat-form-field>
+  <mat-form-field>
+    <mat-label>Carbohydrates per 100g</mat-label>
+    <input [formControl]="formGroup.controls.carbs" type="number" matInput />
+  </mat-form-field>
+  <button
+    color="primary"
+    type="submit"
+    [disabled]="formGroup.invalid || formGroup.pristine"
+    mat-fab
+    ctuiFixedPosition
+    matTooltip="Save product"
+  >
+    <mat-icon>save</mat-icon>
+  </button>
+</form>

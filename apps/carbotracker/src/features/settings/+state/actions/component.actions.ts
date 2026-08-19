@@ -1,5 +1,6 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
 import { InsulinToCarbRatio } from '../../insulin-to-carb-ratio.model';
+import { ThemePreference } from '../../theme-preference.model';
 
 export const SettingsPageActions = createActionGroup({
   source: 'Settings | Settings Page',
@@ -7,6 +8,7 @@ export const SettingsPageActions = createActionGroup({
     'Logout Clicked': emptyProps(),
     'Account Clicked': emptyProps(),
     'Insulin To Carb Ratios Clicked': emptyProps(),
+    'Theme Changed': props<{ themePreference: ThemePreference }>(),
   },
 });
 

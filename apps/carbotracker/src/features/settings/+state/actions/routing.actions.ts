@@ -11,5 +11,7 @@ export const SettingsRouterEffectsActions = createActionGroup({
     'Navigation to Insulin To Carb Ratios Page Failed': props<{
       error: unknown;
     }>(),
+    'Navigation to Settings Page Successful': emptyProps(),
+    'Navigation to Settings Page Failed': props<{ error: unknown }>(),
   },
 });

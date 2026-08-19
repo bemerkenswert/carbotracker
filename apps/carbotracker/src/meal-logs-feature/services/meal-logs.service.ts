@@ -10,7 +10,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { from } from 'rxjs';
-import { MealEntry } from '../../current-meal-feature/current-meal.model';
+import { MealEntry } from '../../features/current-meal/current-meal.model';
 import { MealLogsApiActions } from '../+state/meal-logs.actions';
 import { toDateString } from '../date.util';
 import {

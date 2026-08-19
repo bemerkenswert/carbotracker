@@ -1,15 +1,57 @@
 ---
 name: review-comments
-description: Respond to and implement a colleague's review comments on a pull request. Fetch the review (general + inline threads), classify each comment, discuss with the dev, implement the agreed ones, and reply on every thread before the PR is re-reviewed. Use when the user says a review came in on a PR and they want you to look at it, talk about the comments, implement them, resolve threads, or "take a look at the review".
+description: Respond to and implement a colleague's review comments on a pull request. Fetch the review (general + inline threads), classify each comment, discuss with the dev, implement the agreed ones, and reply on every thread before the PR is re-reviewed. In headless mode it fetches and classifies the review into a structured plan file instead, never asking, posting, or implementing. Use when the user says a review came in on a PR and they want you to look at it, talk about the comments, implement them, resolve threads, or "take a look at the review".
 ---
 
 # Review comments
 
-A human reviewed a PR and left comments. Every review is a **round-trip**: the PR goes out, comes back with threads, and leaves again. Each round-trip has the same shape — **fetch → classify → discuss → implement → reply** — and this skill drives it to a clean pass.
+A human reviewed a PR and left comments. Every review is a **round-trip**: the PR goes out, comes back with threads, and leaves again. The skill runs in **two modes** with different round-trip shapes:
+
+- **Interactive** — **fetch → classify → discuss → implement → reply**. A human is in the loop; the skill drives the round-trip to a clean pass. This is the default.
+- **Headless** — **fetch → classify → write the plan**. No human is in the loop; the skill's entire output is a structured plan file that a caller applies later. It never asks, never posts, and never implements.
+
+The two modes share **fetch** and the spirit of **classify**, but use different classification vocabularies and different outcomes — never mix them. Interactive mode uses `agree` / `push-back` / `clarify`; headless mode uses `answer` / `pushback` / `question` / `implement` with a confidence per comment.
 
 The issue tracker should have been provided to you — run `/setup-matt-pocock-skills` if `docs/agents/issue-tracker.md` is missing.
 
-## Process
+## Headless mode
+
+The caller requests headless mode **explicitly** — opencode exposes no clean non-interactive signal, so the caller says so, e.g. by appending `headless: do not ask, do not post, do not implement — write the plan file` to the invocation. When no such marker is present, run the interactive flow below.
+
+In headless mode the skill is **fetch → classify → write the plan**, nothing else:
+
+- It never asks a question — there is no human to answer. The "Discuss with the dev" step is skipped.
+- It never posts a reply and never resolves a thread.
+- It never implements a change.
+
+### Headless classify
+
+Sort every point into **exactly one** of four types, each with a **confidence** (0–1) and a one-line reason. The reason is your internal rationale for the type assignment (the same discipline interactive classify uses) — it is **not** part of the plan file, which carries only the six contract fields below:
+
+- **answer** — supply requested info; low-stakes, no human sign-off needed.
+- **pushback** — reasoned disagreement: the change would hurt, or the comment misunderstands the code.
+- **question** — the comment needs human judgment: its intent is ambiguous, or a maintainer must decide.
+- **implement** — the change is clearly right and the agent should make it.
+
+**Confidence gate.** A comment is only classified `implement` at confidence ≥ **0.8**. Below 0.8 a would-be `implement` is **downgraded to `question`** (reply but don't implement) and sets `needsHuman` — the agent never silently makes a risky change.
+
+Two pruning rules apply as in interactive classification: a comment that duplicates your own point or contradicts other evidence on the branch pushes toward `pushback` / `question` rather than `answer` / `implement`, and if you are unsure a point is real, run `/code-review` on the same diff first — don't ask the human what your own review would have caught.
+
+### Write the plan
+
+The plan is a single JSON object written to the file the caller named (env var `ORCHESTRATOR_REVIEW_PLAN_FILE`; fail loudly if unset). The machine-checkable contract is `review-plan.schema.json` next to this skill — the plan **must** validate against it. Shape:
+
+```json
+{ "needsHuman": false, "comments": [{ "commentId": 3788850731, "path": "README.md", "line": 4, "type": "answer", "reply": "…", "confidence": 0.9 }] }
+```
+
+- `needsHuman` is `true` exactly when at least one comment is `pushback` or `question` (the schema enforces this).
+- Each comment carries the fetched `commentId` + `path` + `line` (inline) or `null` for general comments, the `type`, the `reply` an act phase would post, and the `confidence`.
+- `implement` implies `confidence` ≥ 0.8 (the schema enforces the gate).
+
+**Done when** every comment from the fetched review is classified exactly once with a confidence and a one-line reason, the plan validates against `review-plan.schema.json`, and no question was asked, no reply posted, and no change implemented.
+
+## Process (interactive)
 
 ### 1. Fetch the review
 
@@ -17,14 +59,50 @@ A GitHub review splits across two surfaces — collect both:
 
 - **General comments** (the review's overall message): `gh pr view <n> --comments`.
 - **Inline threads**, which live on the diff, _not_ the issue thread — `gh pr view <n> --comments` shows only the top of each thread:
-  - Diff comments: `gh api repos/<owner>/<repo>/pulls/<n>/comments` — one entry per comment, each with `path`, `line`, and `in_reply_to`, so threads string together via `in_reply_to`.
-  - Review-level comments: `gh api repos/<owner>/<repo>/pulls/<n>/reviews` for the review bodies.
-  - Resolution markers land on the comment resource as `resolved` / `dismissed` via `gh api repos/<owner>/<repo>/pulls/<n>/comments/<id>` if you need thread state.
+  - Diff comments: `gh api repos/{owner}/{repo}/pulls/<n>/comments` — one entry per comment, each with `path`, `line`, and `in_reply_to`, so threads string together via `in_reply_to`.
+  - Review-level comments: `gh api repos/{owner}/{repo}/pulls/<n>/reviews` for the review bodies.
+  - Thread state (`resolved`/`dismissed`) is **not** on the REST comment resource — read `PullRequestReviewThread.isResolved` via GraphQL (see _Resolving a thread_ below).
 - The repo and pull number: `gh pr view <n>` inside the clone infers the repo from the remote.
 
 **Done when** every thread and general comment for the PR is captured, each tagged with its `path` + `line` (inline) or its review (general). A thread with replies is one point to address, not several.
 
-### 2. Classify
+### GitHub review-comment endpoints
+
+`gh api` substitutes `{owner}` and `{repo}` from the current repo's remote, so every path below runs verbatim from the clone. The pull number appears in the list/reply paths but **not** in the single-comment get path — that asymmetry is the #1 source of 404s:
+
+| Operation            | Command                                                                     |
+| -------------------- | --------------------------------------------------------------------------- |
+| List diff comments   | `gh api repos/{owner}/{repo}/pulls/<n>/comments`                            |
+| Review bodies        | `gh api repos/{owner}/{repo}/pulls/<n>/reviews`                             |
+| Reply to a thread    | `gh api repos/{owner}/{repo}/pulls/<n>/comments/<id>/replies -f body="..."` |
+| Get a single comment | `gh api repos/{owner}/{repo}/pulls/comments/<id>`                           |
+| Resolve a thread     | GraphQL only — see _Resolving a thread_ below                               |
+
+Prefer native `gh` commands where they exist (`gh pr view`, `gh issue comment`); the inline-thread operations above have **no** CLI equivalent and must use `gh api`. After posting a reply, verify by **re-listing** `pulls/<n>/comments` and checking `in_reply_to_id` (threading) — don't GET single comments just to confirm; it's an extra round-trip and one more URL to mistype.
+
+### Resolving a thread
+
+GitHub's REST API has **no** endpoint to resolve a review thread: the `resolved` field does not exist on the REST comment resource, and updating a single comment only edits `body`. Resolution is GraphQL-only, via `resolveReviewThread`, and it needs the **thread's** node id (a `PRRT_…` id) — not the comment id.
+
+A `PullRequestReviewComment` has no direct pointer to its thread, so match your comment's REST `id` against each thread's comments' `databaseId` (they are the same number):
+
+    gh api graphql -f query='query($owner:String!,$repo:String!,$pr:Int!){
+      repository(owner:$owner,name:$repo){
+        pullRequest(number:$pr){
+          reviewThreads(first:100){
+            nodes{ id isResolved comments(first:100){ nodes{ databaseId body } } }
+          }
+        }
+      }
+    }' -f owner=<owner> -f repo=<repo> -F pr=<n>
+
+Resolve (or reopen) the thread by its `id`:
+
+    gh api graphql -f query='mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ id isResolved } } }' -f id=<thread-id>
+
+Note the `-F pr` for the `Int!` argument and `-f` for the `ID!`/`String!` arguments.
+
+### 2. Classify (interactive)
 
 Sort every point into exactly one bucket, with a one-line reason each:
 
@@ -61,12 +139,21 @@ Respond to each thread on the PR with a pointer back at it:
 - **Push-back** → leave the thread **open**, reply with the argument, and invite the reviewer to close it once convinced.
 - **Clarify** → reply with the question; keep it open until answered.
 
-Reply _to the thread_, not to the PR. A threaded inline reply is created with `POST /repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies` (body only); `gh api repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies -f body="..."`. Resolve an inline thread via `PUT .../comments/{comment_id}` with `{ "resolved": true }`. A general comment is a plain issue reply: `gh issue comment <n> --body "..."`.
+Reply _to the thread_, not to the PR. A threaded inline reply is created with `POST /repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies` (body only); `gh api repos/{owner}/{repo}/pulls/{n}/comments/{comment_id}/replies -f body="..."`. Resolve an inline thread via GraphQL `resolveReviewThread` (see _Resolving a thread_ above) — there is no REST route. A general comment is a plain issue reply: `gh issue comment <n> --body "..."`.
 
-Before posting, ask the caller whether replies should carry the AI-source footer or be signed as them — a colleague-facing reply is different from a tracker event.
+**Agent-authored replies MUST carry the AI-source footer** — a colleague reading the thread must be able to tell your reply from the human's. Append this footer line to every reply body:
+
+```
+---
+_Created by carbotracker's agent skills._
+```
+
+If the caller (the dev you're implementing for) wants a reply signed as themselves instead, they must say so explicitly before you post — ask if you're unsure. Never post a reply without either the footer or an explicit sign-as-them instruction.
 
 **Done when** every thread has a response, resolved threads are resolved, and open threads are deliberately left for the reviewer.
 
 ## Round-trip closed
 
-Summarise the round-trip: how many comments, how many implemented/pushed-back/clarified, any thread left open, and whether a new review or push to the branch is the next move.
+**Interactive**: summarise the round-trip — how many comments, how many implemented/pushed-back/clarified, any thread left open, and whether a new review or push to the branch is the next move.
+
+**Headless**: report that the plan was written (path + comment count + `needsHuman`), and that no reply was posted and no change implemented. The caller's act phase applies the plan.

@@ -15,3 +15,7 @@ Triage uses the five default labels: `needs-triage`, `needs-info`, `ready-for-ag
 ### Domain docs
 
 Single-context: `CONTEXT.md` at the repo root and `docs/adr/` for decisions. See `docs/agents/domain.md`.
+
+## Commit hygiene
+
+Before committing, run `npm run prettier:write` to format all changed files, then re-run `git diff` and include the formatting changes in the same commit as the actual change — not a separate follow-up commit. CI enforces formatting via `npm run prettier:check`.

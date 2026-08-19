@@ -1,8 +1,12 @@
-import { ApplicationConfig, inject, isDevMode } from '@angular/core';
+import {
+  ApplicationConfig,
+  inject,
+  isDevMode,
+  provideAppInitializer,
+} from '@angular/core';
 import { MAT_SNACK_BAR_DEFAULT_OPTIONS } from '@angular/material/snack-bar';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
-import { provideEffects } from '@ngrx/effects';
 import { provideRouterStore, routerReducer } from '@ngrx/router-store';
 import { Store, provideStore } from '@ngrx/store';
 import { provideStoreDevtools } from '@ngrx/store-devtools';
@@ -12,8 +16,9 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { environment } from '../environments/environment';
 import { authFeature } from '../features/auth/+state/auth.store';
 import { getAuthProviders } from '../features/auth/auth.providers';
-import * as appEffects from './app.effects';
-import { settingsFeature } from './app.reducer';
+import { getProductsProviders } from '../features/products/products.providers';
+import { getSettingsProviders } from '../features/settings/settings.providers';
+import { ThemeApplicationService } from './theme-application.service';
 
 const isLoggedIn = () => {
   const store = inject(Store);
@@ -28,12 +33,12 @@ export const appConfig: ApplicationConfig = {
     provideAnimations(),
     provideStore({
       router: routerReducer,
-      [settingsFeature.name]: settingsFeature.reducer,
     }),
     environment.fireBaseProvider(),
     provideRouterStore(),
     getAuthProviders(),
-    provideEffects([appEffects]),
+    getProductsProviders(),
+    getSettingsProviders(),
     provideStoreDevtools(),
     provideRouter(
       [
@@ -41,7 +46,7 @@ export const appConfig: ApplicationConfig = {
         {
           path: 'app',
           canMatch: [isLoggedIn],
-          loadChildren: () => import('../shell-feature/shell.routes'),
+          loadChildren: () => import('../features/shell/shell.routes'),
         },
         {
           path: 'login',
@@ -58,6 +63,9 @@ export const appConfig: ApplicationConfig = {
     provideServiceWorker('ngsw-worker.js', {
       enabled: !isDevMode(),
       registrationStrategy: 'registerWhenStable:30000',
+    }),
+    provideAppInitializer(() => {
+      inject(ThemeApplicationService);
     }),
   ],
 };

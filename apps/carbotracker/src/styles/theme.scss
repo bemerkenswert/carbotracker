@@ -1,95 +1,178 @@
 @use '@angular/material' as mat;
-@include mat.elevation-classes();
-@include mat.app-background();
 
-$node-primary-palette: (
-  50: #e5f4f3,
-  100: #bee4e1,
-  200: #93d3cd,
-  300: #67c1b8,
-  400: #47b3a9,
-  500: #26a69a,
-  600: #229e92,
-  700: #1c9588,
-  800: #178b7e,
-  900: #0d7b6c,
-  A100: #adfff3,
-  A200: #7affec,
-  A400: #47ffe4,
-  A700: #2dffe0,
-  contrast: (
-    50: #000000,
-    100: #000000,
-    200: #000000,
-    300: #000000,
-    400: #000000,
-    500: #ffffff,
-    600: #ffffff,
-    700: #ffffff,
-    800: #ffffff,
-    900: #ffffff,
-    A100: #000000,
-    A200: #000000,
-    A400: #000000,
-    A700: #000000,
-  ),
+$_secondary-palette: (
+  0: #000000,
+  10: #2c3031,
+  20: #585f62,
+  25: #6e777b,
+  30: #848e94,
+  35: #9aa6ac,
+  40: #b0bec5,
+  50: #bdc9cf,
+  60: #cad4d8,
+  70: #d8dee2,
+  80: #e5e9ec,
+  90: #f2f4f5,
+  95: #f8fafa,
+  98: #fcfdfd,
+  99: #fefefe,
+  100: #ffffff,
 );
 
-$node-accent-palette: (
-  50: #f6f7f8,
-  100: #e7ecee,
-  200: #d8dfe2,
-  300: #c8d2d6,
-  400: #bcc8ce,
-  500: #b0bec5,
-  600: #a9b8bf,
-  700: #a0afb8,
-  800: #97a7b0,
-  900: #8799a3,
-  A100: #ffffff,
-  A200: #ffffff,
-  A400: #ceeeff,
-  A700: #b5e5ff,
-  contrast: (
-    50: #000000,
-    100: #000000,
-    200: #000000,
-    300: #000000,
-    400: #000000,
-    500: #000000,
-    600: #000000,
-    700: #000000,
-    800: #000000,
-    900: #000000,
-    A100: #000000,
-    A200: #000000,
-    A400: #000000,
-    A700: #000000,
-  ),
+$_neutral-palette: (
+  0: #000000,
+  4: #0c0c0c,
+  6: #111212,
+  10: #1d1e1e,
+  12: #222524,
+  17: #313433,
+  20: #3a3d3c,
+  22: #3f4343,
+  24: #454949,
+  25: #484c4c,
+  30: #565c5b,
+  35: #656b6a,
+  40: #737a79,
+  50: #8a908f,
+  60: #a2a6a6,
+  70: #b9bcbc,
+  80: #d0d3d2,
+  87: #e1e2e2,
+  90: #e8e9e9,
+  92: #eceded,
+  94: #f1f2f2,
+  95: #f3f4f4,
+  96: #f6f6f6,
+  98: #fafbfb,
+  99: #fdfdfd,
+  100: #ffffff,
 );
 
-$app-carbotracker-primary: mat.m2-define-palette($node-primary-palette);
-$app-carbotracker-accent: mat.m2-define-palette($node-accent-palette);
+$_neutral-variant-palette: (
+  0: #000000,
+  10: #1a1c1c,
+  20: #343837,
+  25: #424545,
+  30: #4f5352,
+  35: #5c6160,
+  40: #696f6e,
+  50: #828786,
+  60: #9b9f9e,
+  70: #b4b7b6,
+  80: #cdcfcf,
+  90: #e6e7e7,
+  95: #f2f3f3,
+  98: #fafafa,
+  99: #fcfdfd,
+  100: #ffffff,
+);
 
-$app-carbotracker-warn: mat.m2-define-palette(mat.$m2-red-palette);
+$_error-palette: (
+  0: #000000,
+  10: #410002,
+  20: #690005,
+  25: #7e0007,
+  30: #93000a,
+  35: #a80710,
+  40: #ba1a1a,
+  50: #de3730,
+  60: #ff5449,
+  70: #ff897d,
+  80: #ffb4ab,
+  90: #ffdad6,
+  95: #ffedea,
+  98: #fff8f7,
+  99: #fffbff,
+  100: #ffffff,
+);
 
-$app-carbotracker-node-light: mat.m2-define-light-theme(
+$primary-palette: (
+  0: #000000,
+  10: #0a2a26,
+  20: #13534d,
+  25: #186860,
+  30: #1c7c74,
+  35: #219187,
+  40: #26a69a,
+  50: #4ab5ab,
+  60: #6ec4bc,
+  70: #92d2cc,
+  80: #b7e1dd,
+  90: #dbf0ee,
+  95: #edf8f7,
+  98: #f8fcfc,
+  99: #fbfefd,
+  100: #ffffff,
+  secondary: $_secondary-palette,
+  neutral: $_neutral-palette,
+  neutral-variant: $_neutral-variant-palette,
+  error: $_error-palette,
+);
+
+$tertiary-palette: (
+  0: #000000,
+  10: #401c18,
+  20: #803830,
+  25: #9f453d,
+  30: #bf5349,
+  35: #df6155,
+  40: #ff6f61,
+  50: #ff877b,
+  60: #ff9f96,
+  70: #ffb7b0,
+  80: #ffcfca,
+  90: #ffe7e5,
+  95: #fff3f2,
+  98: #fffafa,
+  99: #fffdfc,
+  100: #ffffff,
+  secondary: $_secondary-palette,
+  neutral: $_neutral-palette,
+  neutral-variant: $_neutral-variant-palette,
+  error: $_error-palette,
+);
+
+$light-theme: mat.define-theme(
   (
     color: (
-      primary: $app-carbotracker-primary,
-      accent: $app-carbotracker-accent,
-      warn: $app-carbotracker-warn,
+      theme-type: light,
+      primary: $primary-palette,
+      tertiary: $tertiary-palette,
     ),
   )
 );
 
-$app-carbotracker-node-dark: mat.m2-define-dark-theme(
+$dark-theme: mat.define-theme(
   (
     color: (
-      primary: $app-carbotracker-primary,
-      accent: $app-carbotracker-accent,
-      warn: $app-carbotracker-warn,
+      theme-type: dark,
+      primary: $primary-palette,
+      tertiary: $tertiary-palette,
     ),
   )
 );
-@include mat.all-component-themes($app-carbotracker-node-light);
+
+@include mat.theme(
+  (
+    color: (
+      theme-type: light,
+      primary: $primary-palette,
+      tertiary: $tertiary-palette,
+    ),
+  )
+);
+
+@include mat.all-component-themes($light-theme);
+
+html.dark-theme {
+  @include mat.theme(
+    (
+      color: (
+        theme-type: dark,
+        primary: $primary-palette,
+        tertiary: $tertiary-palette,
+      ),
+    )
+  );
+  @include mat.all-component-colors($dark-theme);
+}

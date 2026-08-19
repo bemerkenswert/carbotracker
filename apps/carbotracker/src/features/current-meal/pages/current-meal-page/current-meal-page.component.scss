@@ -1,0 +1,30 @@
+:host {
+  display: block;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.summary-container {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  align-items: center;
+}
+
+.insulin-units-summary-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.insulin-units-breakfast,
+.insulin-units-lunch,
+.insulin-units-dinner,
+.insulin-units-night {
+  display: flex;
+  gap: 8px;
+}
+
+.carbs-summary {
+  font-size: xxx-large;
+  font-weight: bold;
+}

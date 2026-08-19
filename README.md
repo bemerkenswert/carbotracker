@@ -1,3 +1,3 @@
 # Carbotracker
 
-Vendor Locked In App for Diabetics.
+Vendor Locked-In App for Diabetics.

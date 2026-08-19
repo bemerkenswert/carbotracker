@@ -1,0 +1,85 @@
+# 0003. Review-loop contract
+
+- **Status:** Accepted
+- **Deciders:** carbotracker maintainers
+- **Date:** 2026-08-15
+
+## Context
+
+The orchestrator's review loop (`orchestrator_review_round`) resumes the original opencode session headlessly with `/review-comments`. That skill's "Discuss with the dev" step asks a question that headless mode has no channel to answer, then the run exits `0` anyway. The orchestrator trusts exit `0`, advances the watermark, and silently drops the thread — a comment that needs human judgment is never answered and never re-triggers. Live repro: issue #245 → PR #246, a repo-wide "ngrx→ngxs" question that went unanswered.
+
+Two coupled defects: (a) the skill asks a question headless mode can't answer, and (b) the orchestrator trusts the exit code alone and never checks that a reply actually happened.
+
+## Decision
+
+Split review handling into an **analyze** phase (headless opencode, emits a plan file) and an **act** phase (bash, applies the plan). Make `review-comments` mode-aware.
+
+### Mode-aware skill
+
+`review-comments` gains a **Headless mode**, passed explicitly by the caller (opencode exposes no clean non-interactive signal — the orchestrator appends _"headless: do not ask, do not post, do not implement — write the plan file"_). In headless mode the skill never asks, never posts, never implements; it classifies and writes the plan. Interactive users keep today's ask-questions flow. One skill, two modes.
+
+### Analyze/act split
+
+- **Analyze**: `opencode run --auto --session <id>` invoking headless `/review-comments`, which writes a structured plan to `ORCHESTRATOR_REVIEW_PLAN_FILE` (JSON).
+- **Act** (bash): read the plan and apply it per comment.
+
+### Plan schema
+
+Machine-checkable contract: `.agents/skills/review-comments/review-plan.schema.json` (validated by `tools/tests/ct-review-plan.test.sh`). Shape:
+
+```json
+{ "needsHuman": false, "comments": [{ "commentId": 3788850731, "path": "README.md", "line": 4, "type": "answer", "reply": "…", "confidence": 0.9 }] }
+```
+
+### Comment types
+
+| type      | meaning                           | action                                                          | resolve thread? | needsHuman |
+| --------- | --------------------------------- | --------------------------------------------------------------- | --------------- | ---------- |
+| answer    | supply requested info             | post reply (footer)                                             | no              | no         |
+| pushback  | reasoned disagreement w/ reviewer | post reply (footer)                                             | no              | yes        |
+| question  | clarify with the reviewer         | post reply (footer)                                             | no              | yes        |
+| implement | make the change                   | resume session → `/implement` → commit → push → reply → resolve | yes             | no         |
+
+Bash never needs the GraphQL resolve logic — resolution only happens on `implement`, which stays inside opencode (the skill already documents the `resolveReviewThread` mutation).
+
+### Confidence gate
+
+A comment is only classified `implement` at confidence ≥ `0.8`. Below that it is downgraded to `question` (reply but don't implement) and sets `needsHuman`. Escalation to `needs-triage` is reserved for pipeline failures, not low-confidence comments.
+
+### needsHuman
+
+When `needsHuman` is set, the orchestrator **advances the watermark and pauses polling** for that PR (posting a maintainer notice), so the comment is neither re-triggered forever nor silently consumed.
+
+### Implement action
+
+An `implement`-type comment is applied by the **act** phase resuming the ticket's original opencode session with a comment-scoped `/implement` prompt: the agent makes the change (**one commit per comment**), pushes the branch, replies on the thread citing the commit, and resolves each inline thread via the `resolveReviewThread` GraphQL mutation. Resolution never happens in bash — the act step only **reads** state (a read-only GraphQL query plus the REST comment listing) to verify, before advancing the watermark, that every implement comment was resolved and replied to; a general implement comment must have gained a new footer-bearing reply. A failed or unverifiable implement step keeps the watermark so the round retries.
+
+### Commit granularity
+
+One commit per `implement` comment, so each thread's reply cites a specific commit.
+
+### Watermark
+
+`lastCommentAt` advances only after the **act** phase applies the plan. Analyze failure / malformed JSON falls through to the existing retry/escalate semantics.
+
+### Trigger filter (amended 2026-08-17)
+
+Only human-authored comments and reviews count as review signals — the predicate is `user.type == "User"` (GitHub user types are User / Bot / Organization / Mannequin). Bot comments (GitHub Actions, e.g. the Firebase preview comment, dependabot, app bots) are never review triggers: they can neither start a round nor move the watermark. The predicate lives in one shared jq fragment (`ORCHESTRATOR_REVIEW_SIGNAL_JQ`) used by the watermark query on all three surfaces and by the empty-plan verification below, so it cannot drift between them. Live repro: the Firebase preview bot's comment on PR #314 triggered three doomed review rounds.
+
+### Empty plan (amended 2026-08-17)
+
+A valid plan with zero comments is a **verified no-op**, not a failure: the act phase re-lists the three review surfaces with the same predicate as the watermark, and only when no human review content exists does the round succeed silently (nothing posted, failure counter reset). The agent's claim of "nothing to review" is never trusted on its own — the same discipline as the implement step's exit-0 verification. If human review content exists that the plan failed to classify, the round fails, keeps the watermark, and retries.
+
+## Considered options
+
+- **Plan channel**: file vs stdout-JSON vs `opencode run --format json`. Chose **file** — the orchestrator already keeps stdout clean (helpers return values there, logs go to stderr), and a file is trivially fake-able in `npm run test:tools`.
+- **Implement step**: reuse `/implement` with a comment-scoped prompt vs a new `implement-review-comment` skill. Chose **reuse** — `review-comments` already delegates to `/implement` for its agree set, and the skill is deliberately thin.
+- **`answer` vs `pushback`**: keep distinct vs merge. Chose **distinct** — `pushback` is the agent arguing with a human and warrants `needsHuman` sign-off; `answer` is low-stakes and does not.
+
+## Consequences
+
+- `review-comments` gains a headless section; the interactive flow is unchanged.
+- `orchestrator_review_round` splits into analyze + act; the watermark only moves on a successful act.
+- `needsHuman` introduces a paused-polling state distinct from the retry-exhaustion pause.
+- Bash tests cover the plan-file contract (`tools/tests/ct-review-plan.test.sh`, validating against the JSON Schema), and the orchestrator tests (`tools/tests/ct-orchestrator.test.sh`) cover the type→action mapping and the watermark/pause behavior.
+- Bot comments are filtered from the watermark via a shared human-author predicate; a valid empty plan no-ops only after the daemon re-verifies that no human review content exists (amended 2026-08-17, see the two sections above).

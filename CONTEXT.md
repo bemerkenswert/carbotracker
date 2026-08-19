@@ -21,7 +21,7 @@ The meal being assembled right now. A list of meal entries; one per user.
 _Avoid_: Active meal, working meal
 
 **Meal type**:
-One of the three daily eating slots — breakfast, lunch, dinner — used as the unit for insulin-to-carb ratios.
+One of the four daily eating slots — breakfast, lunch, dinner, night — used as the unit for insulin-to-carb ratios.
 _Avoid_: Meal (when meaning a slot, since "meal" already means CurrentMeal)
 
 **Insulin-to-carb ratio**:
@@ -31,3 +31,41 @@ _Avoid_: Ratio, carb factor, insulin factor
 **Saved meal**:
 A named, immutable snapshot of a current meal's meal entries, stored by the user so it can be loaded back later (e.g. "Steffens Pasta Dream" = 250 g spaghetti, 60 g meat, 60 g bread).
 _Avoid_: Recipe, saved-this-meal
+
+## Pipeline
+
+**Stalled run**:
+A headless implement run that exits 0 without commits but leaves uncommitted work behind. The pipeline classifies it so the session gets exactly one resume instead of escalating and discarding recoverable work.
+_Avoid_: Failure, restart
+
+**Empty run**:
+A headless implement run that exits 0 without commits and leaves a clean tree. Escalated immediately; its session is never resumed.
+_Avoid_: Stalled run, failure
+
+**Resume**:
+Continuing the existing opencode session (via `--continue`) so the agent can finish and commit, reusing its context. A stalled run gets exactly one.
+_Avoid_: Restart, retry
+
+**Restart**:
+Discarding the worktree and session and running fresh from scratch — the fallback when no resume can help, triggered by a human re-tagging the ticket.
+_Avoid_: Resume, retry
+
+**Review round**:
+One analyze step (headless classify into a plan) plus one act step (apply the plan) of the review loop.
+_Avoid_: Review pass, review cycle
+
+**Watermark**:
+The newest human review comment a PR's review loop has already handled.
+_Avoid_: Last-seen, cursor
+
+**Review trigger**:
+What starts a review round: only human-authored comments and reviews; bot comments (GitHub Actions previews, dependabot) never trigger.
+_Avoid_: Review signal (when it means a bot post)
+
+**Stash**:
+The `git stash` entry the orchestrator creates before pruning a worktree that holds uncommitted work on escalation, so a stalled run's recoverable changes survive the prune. The message records the ticket number, a UTC timestamp, and the session id, which is what makes the entry attributable in the repo-global stash list.
+_Avoid_: Save, backup
+
+**Recover**:
+Reopening a stalled ticket's session in place via `ct-recover-stalled.sh` — finding the ticket's stash, recreating the worktree at its deterministic path, applying the stash without popping it, and resuming the session. Not a restart (which discards work).
+_Avoid_: Restart, retry

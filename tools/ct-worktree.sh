@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKTREE_PARENT="$HOME/git/worktrees/carbotracker"
-
-slugify() {
-  echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//'
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/ct-lib.sh"
 
 cmd_start() {
   if ! command -v gh &>/dev/null; then
@@ -21,88 +18,16 @@ cmd_start() {
     exit 1
   fi
 
-  local title
-  title=$(gh issue view "$issue_number" --json title --jq .title 2>/dev/null) || true
-  if [[ -z "$title" ]]; then
-    echo "Error: Could not find issue #$issue_number"
+  if ! ct_worktree_create "$issue_number"; then
     exit 1
   fi
-
-  local slug branch target_dir
-  slug=$(slugify "$title")
-  branch="ticket/$issue_number-$slug"
-  target_dir="$WORKTREE_PARENT/$issue_number-$slug"
-
-  echo "Issue:  #$issue_number - $title"
-  echo "Branch: $branch"
-  echo "Path:   $target_dir"
-  echo ""
-
-  git fetch origin main
-
-  if [[ -d "$target_dir" ]]; then
-    echo "Error: Worktree already exists at $target_dir"
-    exit 1
-  fi
-
-  mkdir -p "$WORKTREE_PARENT"
-  git worktree add "$target_dir" -b "$branch" origin/main
 
   echo "Installing dependencies..."
-  cd "$target_dir"
+  cd "$CT_WORKTREE_DIR"
   npm ci --prefer-offline --no-audit --no-fund
 
   echo "Starting opencode..."
   exec opencode --agent build --model opencode-go/deepseek-v4-flash --prompt "/implement the issue is $issue_number"
-}
-
-cmd_list() {
-  echo "Carbotracker worktrees:"
-  echo ""
-
-  local found=0
-  while IFS= read -r line; do
-    local path
-    path=$(echo "$line" | awk '{print $1}')
-    if [[ "$path" == "$WORKTREE_PARENT"* ]]; then
-      local branch rest
-      branch=$(echo "$line" | awk '{print $2}')
-      rest=$(echo "$line" | awk '{$1=$2=""; sub(/^[ \t]+/, ""); print}')
-      printf "  %-70s %s\n" "$path" "$branch ($rest)"
-      found=1
-    fi
-  done < <(git worktree list)
-
-  if [[ $found -eq 0 ]]; then
-    echo "  (none)"
-  fi
-}
-
-cmd_prune() {
-  git fetch origin main 2>/dev/null || true
-  local count=0
-
-  for dir in "$WORKTREE_PARENT"/*/; do
-    dir="${dir%/}"
-    if [[ ! -d "$dir" ]]; then continue; fi
-
-    local branch
-    branch=$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-    if [[ -z "$branch" || "$branch" == "HEAD" ]]; then continue; fi
-
-    if git branch --merged origin/main 2>/dev/null | grep -q "[[:space:]]*$branch$"; then
-      echo "Removing: $dir ($branch)"
-      git worktree remove "$dir" 2>/dev/null || git worktree remove --force "$dir"
-      git branch -D "$branch" 2>/dev/null || true
-      count=$((count + 1))
-    fi
-  done
-
-  if [[ $count -eq 0 ]]; then
-    echo "No worktrees to prune."
-  else
-    echo "Pruned $count worktree(s)."
-  fi
 }
 
 cmd_help() {
@@ -122,10 +47,10 @@ case "${1:-}" in
     cmd_start "$2"
     ;;
   list | ls)
-    cmd_list
+    ct_worktree_list
     ;;
   prune)
-    cmd_prune
+    ct_worktree_prune
     ;;
   help | --help | -h)
     cmd_help

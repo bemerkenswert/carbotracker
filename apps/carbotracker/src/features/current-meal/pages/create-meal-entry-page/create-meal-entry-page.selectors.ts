@@ -1,0 +1,28 @@
+import { createSelector } from '@ngrx/store';
+import { currentMealFeature } from '../../+state/current-meal.store';
+import { Product } from '../../../../features/products/product.model';
+
+export const selectFilteredProducts = createSelector(
+  currentMealFeature.selectNotAddedProducts,
+  currentMealFeature.selectProductSearchTerm,
+  (products, searchTerm): Product[] => {
+    if (searchTerm) {
+      return products.filter((product) =>
+        product.name.toLowerCase().includes(searchTerm.toLowerCase()),
+      );
+    } else {
+      return products;
+    }
+  },
+);
+
+export interface CreateMealEntryPageViewModel {
+  availableProducts: Product[];
+}
+
+export const selectCreateMealEntryPageViewModel = createSelector(
+  selectFilteredProducts,
+  (availableProducts): CreateMealEntryPageViewModel => ({
+    availableProducts,
+  }),
+);

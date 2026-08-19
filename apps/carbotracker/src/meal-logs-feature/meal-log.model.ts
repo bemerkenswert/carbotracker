@@ -1,4 +1,4 @@
-import { MealEntry } from '../current-meal-feature/current-meal.model';
+import { MealEntry } from '../features/current-meal/current-meal.model';
 
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'night';
 
