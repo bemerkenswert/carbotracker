@@ -14,3 +14,10 @@ mat-list-item {
   .mat-calendar-body-cell-content {
   font-weight: bold;
 }
+
+@media (orientation: landscape) {
+  mat-calendar {
+    max-width: 420px;
+    margin-inline: auto;
+  }
+}

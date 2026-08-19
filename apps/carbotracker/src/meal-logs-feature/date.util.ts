@@ -10,9 +10,7 @@ export const fromDateString = (date: string): Date => {
   return new Date(year, month - 1, day);
 };
 
-export const toLocalDateTimeString = (date: Date): string => {
+export const toLocalTimeString = (date: Date): string => {
   const pad = (value: number) => `${value}`.padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
-    date.getDate(),
-  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };

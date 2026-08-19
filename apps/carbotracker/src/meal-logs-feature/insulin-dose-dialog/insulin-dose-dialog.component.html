@@ -1,8 +1,17 @@
 <h2 mat-dialog-title>Log insulin dose</h2>
 <mat-dialog-content>
   <mat-form-field appearance="fill">
-    <mat-label>Date & time</mat-label>
-    <input matInput type="datetime-local" [(ngModel)]="dateTime" />
+    <mat-label>Date</mat-label>
+    <input matInput [matDatepicker]="datePicker" [(ngModel)]="date" />
+    <mat-datepicker-toggle
+      matIconSuffix
+      [for]="datePicker"
+    ></mat-datepicker-toggle>
+    <mat-datepicker #datePicker></mat-datepicker>
+  </mat-form-field>
+  <mat-form-field appearance="fill">
+    <mat-label>Time</mat-label>
+    <input matInput type="time" [(ngModel)]="time" />
   </mat-form-field>
   <mat-form-field appearance="fill">
     <mat-label>Insulin</mat-label>
