@@ -336,13 +336,17 @@ orchestrator_pr_latest_comment_at() {
   # read that fails aborts the probe so a caller never mistakes an outage for
   # "no comments".
   me="$ORCHESTRATOR_AI_FOOTER_END_RE"
-  if ! inline_raw="$(orchestrator_gh "reading inline comments on PR #$pr" gh api "repos/{owner}/{repo}/pulls/$pr/comments")"; then
+  # The comment/review list endpoints default to 30 items per page, so a busy
+  # PR (many review rounds) silently drops newer comments beyond the first
+  # page and the daemon stops seeing review signals. Request the maximum page
+  # size so the whole surface is considered.
+  if ! inline_raw="$(orchestrator_gh "reading inline comments on PR #$pr" gh api "repos/{owner}/{repo}/pulls/$pr/comments?per_page=100")"; then
     return 1
   fi
-  if ! reviews_raw="$(orchestrator_gh "reading reviews on PR #$pr" gh api "repos/{owner}/{repo}/pulls/$pr/reviews")"; then
+  if ! reviews_raw="$(orchestrator_gh "reading reviews on PR #$pr" gh api "repos/{owner}/{repo}/pulls/$pr/reviews?per_page=100")"; then
     return 1
   fi
-  if ! general_raw="$(orchestrator_gh "reading general comments on PR #$pr" gh api "repos/{owner}/{repo}/issues/$pr/comments")"; then
+  if ! general_raw="$(orchestrator_gh "reading general comments on PR #$pr" gh api "repos/{owner}/{repo}/issues/$pr/comments?per_page=100")"; then
     return 1
   fi
   inline="$(printf '%s' "$inline_raw" | jq -r --arg me "$me" "[.[] | $ORCHESTRATOR_REVIEW_SIGNAL_JQ | .created_at] | max // empty" 2>/dev/null || true)"
@@ -670,7 +674,7 @@ orchestrator_review_implement_verified() {
   local worktree="$1" pr="$2" plan_file="$3" before_ids="$4"
   local state replies
   state="$(orchestrator_review_threads_state "$worktree" "$pr")" || return 1
-  replies="$(cd "$worktree" && gh api "repos/{owner}/{repo}/pulls/$pr/comments" 2>/dev/null || true)"
+  replies="$(cd "$worktree" && gh api "repos/{owner}/{repo}/pulls/$pr/comments?per_page=100" 2>/dev/null || true)"
   if [[ -z "$replies" ]]; then
     return 1
   fi
@@ -720,7 +724,7 @@ orchestrator_review_threads_state() {
 # Used to verify a general implement comment gained a reply during the run.
 orchestrator_pr_agent_general_comment_ids() {
   local worktree="$1" pr="$2"
-  (cd "$worktree" && gh api "repos/{owner}/{repo}/issues/$pr/comments" 2>/dev/null \
+  (cd "$worktree" && gh api "repos/{owner}/{repo}/issues/$pr/comments?per_page=100" 2>/dev/null \
     | jq -r --arg me "$ORCHESTRATOR_AI_FOOTER_END_RE" \
         '[.[] | select((.body // "") | test($me)) | .id] | join(",")' 2>/dev/null || true)
 }

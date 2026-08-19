@@ -2133,6 +2133,29 @@ exit 0'
   assert_eq "no comments returns empty" "" "$(orchestrator_pr_latest_comment_at 100)"
 }
 
+test_pr_latest_comment_at_sees_more_than_one_page() {
+  # The comment list endpoint defaults to 30 items per page; without
+  # per_page=100 a busy PR silently drops newer comments beyond the first
+  # page and the daemon never sees the newest review signal. 35 comments on
+  # the pulls surface means the newest (index 34) must still win the
+  # watermark.
+  fake_command gh 'if [[ "$1" == "api" ]]; then
+  case "$2" in
+    *reviews*) printf "[]\n" ;;
+    *pulls/*comments*) printf "["
+      for i in $(seq 0 34); do
+        if [[ $i -gt 0 ]]; then printf ","; fi
+        printf "{\"created_at\":\"2026-08-13T00:%02d:00Z\",\"user\":{\"type\":\"User\"},\"body\":\"comment %d\"}" "$i" "$i"
+      done
+      printf "]\n" ;;
+    *pulls/*) printf "[]\n" ;;
+    *issues/*comments*) printf "[]\n" ;;
+  esac
+fi
+exit 0'
+  assert_eq "comments beyond the first REST page still move the watermark" "2026-08-13T00:34:00Z" "$(orchestrator_pr_latest_comment_at 100)"
+}
+
 test_pr_latest_comment_at_one_surface_empty() {
   fake_command gh 'if [[ "$1" == "api" ]]; then
   case "$2" in
@@ -4524,6 +4547,7 @@ test_reconcile_nothing_recoverable_cleans_up
 test_pr_number_for_branch
 test_pr_number_for_branch_missing
 test_pr_latest_comment_at_returns_newest
+test_pr_latest_comment_at_sees_more_than_one_page
 test_pr_latest_comment_at_prefers_general_when_newer
 test_pr_latest_comment_at_includes_review_submission
 test_pr_latest_comment_at_ignores_pending_reviews
