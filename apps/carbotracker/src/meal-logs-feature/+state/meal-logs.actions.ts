@@ -17,6 +17,8 @@ export const MealLogsApiActions = createActionGroup({
     'Meal Logs Collection Changed': props<{ mealLogs: MealLogDocument[] }>(),
     'Insulin Dose Created': emptyProps(),
     'Insulin Dose Creation Failed': props<{ error: unknown }>(),
+    'Meal Log Created': emptyProps(),
+    'Meal Log Creation Failed': props<{ error: unknown }>(),
     'Unknown Error': props<{ error: unknown }>(),
     'Unsubscribed From Meal Logs Stream': emptyProps(),
   },

@@ -8,6 +8,11 @@ mat-list-item {
   min-height: 48px;
 }
 
+.insulin-diff {
+  color: var(--mat-app-primary);
+  font-weight: bold;
+}
+
 :host
   ::ng-deep
   .mat-calendar-body-cell.has-meal-log

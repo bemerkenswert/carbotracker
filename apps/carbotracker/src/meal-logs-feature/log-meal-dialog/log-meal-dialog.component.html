@@ -1,0 +1,76 @@
+<h2 mat-dialog-title>Log meal</h2>
+<mat-dialog-content>
+  <mat-list>
+    @for (mealEntry of mealEntries; track mealEntry.productId) {
+      <mat-list-item>
+        <h4 matListItemTitle>{{ mealEntry.name }}</h4>
+        <p matListItemLine>{{ mealEntry.amount }}g</p>
+      </mat-list-item>
+    }
+  </mat-list>
+  <mat-form-field appearance="fill">
+    <mat-label>Date</mat-label>
+    <input matInput [matDatepicker]="datePicker" [(ngModel)]="date" />
+    <mat-datepicker-toggle
+      matIconSuffix
+      [for]="datePicker"
+    ></mat-datepicker-toggle>
+    <mat-datepicker #datePicker></mat-datepicker>
+  </mat-form-field>
+  <mat-form-field appearance="fill">
+    <mat-label>Time</mat-label>
+    <input matInput type="time" [(ngModel)]="time" />
+  </mat-form-field>
+  @if (showInsulinUnits) {
+    <mat-form-field appearance="fill">
+      <mat-label>Meal type</mat-label>
+      <mat-select [(ngModel)]="mealType" (ngModelChange)="onMealTypeChanged()">
+        @for (type of mealTypes; track type) {
+          <mat-option [value]="type">{{ type }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field appearance="fill">
+      <mat-label>Estimated insulin</mat-label>
+      <input matInput type="number" [value]="estimatedInsulin" readonly />
+    </mat-form-field>
+    <mat-form-field appearance="fill">
+      <mat-label>Actual insulin</mat-label>
+      <input
+        matInput
+        type="number"
+        min="0"
+        step="0.5"
+        [(ngModel)]="actualInsulin"
+        cdkFocusInitial
+      />
+    </mat-form-field>
+  } @else {
+    <mat-form-field appearance="fill">
+      <mat-label>Actual insulin</mat-label>
+      <input
+        matInput
+        type="number"
+        min="0"
+        step="0.5"
+        [(ngModel)]="actualInsulin"
+        cdkFocusInitial
+      />
+    </mat-form-field>
+  }
+  <mat-form-field appearance="fill">
+    <mat-label>Note</mat-label>
+    <input matInput [(ngModel)]="note" />
+  </mat-form-field>
+</mat-dialog-content>
+<mat-dialog-actions>
+  <button mat-button [matDialogClose]="{ cancelled: true }">Cancel</button>
+  <button
+    color="primary"
+    mat-raised-button
+    [disabled]="!canSave"
+    [matDialogClose]="getResult()"
+  >
+    Save
+  </button>
+</mat-dialog-actions>

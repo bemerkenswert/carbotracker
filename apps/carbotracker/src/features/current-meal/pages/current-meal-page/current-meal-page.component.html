@@ -9,6 +9,13 @@
       <mat-icon>bookmark_add</mat-icon>
     </button>
     <button
+      (click)="onLogCurrentMealClick()"
+      mat-icon-button
+      matTooltip="Log meal"
+    >
+      <mat-icon>history</mat-icon>
+    </button>
+    <button
       (click)="onClearCurrentMealClick()"
       mat-icon-button
       matTooltip="Clear current meal"

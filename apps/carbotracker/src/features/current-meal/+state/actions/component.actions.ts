@@ -11,6 +11,7 @@ export const CurrentMealPageComponentActions = createActionGroup({
     'Clear Current Meal Clicked': emptyProps(),
     'Add Clicked': emptyProps(),
     'Save Current Meal Clicked': emptyProps(),
+    'Log Current Meal Clicked': emptyProps(),
   },
 });
 

@@ -4,8 +4,12 @@ import { Action } from '@ngrx/store';
 import { provideMockStore } from '@ngrx/store/testing';
 import { of, Subject, throwError } from 'rxjs';
 import { authFeature } from '../../../auth/+state/auth.store';
+import { settingsFeature } from '../../../settings/+state/settings.store';
 import { SavedMealNameDialogService } from '../../../saved-meals/saved-meal-name-dialog/saved-meal-name-dialog.service';
 import { SavedMealsService } from '../../../saved-meals/services/saved-meals.service';
+import { LogMealDialogService } from '../../../../meal-logs-feature/log-meal-dialog/log-meal-dialog.service';
+import { MealLogsService } from '../../../../meal-logs-feature/services/meal-logs.service';
+import { MealLogsApiActions } from '../../../../meal-logs-feature/+state/meal-logs.actions';
 import { CurrentMeal, MealEntry } from '../../current-meal.model';
 import { CurrentMealService } from '../../services/current-meal.service';
 import { CurrentMealApiActions } from '../actions/api.actions';
@@ -17,6 +21,7 @@ import { currentMealFeature } from '../current-meal.store';
 import {
   addMealEntryToCurrentMeal,
   removeAllMealEntriesOfCurrentMeal$,
+  saveCurrentMealAsMealLog,
   saveCurrentMealAsSavedMeal,
 } from './api.effects';
 
@@ -123,6 +128,129 @@ describe('saveCurrentMealAsSavedMeal', () => {
 
     expect(results).toEqual([
       CurrentMealApiActions.saveCurrentMealFailed({ error: expect.any(Error) }),
+    ]);
+  });
+});
+
+describe('saveCurrentMealAsMealLog', () => {
+  let actions$: Subject<Action>;
+  let logMealDialogService: jest.Mocked<LogMealDialogService>;
+  let mealLogsService: jest.Mocked<MealLogsService>;
+
+  const insulinToCarbRatios = {
+    showInsulinUnits: true,
+    breakfast: 1,
+    lunch: 2,
+    dinner: 3,
+    night: 4,
+  };
+
+  beforeEach(() => {
+    actions$ = new Subject<Action>();
+    logMealDialogService = {
+      open: jest.fn(() => of({ cancelled: true })),
+    } as unknown as jest.Mocked<LogMealDialogService>;
+    mealLogsService = {
+      createMealLog: jest.fn(() => of(undefined)),
+    } as unknown as jest.Mocked<MealLogsService>;
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideMockActions(() => actions$),
+        provideMockStore({
+          selectors: [
+            { selector: authFeature.selectUserId, value: 'user-1' },
+            {
+              selector: currentMealFeature.selectCurrentMeal,
+              value: currentMeal,
+            },
+            {
+              selector: settingsFeature.selectInsulinToCarbRatios,
+              value: insulinToCarbRatios,
+            },
+          ],
+        }),
+        { provide: LogMealDialogService, useValue: logMealDialogService },
+        { provide: MealLogsService, useValue: mealLogsService },
+      ],
+    });
+  });
+
+  it('opens the log meal dialog and saves when the user confirms', () => {
+    logMealDialogService.open.mockReturnValue(
+      of({
+        cancelled: false,
+        date: new Date('2026-08-10T12:00'),
+        mealType: 'lunch',
+        estimatedInsulin: 5,
+        actualInsulin: 4,
+        note: 'big lunch',
+      }),
+    );
+    const results: Action[] = [];
+
+    TestBed.runInInjectionContext(() =>
+      saveCurrentMealAsMealLog().subscribe((action) => results.push(action)),
+    );
+
+    actions$.next(CurrentMealPageComponentActions.logCurrentMealClicked());
+
+    expect(logMealDialogService.open).toHaveBeenCalledWith({
+      mealEntries: currentMeal.mealEntries,
+      showInsulinUnits: true,
+      insulinToCarbRatios: { breakfast: 1, lunch: 2, dinner: 3, night: 4 },
+    });
+    expect(mealLogsService.createMealLog).toHaveBeenCalledWith({
+      mealEntries: currentMeal.mealEntries,
+      mealType: 'lunch',
+      insulinToCarbRatio: 2,
+      estimatedInsulin: 5,
+      actualInsulin: 4,
+      note: 'big lunch',
+      date: new Date('2026-08-10T12:00'),
+      uid: 'user-1',
+    });
+    expect(results).toEqual([MealLogsApiActions.mealLogCreated()]);
+  });
+
+  it('does not save when the user cancels the dialog', () => {
+    const results: Action[] = [];
+
+    TestBed.runInInjectionContext(() =>
+      saveCurrentMealAsMealLog().subscribe((action) => results.push(action)),
+    );
+
+    actions$.next(CurrentMealPageComponentActions.logCurrentMealClicked());
+
+    expect(logMealDialogService.open).toHaveBeenCalled();
+    expect(mealLogsService.createMealLog).not.toHaveBeenCalled();
+    expect(results).toEqual([]);
+  });
+
+  it('dispatches mealLogCreationFailed when saving fails', () => {
+    logMealDialogService.open.mockReturnValue(
+      of({
+        cancelled: false,
+        date: new Date('2026-08-10T12:00'),
+        mealType: 'lunch',
+        estimatedInsulin: 5,
+        actualInsulin: 4,
+        note: null,
+      }),
+    );
+    mealLogsService.createMealLog.mockReturnValue(
+      throwError(() => new Error('boom')),
+    );
+    const results: Action[] = [];
+
+    TestBed.runInInjectionContext(() =>
+      saveCurrentMealAsMealLog().subscribe((action) => results.push(action)),
+    );
+
+    actions$.next(CurrentMealPageComponentActions.logCurrentMealClicked());
+
+    expect(results).toEqual([
+      MealLogsApiActions.mealLogCreationFailed({ error: expect.any(Error) }),
     ]);
   });
 });
