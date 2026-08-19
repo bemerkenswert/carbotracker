@@ -8,12 +8,6 @@ mat-list-item {
   min-height: 48px;
 }
 
-mat-list-item [matListItemTitle],
-mat-list-item [matListItemLine] {
-  margin: 0;
-  line-height: 1.5;
-}
-
 :host
   ::ng-deep
   .mat-calendar-body-cell.has-meal-log
