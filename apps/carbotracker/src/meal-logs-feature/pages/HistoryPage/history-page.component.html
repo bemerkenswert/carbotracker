@@ -9,7 +9,7 @@
     @for (mealLog of viewModel().mealLogsForSelectedDate; track mealLog.id) {
       <mat-list-item>
         @if (mealLog.type === 'insulin-dose') {
-          <mat-icon matListItemIcon>syringe</mat-icon>
+          <mat-icon matListItemIcon>medication</mat-icon>
         } @else {
           <mat-icon matListItemIcon>restaurant</mat-icon>
         }
