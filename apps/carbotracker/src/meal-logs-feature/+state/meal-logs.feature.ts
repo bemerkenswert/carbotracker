@@ -8,6 +8,8 @@ import {
 
 interface MealLogsState {
   mealLogs: EntityState<MealLogDocument>;
+  /** Mirrors the model's `date` day-key so `selectMealLogsForSelectedDate`
+   *  filters with a plain `===` and never converts Date to string. */
   selectedDate: string | null;
   error: string | null;
 }
