@@ -471,13 +471,22 @@ exit 0"
 
 # Fake gh for the agent-driven conflict-resolution path: `pr view` reports an
 # OPEN PR whose mergeStateStatus is $1 (default DIRTY) and whose labels are $2
-# (one per line, as `--jq '.[].name'` emits), and an `api` call (the comment
-# POST) is appended to $FAKE_PR_COMMENT_ARGS.
+# (one per line). The labels branch rebuilds the realistic `--json labels`
+# document and runs the script's actual jq filter against it, so the fake
+# reproduces real gh's exit codes — a filter that cannot handle an unlabeled PR
+# fails the read exactly as production does. An `api` call (the comment POST)
+# is appended to $FAKE_PR_COMMENT_ARGS.
 fake_conflict_merge_gh() {
   local status="${1:-DIRTY}" labels="${2:-}"
+  local labels_json filter
+  labels_json='{"labels":[]}'
+  if [[ -n "$labels" ]]; then
+    labels_json="{\"labels\":[$(printf '%s\n' "$labels" | sed 's/.*/{"name":"&"}/' | paste -sd, -)]}"
+  fi
+  filter="$(sed -nE "s/.*--json labels --jq '([^']*)'.*/\1/p" "$ROOT/tools/ct-orchestrator.sh")"
   fake_command gh "if [[ \"\$1\" == \"pr\" && \"\$2\" == \"view\" ]]; then
   if [[ \"\$*\" == *\"--json mergeStateStatus\"* ]]; then printf \"$status\n\";
-  elif [[ \"\$*\" == *\"--json labels\"* ]]; then printf \"$labels\n\";
+  elif [[ \"\$*\" == *\"--json labels\"* ]]; then printf '%s' '$labels_json' | jq -r '$filter'; exit \"\${PIPESTATUS[1]}\";
   else printf \"OPEN\n\"; fi
 elif [[ \"\$1\" == \"api\" ]]; then
   printf \"%s\n\" \"\$*\" >> \"\${FAKE_PR_COMMENT_ARGS:-/dev/null}\"
@@ -486,16 +495,22 @@ exit 0"
 }
 
 # Fake git for the conflict-resolution path: fetch, merge-base, and push are
-# recorded to $FAKE_MERGE_GIT_ARGS; when $1 is not "yes" the ancestry check
-# fails (verify-before-push).
+# recorded to $FAKE_MERGE_GIT_ARGS. The ancestry checks are controlled
+# separately: $1 governs `merge-base --is-ancestor origin/main HEAD` (verify
+# that main merged in) and $2 governs the branch's own ancestry check
+# (`origin/ticket/...`), so a test can model the remote branch having advanced
+# while main stayed an ancestor. Both default to "yes".
 fake_conflict_merge_git() {
-  local ancestor="${1:-yes}"
+  local main_ancestor="${1:-yes}" branch_ancestor="${2:-yes}"
   fake_command git "if [[ \"\$1\" == \"-C\" ]]; then
   worktree=\"\$2\"
   shift 2
 fi
 printf \"%s %s\n\" \"\$worktree\" \"\$*\" >> \"\$FAKE_MERGE_GIT_ARGS\"
-if [[ \"\$1\" == \"merge-base\" && \"$ancestor\" != \"yes\" ]]; then exit 1; fi
+if [[ \"\$1\" == \"merge-base\" ]]; then
+  if [[ \"\$*\" == *\"origin/main\"* && \"$main_ancestor\" != \"yes\" ]]; then exit 1; fi
+  if [[ \"\$*\" == *\"origin/\"* && \"\$*\" != *\"origin/main\"* && \"$branch_ancestor\" != \"yes\" ]]; then exit 1; fi
+fi
 exit 0"
 }
 
@@ -3753,6 +3768,66 @@ exit 0'
   state_teardown
 }
 
+test_merge_poll_delegates_unlabeled_dirty_pr() {
+  state_setup
+  fake_conflict_merge_gh DIRTY ""
+  fake_conflict_merge_git
+  fake_merge_opencode_log "$STATE_DIR/opencode_log"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  export FAKE_OPENCODE_LOG="$STATE_DIR/opencode_log"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_eq "unlabeled dirty pr is not a label-read failure" "0" "$(printf '%s' "$output" | grep -c 'could not read labels' || true)"
+  assert_eq "unlabeled dirty pr still runs the conflict-resolution agent" "1" "$(wc -l < "$FAKE_OPENCODE_LOG")"
+  assert_contains "unlabeled dirty pr is resolved and pushed" "agent resolved conflicts" "$output"
+  unset FAKE_MERGE_GIT_ARGS FAKE_OPENCODE_LOG
+  state_teardown
+}
+
+test_merge_poll_integrates_advanced_remote_branch() {
+  state_setup
+  fake_conflict_merge_gh DIRTY ""
+  fake_conflict_merge_git yes no
+  fake_merge_opencode "$STATE_DIR/opencode_args"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
+  assert_contains "an advanced remote branch is fetched before pushing" "fetch origin ticket/123-foo" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_contains "an advanced remote branch is merged into the branch" "merge --no-ff --no-edit origin/ticket/123-foo" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_contains "the branch is still pushed after integrating the remote head" "push origin ticket/123-foo" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  assert_contains "integrating the advanced branch logs the verified push" "agent resolved conflicts" "$output"
+  assert_eq "integrating the advanced branch resets failures" "0" "$(jq -r '.[0].mergeFailures' "$TEST_STATE")"
+  unset FAKE_MERGE_GIT_ARGS FAKE_OPENCODE_ARGS
+  state_teardown
+}
+
+test_merge_poll_does_not_merge_when_branch_ancestor() {
+  state_setup
+  fake_conflict_merge_gh DIRTY ""
+  fake_conflict_merge_git
+  fake_merge_opencode "$STATE_DIR/opencode_args"
+  local worktree="$WT_PARENT/123-foo"
+  mkdir -p "$worktree"
+  export FAKE_MERGE_GIT_ARGS="$STATE_DIR/git_args"
+  export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>/dev/null
+  assert_eq "an already-ancestor remote branch is not merged again" "0" "$(grep -c 'merge --no-ff --no-edit origin/ticket/123-foo' "$FAKE_MERGE_GIT_ARGS" || true)"
+  assert_contains "an already-ancestor remote branch is still pushed" "push origin ticket/123-foo" "$(cat "$FAKE_MERGE_GIT_ARGS")"
+  unset FAKE_MERGE_GIT_ARGS FAKE_OPENCODE_ARGS
+  state_teardown
+}
+
 test_labels_are_suspect_pure_helper() {
   if orchestrator_labels_are_suspect "suspect-diff"; then
     pass "suspect-diff without approval is suspect"
@@ -4535,6 +4610,9 @@ test_merge_poll_bounds_agent_merges
 test_merge_poll_skips_suspect_pr
 test_merge_poll_skips_suspect_behind_pr
 test_merge_poll_fails_closed_when_labels_unreadable
+test_merge_poll_delegates_unlabeled_dirty_pr
+test_merge_poll_integrates_advanced_remote_branch
+test_merge_poll_does_not_merge_when_branch_ancestor
 test_labels_are_suspect_pure_helper
 test_merge_poll_delegation_requires_a_session
 test_merge_poll_retries_needs_human_comment

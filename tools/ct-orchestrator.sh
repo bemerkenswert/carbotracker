@@ -310,7 +310,7 @@ orchestrator_pr_merge_state() {
 # propagates its non-zero exit so callers can fail closed like the merge gate.
 orchestrator_pr_labels() {
   local pr="$1"
-  gh pr view "$pr" --json labels --jq '.[].name' 2>/dev/null
+  gh pr view "$pr" --json labels --jq '(.labels // []) | .[].name' 2>/dev/null
 }
 
 # True when a newline-separated label list carries the suspect-diff label
@@ -973,8 +973,25 @@ orchestrator_merge_behind_pr() {
 # the push proves nothing about the remote's current main, so re-fetch
 # origin/main and re-confirm it is still an ancestor of the branch tip. An
 # unverified push is never trusted.
+#
+# The remote branch itself may have advanced since the worktree last fetched it
+# (a human pushed fixes, or an earlier run landed) while origin/main moved too.
+# Without integrating that head the push would be rejected non-fast-forward and
+# the merge could never land, so the branch is fetched and merged in first; the
+# push is then a fast-forward. A conflict aborts cleanly and fails closed.
 orchestrator_merge_push_and_verify() {
   local branch="$1" worktree="$2" pr_number="$3"
+  if ! git -C "$worktree" fetch origin "$branch"; then
+    orchestrator_log "WARNING: failed to fetch origin/$branch for PR #$pr_number"
+    return 1
+  fi
+  if ! git -C "$worktree" merge-base --is-ancestor origin/"$branch" HEAD; then
+    if ! git -C "$worktree" merge --no-ff --no-edit origin/"$branch"; then
+      orchestrator_log "WARNING: origin/$branch conflicts with branch $branch for PR #$pr_number; aborting the merge"
+      git -C "$worktree" merge --abort 2>/dev/null || true
+      return 1
+    fi
+  fi
   if ! git -C "$worktree" push origin "$branch"; then
     orchestrator_log "WARNING: failed to push merged branch $branch for PR #$pr_number"
     return 1
