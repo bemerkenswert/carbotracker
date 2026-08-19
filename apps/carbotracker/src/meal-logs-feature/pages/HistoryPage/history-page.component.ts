@@ -77,8 +77,11 @@ export default class HistoryPageComponent implements OnInit, OnDestroy {
     this.store.dispatch(HistoryPageComponentActions.logInsulinDoseClicked());
   }
 
-  protected readonly dateClass = (date: Date): MatCalendarCellCssClasses =>
-    this.viewModel().datesWithMealLogs.has(toDateString(date))
-      ? 'has-meal-log'
-      : '';
+  protected readonly dateClass: Signal<
+    (date: Date) => MatCalendarCellCssClasses
+  > = computed(() => {
+    const datesWithMealLogs = this.viewModel().datesWithMealLogs;
+    return (date: Date): MatCalendarCellCssClasses =>
+      datesWithMealLogs.has(toDateString(date)) ? 'has-meal-log' : '';
+  });
 }

@@ -1,6 +1,6 @@
 <ctui-toolbar title="History"></ctui-toolbar>
 <mat-calendar
-  [dateClass]="dateClass"
+  [dateClass]="dateClass()"
   [selected]="selectedDate()"
   (selectedChange)="onDateSelected($event)"
 ></mat-calendar>
