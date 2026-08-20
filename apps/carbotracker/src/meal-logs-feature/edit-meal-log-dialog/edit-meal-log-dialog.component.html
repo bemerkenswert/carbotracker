@@ -1,6 +1,4 @@
-<h2 mat-dialog-title>
-  {{ isEditing ? 'Edit insulin dose' : 'Log insulin dose' }}
-</h2>
+<h2 mat-dialog-title>Edit meal</h2>
 <mat-dialog-content>
   <mat-form-field appearance="fill">
     <mat-label>Date</mat-label>
@@ -16,13 +14,25 @@
     <input matInput type="time" [(ngModel)]="time" />
   </mat-form-field>
   <mat-form-field appearance="fill">
-    <mat-label>Insulin</mat-label>
+    <mat-label>Meal type</mat-label>
+    <mat-select [(ngModel)]="mealType">
+      @for (type of mealTypes; track type) {
+        <mat-option [value]="type">{{ type }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field appearance="fill">
+    <mat-label>Estimated insulin</mat-label>
+    <input matInput type="number" [value]="estimatedInsulin" disabled />
+  </mat-form-field>
+  <mat-form-field appearance="fill">
+    <mat-label>Actual insulin</mat-label>
     <input
       matInput
       type="number"
       min="0"
       step="0.5"
-      [(ngModel)]="insulin"
+      [(ngModel)]="actualInsulin"
       cdkFocusInitial
     />
   </mat-form-field>

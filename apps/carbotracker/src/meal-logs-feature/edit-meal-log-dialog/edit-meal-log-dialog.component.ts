@@ -6,14 +6,16 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialogModule, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
 import { toLocalTimeString } from '../date.util';
+import { MealType } from '../meal-log.model';
 import {
-  InsulinDoseDialogData,
-  InsulinDoseDialogResult,
-} from './insulin-dose-dialog.model';
+  EditMealLogDialogData,
+  EditMealLogDialogResult,
+} from './edit-meal-log-dialog.model';
 
 @Component({
-  selector: 'carbotracker-insulin-dose-dialog',
+  selector: 'carbotracker-edit-meal-log-dialog',
   imports: [
     MatDialogModule,
     MatButtonModule,
@@ -21,35 +23,41 @@ import {
     MatInputModule,
     MatDatepickerModule,
     MatNativeDateModule,
+    MatSelectModule,
     FormsModule,
   ],
-  templateUrl: './insulin-dose-dialog.component.html',
-  styleUrls: ['./insulin-dose-dialog.component.scss'],
+  templateUrl: './edit-meal-log-dialog.component.html',
+  styleUrls: ['./edit-meal-log-dialog.component.scss'],
 })
-export class InsulinDoseDialogComponent {
-  private readonly data = inject<InsulinDoseDialogData>(MAT_DIALOG_DATA);
+export class EditMealLogDialogComponent {
+  private readonly data = inject<EditMealLogDialogData>(MAT_DIALOG_DATA);
 
-  protected readonly isEditing = this.data.dose !== undefined;
-  protected date: Date = this.data.dose?.createdAt ?? new Date();
-  protected time: string = toLocalTimeString(
-    this.data.dose?.createdAt ?? new Date(),
-  );
-  protected insulin: number | null = this.data.dose?.insulin ?? null;
-  protected note = this.data.dose?.note ?? '';
+  protected readonly estimatedInsulin = this.data.mealLog.estimatedInsulin;
+  protected readonly mealTypes: MealType[] = [
+    'breakfast',
+    'lunch',
+    'dinner',
+    'night',
+  ];
+  protected date: Date = this.data.mealLog.createdAt;
+  protected time: string = toLocalTimeString(this.data.mealLog.createdAt);
+  protected mealType: MealType = this.data.mealLog.mealType;
+  protected actualInsulin: number = this.data.mealLog.actualInsulin;
+  protected note = this.data.mealLog.note ?? '';
 
   protected get canSave(): boolean {
     return (
-      this.insulin !== null &&
-      this.insulin > 0 &&
+      this.actualInsulin >= 0 &&
       !Number.isNaN(this.selectedDateTime().getTime())
     );
   }
 
-  protected getResult(): InsulinDoseDialogResult {
+  protected getResult(): EditMealLogDialogResult {
     return {
       cancelled: false,
       date: this.selectedDateTime(),
-      insulin: this.insulin as number,
+      mealType: this.mealType,
+      actualInsulin: this.actualInsulin,
       note: this.note.trim() || null,
     };
   }

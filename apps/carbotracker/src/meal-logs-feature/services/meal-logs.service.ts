@@ -4,9 +4,13 @@ import { Unsubscribe } from 'firebase/auth';
 import {
   addDoc,
   collection,
+  deleteDoc,
+  doc,
   getFirestore,
   onSnapshot,
   query,
+  setDoc,
+  updateDoc,
   where,
 } from 'firebase/firestore';
 import { from } from 'rxjs';
@@ -142,6 +146,57 @@ export class MealLogsService {
         date: toDateString(params.date),
         createdAt: params.date,
         creator: params.uid,
+      }),
+    );
+  }
+
+  public updateInsulinDose(params: {
+    id: string;
+    date: Date;
+    insulin: number;
+    note: string | null;
+  }) {
+    const document = doc(getFirestore(), 'meal-logs', params.id);
+    return from(
+      updateDoc(document, {
+        date: toDateString(params.date),
+        createdAt: params.date,
+        insulin: params.insulin,
+        note: params.note,
+      }),
+    );
+  }
+
+  public updateMealLog(params: {
+    id: string;
+    date: Date;
+    mealType: MealType;
+    actualInsulin: number;
+    note: string | null;
+  }) {
+    const document = doc(getFirestore(), 'meal-logs', params.id);
+    return from(
+      updateDoc(document, {
+        date: toDateString(params.date),
+        createdAt: params.date,
+        mealType: params.mealType,
+        actualInsulin: params.actualInsulin,
+        note: params.note,
+      }),
+    );
+  }
+
+  public deleteMealLogDocument(params: { id: string }) {
+    return from(deleteDoc(doc(getFirestore(), 'meal-logs', params.id)));
+  }
+
+  public reloadMealIntoCurrentMeal(params: {
+    uid: string;
+    mealEntries: MealEntry[];
+  }) {
+    return from(
+      setDoc(doc(getFirestore(), 'current-meals', params.uid), {
+        mealEntries: params.mealEntries,
       }),
     );
   }
