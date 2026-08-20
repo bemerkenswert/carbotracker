@@ -2,6 +2,7 @@ import { inject } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { map, switchMap } from 'rxjs';
+import { MealLogsApiActions } from '../../../../meal-logs-feature/+state/meal-logs.actions';
 import { CurrentMealApiActions } from '../actions/api.actions';
 import { CurrentMealSnackBarActions } from '../actions/snackbar.actions';
 
@@ -107,6 +108,40 @@ export const showSaveCurrentMealFailedSnackbar$ = createEffect(
             map(() =>
               CurrentMealSnackBarActions.showSaveCurrentMealSnackbarFailed(),
             ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const showMealLogSavedSuccessfulSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(MealLogsApiActions.mealLogCreated),
+      switchMap(() =>
+        snackBar
+          .open('The meal was logged.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              CurrentMealSnackBarActions.showLogMealSnackbarSuccessful(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const showMealLogSavedFailedSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(MealLogsApiActions.mealLogCreationFailed),
+      switchMap(() =>
+        snackBar
+          .open('The meal could not be logged.')
+          .afterOpened()
+          .pipe(
+            map(() => CurrentMealSnackBarActions.showLogMealSnackbarFailed()),
           ),
       ),
     ),

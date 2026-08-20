@@ -6,11 +6,14 @@ import { provideMockStore } from '@ngrx/store/testing';
 import { Observable, of, Subject } from 'rxjs';
 import { CurrentMealApiActions } from '../actions/api.actions';
 import { CurrentMealSnackBarActions } from '../actions/snackbar.actions';
+import { MealLogsApiActions } from '../../../../meal-logs-feature/+state/meal-logs.actions';
 import {
   showAddMealEntryFailedSnackbar$,
   showAddMealEntrySuccessfulSnackbar$,
   showClearCurrentMealFailedSnackbar$,
   showClearCurrentMealSuccessfulSnackbar$,
+  showMealLogSavedFailedSnackbar$,
+  showMealLogSavedSuccessfulSnackbar$,
   showSaveCurrentMealFailedSnackbar$,
   showSaveCurrentMealSuccessfulSnackbar$,
 } from './snackbar.effects';
@@ -142,6 +145,45 @@ describe('snackbar effects', () => {
       );
       expect(results).toEqual([
         CurrentMealSnackBarActions.showSaveCurrentMealSnackbarFailed(),
+      ]);
+    });
+  });
+
+  describe('showMealLogSavedSuccessfulSnackbar$', () => {
+    it('shows the log meal success snackbar', () => {
+      const results = run(() => showMealLogSavedSuccessfulSnackbar$());
+
+      actions$.next(MealLogsApiActions.mealLogCreated());
+
+      expect(snackBar.open).toHaveBeenCalledWith('The meal was logged.');
+      expect(results).toEqual([
+        CurrentMealSnackBarActions.showLogMealSnackbarSuccessful(),
+      ]);
+    });
+
+    it('does not show the log meal snackbar for other actions', () => {
+      const results = run(() => showMealLogSavedSuccessfulSnackbar$());
+
+      actions$.next(CurrentMealApiActions.clearCurrentMealSuccessful());
+
+      expect(snackBar.open).not.toHaveBeenCalled();
+      expect(results).toEqual([]);
+    });
+  });
+
+  describe('showMealLogSavedFailedSnackbar$', () => {
+    it('shows the log meal failure snackbar', () => {
+      const results = run(() => showMealLogSavedFailedSnackbar$());
+
+      actions$.next(
+        MealLogsApiActions.mealLogCreationFailed({ error: 'boom' }),
+      );
+
+      expect(snackBar.open).toHaveBeenCalledWith(
+        'The meal could not be logged.',
+      );
+      expect(results).toEqual([
+        CurrentMealSnackBarActions.showLogMealSnackbarFailed(),
       ]);
     });
   });
