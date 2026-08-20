@@ -23,6 +23,7 @@ import {
 import { Store } from '@ngrx/store';
 import { HistoryPageComponentActions } from '../../+state/meal-logs.actions';
 import { fromDateString, toDateString } from '../../date.util';
+import { MealLogDocument } from '../../meal-log.model';
 import { selectHistoryPageViewModel } from './history-page.selectors';
 
 @Component({
@@ -75,6 +76,26 @@ export default class HistoryPageComponent implements OnInit, OnDestroy {
 
   protected onLogInsulinDoseClick() {
     this.store.dispatch(HistoryPageComponentActions.logInsulinDoseClicked());
+  }
+
+  protected onEntryClick(mealLog: MealLogDocument) {
+    this.store.dispatch(
+      mealLog.type === 'meal-log'
+        ? HistoryPageComponentActions.editMealLogClicked({ mealLog })
+        : HistoryPageComponentActions.editInsulinDoseClicked({ mealLog }),
+    );
+  }
+
+  protected onDeleteClick(mealLog: MealLogDocument) {
+    this.store.dispatch(
+      HistoryPageComponentActions.deleteMealLogDocumentClicked({ mealLog }),
+    );
+  }
+
+  protected onReloadClick(mealLog: MealLogDocument) {
+    this.store.dispatch(
+      HistoryPageComponentActions.reloadMealLogIntoMealClicked({ mealLog }),
+    );
   }
 
   protected readonly dateClass: Signal<

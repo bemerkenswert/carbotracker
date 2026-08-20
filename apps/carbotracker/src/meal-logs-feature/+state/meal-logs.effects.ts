@@ -5,8 +5,13 @@ import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
 import { EMPTY, filter, switchMap, tap } from 'rxjs';
 import { authFeature } from '../../features/auth/+state/auth.store';
+import { ConfirmationDialogService } from '@carbotracker/ui';
+import { EditMealLogDialogService } from '../edit-meal-log-dialog/edit-meal-log-dialog.service';
+import { ConfirmedEditMealLogDialogResult } from '../edit-meal-log-dialog/edit-meal-log-dialog.model';
 import { InsulinDoseDialogService } from '../insulin-dose-dialog/insulin-dose-dialog.service';
+import { ConfirmedInsulinDoseDialogResult } from '../insulin-dose-dialog/insulin-dose-dialog.model';
 import { MealLogsService } from '../services/meal-logs.service';
+import { MealLog } from '../meal-log.model';
 import {
   HistoryPageComponentActions,
   MealLogsApiActions,
@@ -60,14 +65,8 @@ export const createInsulinDose$ = createEffect(
         }
         return insulinDoseDialogService.open().pipe(
           filter(
-            (
-              result,
-            ): result is {
-              cancelled: false;
-              date: Date;
-              insulin: number;
-              note: string | null;
-            } => !result.cancelled,
+            (result): result is ConfirmedInsulinDoseDialogResult =>
+              !result.cancelled,
           ),
           switchMap(({ date, insulin, note }) =>
             mealLogsService
@@ -81,6 +80,162 @@ export const createInsulinDose$ = createEffect(
               ),
           ),
         );
+      }),
+    ),
+  { functional: true },
+);
+
+export const editInsulinDose$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    insulinDoseDialogService = inject(InsulinDoseDialogService),
+    mealLogsService = inject(MealLogsService),
+  ) =>
+    actions$.pipe(
+      ofType(HistoryPageComponentActions.editInsulinDoseClicked),
+      switchMap(({ mealLog }) => {
+        if (mealLog.type !== 'insulin-dose') {
+          return EMPTY;
+        }
+        return insulinDoseDialogService
+          .open({
+            dose: {
+              createdAt: mealLog.createdAt,
+              insulin: mealLog.insulin,
+              note: mealLog.note,
+            },
+          })
+          .pipe(
+            filter(
+              (result): result is ConfirmedInsulinDoseDialogResult =>
+                !result.cancelled,
+            ),
+            switchMap(({ date, insulin, note }) =>
+              mealLogsService
+                .updateInsulinDose({
+                  id: mealLog.id,
+                  date,
+                  insulin,
+                  note,
+                })
+                .pipe(
+                  mapResponse({
+                    next: () => MealLogsApiActions.insulinDoseUpdated(),
+                    error: (error) =>
+                      MealLogsApiActions.insulinDoseUpdateFailed({ error }),
+                  }),
+                ),
+            ),
+          );
+      }),
+    ),
+  { functional: true },
+);
+
+export const editMealLog$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    editMealLogDialogService = inject(EditMealLogDialogService),
+    mealLogsService = inject(MealLogsService),
+  ) =>
+    actions$.pipe(
+      ofType(HistoryPageComponentActions.editMealLogClicked),
+      switchMap(({ mealLog }) => {
+        if (mealLog.type !== 'meal-log') {
+          return EMPTY;
+        }
+        return editMealLogDialogService
+          .open({
+            mealLog: {
+              createdAt: mealLog.createdAt,
+              mealType: mealLog.mealType,
+              estimatedInsulin: mealLog.estimatedInsulin,
+              actualInsulin: mealLog.actualInsulin,
+              note: mealLog.note,
+            },
+          })
+          .pipe(
+            filter(
+              (result): result is ConfirmedEditMealLogDialogResult =>
+                !result.cancelled,
+            ),
+            switchMap(({ date, mealType, actualInsulin, note }) =>
+              mealLogsService
+                .updateMealLog({
+                  id: mealLog.id,
+                  date,
+                  mealType,
+                  actualInsulin,
+                  note,
+                })
+                .pipe(
+                  mapResponse({
+                    next: () => MealLogsApiActions.mealLogUpdated(),
+                    error: (error) =>
+                      MealLogsApiActions.mealLogUpdateFailed({ error }),
+                  }),
+                ),
+            ),
+          );
+      }),
+    ),
+  { functional: true },
+);
+
+export const deleteMealLogDocument$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    confirmationDialogService = inject(ConfirmationDialogService),
+    mealLogsService = inject(MealLogsService),
+  ) =>
+    actions$.pipe(
+      ofType(HistoryPageComponentActions.deleteMealLogDocumentClicked),
+      switchMap(({ mealLog }) =>
+        confirmationDialogService
+          .openDeleteConfirmationDialog('this entry')
+          .pipe(
+            filter((result) => result?.confirmed === true),
+            switchMap(() =>
+              mealLogsService.deleteMealLogDocument({ id: mealLog.id }).pipe(
+                mapResponse({
+                  next: () => MealLogsApiActions.mealLogDocumentDeleted(),
+                  error: (error) =>
+                    MealLogsApiActions.mealLogDocumentDeletionFailed({ error }),
+                }),
+              ),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const reloadMealLogIntoMeal$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    mealLogsService = inject(MealLogsService),
+    store = inject(Store),
+  ) =>
+    actions$.pipe(
+      ofType(HistoryPageComponentActions.reloadMealLogIntoMealClicked),
+      concatLatestFrom(() => store.select(authFeature.selectUserId)),
+      switchMap(([{ mealLog }, uid]) => {
+        if (!uid || mealLog.type !== 'meal-log') {
+          return EMPTY;
+        }
+        const meal = mealLog as MealLog;
+        return mealLogsService
+          .reloadMealIntoCurrentMeal({
+            uid,
+            mealEntries: meal.mealEntries,
+          })
+          .pipe(
+            mapResponse({
+              next: () => MealLogsApiActions.mealLogReloadedIntoMeal(),
+              error: (error) =>
+                MealLogsApiActions.mealLogReloadIntoMealFailed({ error }),
+            }),
+          );
       }),
     ),
   { functional: true },

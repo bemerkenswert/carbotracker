@@ -7,7 +7,7 @@
 @if (viewModel().mealLogsForSelectedDate.length > 0) {
   <mat-nav-list>
     @for (mealLog of viewModel().mealLogsForSelectedDate; track mealLog.id) {
-      <mat-list-item>
+      <mat-list-item (click)="onEntryClick(mealLog)">
         @if (mealLog.type === 'insulin-dose') {
           <mat-icon matListItemIcon>medication</mat-icon>
         } @else {
@@ -32,9 +32,34 @@
         <p matListItemLine>
           {{ mealLog.createdAt | date: 'short' }}
         </p>
+        @if (mealLog.type === 'meal-log') {
+          <p matListItemLine>
+            Estimated
+            {{ mealLog.estimatedInsulin | number: '1.0-1' }} I.U. · Ratio
+            {{ mealLog.insulinToCarbRatio | number: '1.0-1' }}
+          </p>
+        }
         @if (mealLog.note) {
           <p matListItemLine>{{ mealLog.note }}</p>
         }
+        <div matListItemMeta>
+          @if (mealLog.type === 'meal-log') {
+            <button
+              mat-icon-button
+              matTooltip="Reload into meal"
+              (click)="onReloadClick(mealLog); $event.stopPropagation()"
+            >
+              <mat-icon>playlist_add</mat-icon>
+            </button>
+          }
+          <button
+            mat-icon-button
+            matTooltip="Delete"
+            (click)="onDeleteClick(mealLog); $event.stopPropagation()"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
       </mat-list-item>
     }
   </mat-nav-list>

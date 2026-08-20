@@ -11,13 +11,15 @@ import {
 export class InsulinDoseDialogService {
   private readonly dialog = inject(MatDialog);
 
-  public open(): Observable<InsulinDoseDialogResult> {
+  public open(
+    data?: InsulinDoseDialogData,
+  ): Observable<InsulinDoseDialogResult> {
     return this.dialog
       .open<
         InsulinDoseDialogComponent,
         InsulinDoseDialogData,
         InsulinDoseDialogResult
-      >(InsulinDoseDialogComponent, { data: {} })
+      >(InsulinDoseDialogComponent, { data: data ?? {} })
       .afterClosed()
       .pipe(
         map((result): InsulinDoseDialogResult => result ?? { cancelled: true }),
