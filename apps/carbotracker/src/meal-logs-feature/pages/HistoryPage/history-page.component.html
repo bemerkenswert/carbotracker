@@ -31,6 +31,9 @@
         </h4>
         <p matListItemLine>
           {{ mealLog.createdAt | date: 'short' }}
+          @if (mealLog.note) {
+            · {{ mealLog.note }}
+          }
         </p>
         @if (mealLog.type === 'meal-log') {
           <p matListItemLine>
@@ -38,9 +41,6 @@
             {{ mealLog.estimatedInsulin | number: '1.0-1' }} I.U. · Ratio
             {{ mealLog.insulinToCarbRatio | number: '1.0-1' }}
           </p>
-        }
-        @if (mealLog.note) {
-          <p matListItemLine>{{ mealLog.note }}</p>
         }
         <div matListItemMeta>
           @if (mealLog.type === 'meal-log') {
