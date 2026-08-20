@@ -144,7 +144,9 @@ describe('createInsulinDose$', () => {
       insulinDoseDialogService,
       mealLogsService,
       buildStore(),
-    ).pipe(take(1)).subscribe((action) => results.push(action));
+    )
+      .pipe(take(1))
+      .subscribe((action) => results.push(action));
 
     actions$.next(HistoryPageComponentActions.logInsulinDoseClicked());
 
@@ -168,7 +170,9 @@ describe('createInsulinDose$', () => {
       insulinDoseDialogService,
       mealLogsService,
       buildStore(),
-    ).pipe(take(1)).subscribe();
+    )
+      .pipe(take(1))
+      .subscribe();
 
     actions$.next(HistoryPageComponentActions.logInsulinDoseClicked());
 
@@ -197,7 +201,9 @@ describe('createInsulinDose$', () => {
       insulinDoseDialogService,
       mealLogsService,
       buildStore(),
-    ).pipe(take(1)).subscribe((action) => results.push(action));
+    )
+      .pipe(take(1))
+      .subscribe((action) => results.push(action));
 
     actions$.next(HistoryPageComponentActions.logInsulinDoseClicked());
 

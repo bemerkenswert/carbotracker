@@ -36,7 +36,9 @@ describe('navigateToCurrentMeal$', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      navigateToCurrentMeal$().pipe(take(1)).subscribe((action) => results.push(action)),
+      navigateToCurrentMeal$()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
     );
 
     actions$.next(CurrentMealApiActions.addMealEntrySuccessful());
@@ -48,7 +50,9 @@ describe('navigateToCurrentMeal$', () => {
   });
 
   it('does not navigate on the create meal entry page save click', () => {
-    TestBed.runInInjectionContext(() => navigateToCurrentMeal$().pipe(take(1)).subscribe());
+    TestBed.runInInjectionContext(() =>
+      navigateToCurrentMeal$().pipe(take(1)).subscribe(),
+    );
 
     actions$.next(
       CreateMealEntryPageComponentActions.saveClicked({
@@ -69,7 +73,9 @@ describe('navigateToCurrentMeal$', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      navigateToCurrentMeal$().pipe(take(1)).subscribe((action) => results.push(action)),
+      navigateToCurrentMeal$()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
     );
 
     actions$.next(EditMealEntryPageComponentActions.goBackIconClicked());

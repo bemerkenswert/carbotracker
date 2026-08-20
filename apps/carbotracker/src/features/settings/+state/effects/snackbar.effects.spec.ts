@@ -27,9 +27,9 @@ const collectEffectOutput = (
   const snackBar = buildSnackBar();
   const actions$ = new Subject<Action>();
   const emitted: Action[] = [];
-  effect(actions$.asObservable(), snackBar).pipe(take(1)).subscribe((action) =>
-    emitted.push(action),
-  );
+  effect(actions$.asObservable(), snackBar)
+    .pipe(take(1))
+    .subscribe((action) => emitted.push(action));
   return { snackBar, actions$, emitted };
 };
 

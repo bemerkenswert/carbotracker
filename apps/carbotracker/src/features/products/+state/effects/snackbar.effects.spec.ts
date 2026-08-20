@@ -28,7 +28,9 @@ describe('snackbar effects', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      effect().pipe(take(1)).subscribe((action) => results.push(action)),
+      effect()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
     );
 
     return results;

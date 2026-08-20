@@ -53,7 +53,9 @@ describe('createInsulinToCarbRatios', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      createInsulinToCarbRatios$().pipe(take(1)).subscribe((action) => results.push(action)),
+      createInsulinToCarbRatios$()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -92,7 +94,9 @@ describe('createInsulinToCarbRatios', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      createInsulinToCarbRatios$().pipe(take(1)).subscribe((action) => results.push(action)),
+      createInsulinToCarbRatios$()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -140,7 +144,9 @@ describe('setThemePreference', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      setThemePreference$().pipe(take(1)).subscribe((action) => results.push(action)),
+      setThemePreference$()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -161,7 +167,9 @@ describe('setThemePreference', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      setThemePreference$().pipe(take(1)).subscribe((action) => results.push(action)),
+      setThemePreference$()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
     );
 
     actions$.next(

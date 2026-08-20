@@ -24,7 +24,9 @@ describe('showDeleteConfirmationDialog$', () => {
     showDeleteConfirmationDialog$(
       actions$.asObservable(),
       confirmationDialogService,
-    ).pipe(take(1)).subscribe((action) => results.push(action));
+    )
+      .pipe(take(1))
+      .subscribe((action) => results.push(action));
     return { confirmationDialogService, actions$, results };
   };
 
