@@ -1,6 +1,7 @@
 import { ConfirmationDialogService } from '@carbotracker/ui';
 import { Action } from '@ngrx/store';
 import { of, Subject } from 'rxjs';
+import { take } from 'rxjs/operators';
 import { SavedMeal } from '../../saved-meal.model';
 import { SavedMealPageComponentActions } from '../actions/component.actions';
 import { DeleteSavedMealConfirmationDialogActions } from '../actions/dialog.actions';
@@ -23,7 +24,9 @@ describe('showDeleteConfirmationDialog$', () => {
     showDeleteConfirmationDialog$(
       actions$.asObservable(),
       confirmationDialogService,
-    ).subscribe((action) => results.push(action));
+    )
+      .pipe(take(1))
+      .subscribe((action) => results.push(action));
     return { confirmationDialogService, actions$, results };
   };
 

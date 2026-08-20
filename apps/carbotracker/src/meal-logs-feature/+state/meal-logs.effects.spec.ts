@@ -5,6 +5,7 @@ import { Store } from '@ngrx/store';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Action } from '@ngrx/store';
 import { of, Subject, throwError } from 'rxjs';
+import { take } from 'rxjs/operators';
 import { authFeature } from '../../features/auth/+state/auth.store';
 import { EditMealLogDialogService } from '../edit-meal-log-dialog/edit-meal-log-dialog.service';
 import { InsulinDoseDialogService } from '../insulin-dose-dialog/insulin-dose-dialog.service';
@@ -52,7 +53,7 @@ describe('startStreamingMealLogs$', () => {
       mealLogsService,
       store,
     );
-    effect$.subscribe();
+    effect$.pipe(take(1)).subscribe();
 
     actions$.next(navigateTo('/app/history'));
 
@@ -76,7 +77,7 @@ describe('startStreamingMealLogs$', () => {
       mealLogsService,
       store,
     );
-    effect$.subscribe();
+    effect$.pipe(take(1)).subscribe();
 
     actions$.next(navigateTo('/app/settings'));
 
@@ -96,7 +97,7 @@ describe('stopStreamingMealLogs$', () => {
       actions$.asObservable(),
       mealLogsService,
     );
-    effect$.subscribe();
+    effect$.pipe(take(1)).subscribe();
 
     actions$.next(HistoryPageComponentActions.leftHistoryPage());
 
@@ -143,7 +144,9 @@ describe('createInsulinDose$', () => {
       insulinDoseDialogService,
       mealLogsService,
       buildStore(),
-    ).subscribe((action) => results.push(action));
+    )
+      .pipe(take(1))
+      .subscribe((action) => results.push(action));
 
     actions$.next(HistoryPageComponentActions.logInsulinDoseClicked());
 
@@ -167,7 +170,9 @@ describe('createInsulinDose$', () => {
       insulinDoseDialogService,
       mealLogsService,
       buildStore(),
-    ).subscribe();
+    )
+      .pipe(take(1))
+      .subscribe();
 
     actions$.next(HistoryPageComponentActions.logInsulinDoseClicked());
 
@@ -196,7 +201,9 @@ describe('createInsulinDose$', () => {
       insulinDoseDialogService,
       mealLogsService,
       buildStore(),
-    ).subscribe((action) => results.push(action));
+    )
+      .pipe(take(1))
+      .subscribe((action) => results.push(action));
 
     actions$.next(HistoryPageComponentActions.logInsulinDoseClicked());
 

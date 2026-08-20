@@ -3,6 +3,7 @@ import { provideMockActions } from '@ngrx/effects/testing';
 import { Action } from '@ngrx/store';
 import { MockStore, provideMockStore } from '@ngrx/store/testing';
 import { of, Subject, throwError } from 'rxjs';
+import { take } from 'rxjs/operators';
 import {
   AuthApiActions,
   LogoutApiActions,
@@ -52,7 +53,9 @@ describe('createInsulinToCarbRatios', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      createInsulinToCarbRatios$().subscribe((action) => results.push(action)),
+      createInsulinToCarbRatios$()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -91,7 +94,9 @@ describe('createInsulinToCarbRatios', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      createInsulinToCarbRatios$().subscribe((action) => results.push(action)),
+      createInsulinToCarbRatios$()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -139,7 +144,9 @@ describe('setThemePreference', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      setThemePreference$().subscribe((action) => results.push(action)),
+      setThemePreference$()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -160,7 +167,9 @@ describe('setThemePreference', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      setThemePreference$().subscribe((action) => results.push(action)),
+      setThemePreference$()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -206,7 +215,7 @@ describe('startStreamingInsulinToCarbRatios', () => {
 
   it('subscribes to the insulin to carb ratios stream when the user logs in', () => {
     TestBed.runInInjectionContext(() => {
-      startStreamingInsulinToCarbRatios$().subscribe();
+      startStreamingInsulinToCarbRatios$().pipe(take(1)).subscribe();
     });
 
     actions$.next(
@@ -221,7 +230,7 @@ describe('startStreamingInsulinToCarbRatios', () => {
   it('does not subscribe when the user id is not present', () => {
     store.overrideSelector(authFeature.selectUserId, null);
     TestBed.runInInjectionContext(() => {
-      startStreamingInsulinToCarbRatios$().subscribe();
+      startStreamingInsulinToCarbRatios$().pipe(take(1)).subscribe();
     });
 
     actions$.next(
@@ -258,7 +267,7 @@ describe('stopStreamingInsulinToCarbRatios', () => {
 
   it('unsubscribes from the insulin to carb ratios stream on logout', () => {
     TestBed.runInInjectionContext(() => {
-      stopStreamingInsulinToCarbRatios$().subscribe();
+      stopStreamingInsulinToCarbRatios$().pipe(take(1)).subscribe();
     });
 
     actions$.next(LogoutApiActions.logoutSuccessful());
@@ -292,7 +301,7 @@ describe('startStreamingThemePreference', () => {
 
   it('subscribes to the theme preference stream when the user logs in', () => {
     TestBed.runInInjectionContext(() => {
-      startStreamingThemePreference$().subscribe();
+      startStreamingThemePreference$().pipe(take(1)).subscribe();
     });
 
     actions$.next(
@@ -326,7 +335,7 @@ describe('stopStreamingThemePreference', () => {
 
   it('unsubscribes from the theme preference stream on logout', () => {
     TestBed.runInInjectionContext(() => {
-      stopStreamingThemePreference$().subscribe();
+      stopStreamingThemePreference$().pipe(take(1)).subscribe();
     });
 
     actions$.next(LogoutApiActions.logoutSuccessful());
