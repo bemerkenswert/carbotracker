@@ -1,6 +1,7 @@
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Action } from '@ngrx/store';
 import { Observable, of, Subject } from 'rxjs';
+import { take } from 'rxjs/operators';
 import { SettingsApiActions } from '../actions/api.actions';
 import { InsulinToCarbRatiosPageSnackBarActions } from '../actions/snackbar.actions';
 import {
@@ -26,7 +27,7 @@ const collectEffectOutput = (
   const snackBar = buildSnackBar();
   const actions$ = new Subject<Action>();
   const emitted: Action[] = [];
-  effect(actions$.asObservable(), snackBar).subscribe((action) =>
+  effect(actions$.asObservable(), snackBar).pipe(take(1)).subscribe((action) =>
     emitted.push(action),
   );
   return { snackBar, actions$, emitted };

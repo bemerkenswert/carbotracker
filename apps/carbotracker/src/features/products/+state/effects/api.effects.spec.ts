@@ -3,6 +3,7 @@ import { Action } from '@ngrx/store';
 import { provideMockActions } from '@ngrx/effects/testing';
 import { MockStore, provideMockStore } from '@ngrx/store/testing';
 import { of, Subject, throwError } from 'rxjs';
+import { take } from 'rxjs/operators';
 import { authFeature } from '../../../auth/+state/auth.store';
 import { ProductsService } from '../../services/products.service';
 import { ProductsApiActions } from '../actions/api.actions';
@@ -54,7 +55,7 @@ describe('updateProduct$', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      updateProduct$().subscribe((action) => results.push(action)),
+      updateProduct$().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -77,7 +78,7 @@ describe('updateProduct$', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      updateProduct$().subscribe((action) => results.push(action)),
+      updateProduct$().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -96,7 +97,7 @@ describe('updateProduct$', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      updateProduct$().subscribe((action) => results.push(action)),
+      updateProduct$().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -132,7 +133,7 @@ describe('deleteProduct$', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      deleteProduct$().subscribe((action) => results.push(action)),
+      deleteProduct$().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -152,7 +153,7 @@ describe('deleteProduct$', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      deleteProduct$().subscribe((action) => results.push(action)),
+      deleteProduct$().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -195,7 +196,7 @@ describe('createProduct$', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      createProduct$().subscribe((action) => results.push(action)),
+      createProduct$().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -219,7 +220,7 @@ describe('createProduct$', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      createProduct$().subscribe((action) => results.push(action)),
+      createProduct$().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -238,7 +239,7 @@ describe('createProduct$', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      createProduct$().subscribe((action) => results.push(action)),
+      createProduct$().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(

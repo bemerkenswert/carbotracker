@@ -1,5 +1,6 @@
 import { Action } from '@ngrx/store';
 import { of, Subject, throwError } from 'rxjs';
+import { take } from 'rxjs/operators';
 import { SavedMeal } from '../../saved-meal.model';
 import { SavedMealsService } from '../../services/saved-meals.service';
 import { SavedMealsApiActions } from '../actions/api.actions';
@@ -20,7 +21,7 @@ describe('deleteSavedMeal$', () => {
     } as unknown as jest.Mocked<SavedMealsService>;
     const actions$ = new Subject<Action>();
     const results: Action[] = [];
-    deleteSavedMeal$(actions$.asObservable(), savedMealsService).subscribe(
+    deleteSavedMeal$(actions$.asObservable(), savedMealsService).pipe(take(1)).subscribe(
       (action) => results.push(action),
     );
     return { savedMealsService, actions$, results };

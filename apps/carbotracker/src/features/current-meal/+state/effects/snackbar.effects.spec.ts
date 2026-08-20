@@ -4,6 +4,7 @@ import { provideMockActions } from '@ngrx/effects/testing';
 import { Action } from '@ngrx/store';
 import { provideMockStore } from '@ngrx/store/testing';
 import { Observable, of, Subject } from 'rxjs';
+import { take } from 'rxjs/operators';
 import { CurrentMealApiActions } from '../actions/api.actions';
 import { CurrentMealSnackBarActions } from '../actions/snackbar.actions';
 import { MealLogsApiActions } from '../../../../meal-logs-feature/+state/meal-logs.actions';
@@ -26,7 +27,7 @@ describe('snackbar effects', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      effect().subscribe((action) => results.push(action)),
+      effect().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     return results;

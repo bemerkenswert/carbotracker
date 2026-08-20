@@ -1,6 +1,7 @@
 import { Router } from '@angular/router';
 import { Action } from '@ngrx/store';
 import { of, Subject } from 'rxjs';
+import { take } from 'rxjs/operators';
 import { SavedMeal } from '../../saved-meal.model';
 import { SavedMealsApiActions } from '../actions/api.actions';
 import { SavedMealsPageComponentActions } from '../actions/component.actions';
@@ -27,7 +28,7 @@ describe('navigateToSavedMeal$', () => {
     const router = buildRouter();
     const actions$ = new Subject<Action>();
     const results: Action[] = [];
-    navigateToSavedMeal$(actions$.asObservable(), router).subscribe((action) =>
+    navigateToSavedMeal$(actions$.asObservable(), router).pipe(take(1)).subscribe((action) =>
       results.push(action),
     );
 
@@ -44,7 +45,7 @@ describe('navigateToSavedMeal$', () => {
   it('does not navigate for other actions', () => {
     const router = buildRouter();
     const actions$ = new Subject<Action>();
-    navigateToSavedMeal$(actions$.asObservable(), router).subscribe();
+    navigateToSavedMeal$(actions$.asObservable(), router).pipe(take(1)).subscribe();
 
     actions$.next(SavedMealsPageComponentActions.enteredSavedMealsPage());
 
@@ -57,7 +58,7 @@ describe('navigateToSavedMealsPage$', () => {
     const router = buildRouter();
     const actions$ = new Subject<Action>();
     const results: Action[] = [];
-    navigateToSavedMealsPage$(actions$.asObservable(), router).subscribe(
+    navigateToSavedMealsPage$(actions$.asObservable(), router).pipe(take(1)).subscribe(
       (action) => results.push(action),
     );
 
@@ -72,7 +73,7 @@ describe('navigateToSavedMealsPage$', () => {
   it('does not navigate when deleting the saved meal fails', () => {
     const router = buildRouter();
     const actions$ = new Subject<Action>();
-    navigateToSavedMealsPage$(actions$.asObservable(), router).subscribe();
+    navigateToSavedMealsPage$(actions$.asObservable(), router).pipe(take(1)).subscribe();
 
     actions$.next(
       SavedMealsApiActions.deletingSavedMealFailed({ error: 'boom' }),

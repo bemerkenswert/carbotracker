@@ -3,6 +3,7 @@ import { provideMockActions } from '@ngrx/effects/testing';
 import { Action } from '@ngrx/store';
 import { provideMockStore } from '@ngrx/store/testing';
 import { of, Subject, throwError } from 'rxjs';
+import { take } from 'rxjs/operators';
 import { authFeature } from '../../../auth/+state/auth.store';
 import { settingsFeature } from '../../../settings/+state/settings.store';
 import { SavedMealNameDialogService } from '../../../saved-meals/saved-meal-name-dialog/saved-meal-name-dialog.service';
@@ -83,7 +84,7 @@ describe('saveCurrentMealAsSavedMeal', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      saveCurrentMealAsSavedMeal().subscribe((action) => results.push(action)),
+      saveCurrentMealAsSavedMeal().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(CurrentMealPageComponentActions.saveCurrentMealClicked());
@@ -102,7 +103,7 @@ describe('saveCurrentMealAsSavedMeal', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      saveCurrentMealAsSavedMeal().subscribe((action) => results.push(action)),
+      saveCurrentMealAsSavedMeal().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(CurrentMealPageComponentActions.saveCurrentMealClicked());
@@ -121,7 +122,7 @@ describe('saveCurrentMealAsSavedMeal', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      saveCurrentMealAsSavedMeal().subscribe((action) => results.push(action)),
+      saveCurrentMealAsSavedMeal().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(CurrentMealPageComponentActions.saveCurrentMealClicked());
@@ -190,7 +191,7 @@ describe('saveCurrentMealAsMealLog', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      saveCurrentMealAsMealLog().subscribe((action) => results.push(action)),
+      saveCurrentMealAsMealLog().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(CurrentMealPageComponentActions.logCurrentMealClicked());
@@ -217,7 +218,7 @@ describe('saveCurrentMealAsMealLog', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      saveCurrentMealAsMealLog().subscribe((action) => results.push(action)),
+      saveCurrentMealAsMealLog().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(CurrentMealPageComponentActions.logCurrentMealClicked());
@@ -244,7 +245,7 @@ describe('saveCurrentMealAsMealLog', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      saveCurrentMealAsMealLog().subscribe((action) => results.push(action)),
+      saveCurrentMealAsMealLog().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(CurrentMealPageComponentActions.logCurrentMealClicked());
@@ -280,7 +281,7 @@ describe('removeAllMealEntriesOfCurrentMeal$', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      removeAllMealEntriesOfCurrentMeal$().subscribe((action) =>
+      removeAllMealEntriesOfCurrentMeal$().pipe(take(1)).subscribe((action) =>
         results.push(action),
       ),
     );
@@ -302,7 +303,7 @@ describe('removeAllMealEntriesOfCurrentMeal$', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      removeAllMealEntriesOfCurrentMeal$().subscribe((action) =>
+      removeAllMealEntriesOfCurrentMeal$().pipe(take(1)).subscribe((action) =>
         results.push(action),
       ),
     );
@@ -348,7 +349,7 @@ describe('addMealEntryToCurrentMeal', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      addMealEntryToCurrentMeal().subscribe((action) => results.push(action)),
+      addMealEntryToCurrentMeal().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(
@@ -373,7 +374,7 @@ describe('addMealEntryToCurrentMeal', () => {
     const results: Action[] = [];
 
     TestBed.runInInjectionContext(() =>
-      addMealEntryToCurrentMeal().subscribe((action) => results.push(action)),
+      addMealEntryToCurrentMeal().pipe(take(1)).subscribe((action) => results.push(action)),
     );
 
     actions$.next(
