@@ -1,4 +1,6 @@
 import { ConfirmationDialogService } from '@carbotracker/ui';
+import { Router } from '@angular/router';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { Store } from '@ngrx/store';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Action } from '@ngrx/store';
@@ -8,17 +10,23 @@ import { EditMealLogDialogService } from '../edit-meal-log-dialog/edit-meal-log-
 import { InsulinDoseDialogService } from '../insulin-dose-dialog/insulin-dose-dialog.service';
 import { MealLog, MealLogDocument } from '../meal-log.model';
 import { MealLogsService } from '../services/meal-logs.service';
-import { HistoryPageComponentActions } from './meal-logs.actions';
+import {
+  HistoryPageComponentActions,
+  MealLogsApiActions,
+  MealLogsSnackBarActions,
+} from './meal-logs.actions';
 import {
   createInsulinDose$,
   deleteMealLogDocument$,
   editInsulinDose$,
   editMealLog$,
+  navigateToCurrentMeal$,
   reloadMealLogIntoMeal$,
+  showReloadIntoMealFailedSnackbar$,
+  showReloadIntoMealSuccessfulSnackbar$,
   startStreamingMealLogs$,
   stopStreamingMealLogs$,
 } from './meal-logs.effects';
-import { MealLogsApiActions } from './meal-logs.actions';
 
 const navigateTo = (url: string) =>
   routerNavigatedAction({
@@ -617,5 +625,113 @@ describe('reloadMealLogIntoMeal$', () => {
         error: expect.any(Error),
       }),
     ]);
+  });
+});
+
+describe('showReloadIntoMealSuccessfulSnackbar$', () => {
+  const buildSnackBar = () => {
+    const afterDismissed = jest.fn();
+    const snackBar = {
+      open: jest.fn(() => ({
+        afterOpened: () => of(void 0),
+        afterDismissed,
+      })),
+    } as unknown as jest.Mocked<MatSnackBar>;
+    return { snackBar, afterDismissed };
+  };
+
+  it('shows the success snackbar with a Go to Current Meal action', () => {
+    const { snackBar, afterDismissed } = buildSnackBar();
+    afterDismissed.mockReturnValue(of({ dismissedByAction: false }));
+
+    const actions$ = new Subject<Action>();
+    const results: Action[] = [];
+    showReloadIntoMealSuccessfulSnackbar$(
+      actions$.asObservable(),
+      snackBar,
+    ).subscribe((action) => results.push(action));
+
+    actions$.next(MealLogsApiActions.mealLogReloadedIntoMeal());
+
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'The meal was loaded into the current meal.',
+      'Go to Current Meal',
+    );
+    expect(results).toEqual([
+      MealLogsSnackBarActions.showReloadIntoMealSnackbarSuccessful(),
+    ]);
+  });
+
+  it('dispatches goToCurrentMealClicked when the action is pressed', () => {
+    const { snackBar, afterDismissed } = buildSnackBar();
+    afterDismissed.mockReturnValue(of({ dismissedByAction: true }));
+
+    const actions$ = new Subject<Action>();
+    const results: Action[] = [];
+    showReloadIntoMealSuccessfulSnackbar$(
+      actions$.asObservable(),
+      snackBar,
+    ).subscribe((action) => results.push(action));
+
+    actions$.next(MealLogsApiActions.mealLogReloadedIntoMeal());
+
+    expect(results).toContainEqual(
+      MealLogsSnackBarActions.goToCurrentMealClicked(),
+    );
+  });
+
+  it('does not show the snackbar for other actions', () => {
+    const { snackBar } = buildSnackBar();
+
+    const actions$ = new Subject<Action>();
+    showReloadIntoMealSuccessfulSnackbar$(
+      actions$.asObservable(),
+      snackBar,
+    ).subscribe();
+
+    actions$.next(
+      MealLogsApiActions.mealLogReloadIntoMealFailed({ error: 'x' }),
+    );
+
+    expect(snackBar.open).not.toHaveBeenCalled();
+  });
+});
+
+describe('showReloadIntoMealFailedSnackbar$', () => {
+  it('shows the failure snackbar', () => {
+    const snackBar = {
+      open: jest.fn(() => ({ afterOpened: () => of(void 0) })),
+    } as unknown as jest.Mocked<MatSnackBar>;
+
+    const actions$ = new Subject<Action>();
+    const results: Action[] = [];
+    showReloadIntoMealFailedSnackbar$(
+      actions$.asObservable(),
+      snackBar,
+    ).subscribe((action) => results.push(action));
+
+    actions$.next(
+      MealLogsApiActions.mealLogReloadIntoMealFailed({ error: 'boom' }),
+    );
+
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'The meal could not be loaded into the current meal.',
+    );
+    expect(results).toEqual([
+      MealLogsSnackBarActions.showReloadIntoMealSnackbarFailed(),
+    ]);
+  });
+});
+
+describe('navigateToCurrentMeal$', () => {
+  it('navigates to the current meal page', () => {
+    const router = { navigate: jest.fn(() => of(true)) } as unknown as Router;
+
+    const actions$ = new Subject<Action>();
+    navigateToCurrentMeal$(actions$.asObservable(), router).subscribe();
+
+    actions$.next(MealLogsSnackBarActions.goToCurrentMealClicked());
+
+    expect(router.navigate).toHaveBeenCalledWith(['app', 'current-meal']);
   });
 });

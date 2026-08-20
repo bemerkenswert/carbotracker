@@ -1,9 +1,11 @@
 import { inject } from '@angular/core';
+import { Router } from '@angular/router';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { concatLatestFrom, mapResponse } from '@ngrx/operators';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
-import { EMPTY, filter, switchMap, tap } from 'rxjs';
+import { EMPTY, filter, from, map, merge, switchMap, tap } from 'rxjs';
 import { authFeature } from '../../features/auth/+state/auth.store';
 import { ConfirmationDialogService } from '@carbotracker/ui';
 import { EditMealLogDialogService } from '../edit-meal-log-dialog/edit-meal-log-dialog.service';
@@ -15,6 +17,7 @@ import { MealLog } from '../meal-log.model';
 import {
   HistoryPageComponentActions,
   MealLogsApiActions,
+  MealLogsSnackBarActions,
 } from './meal-logs.actions';
 
 export const startStreamingMealLogs$ = createEffect(
@@ -239,4 +242,57 @@ export const reloadMealLogIntoMeal$ = createEffect(
       }),
     ),
   { functional: true },
+);
+
+export const showReloadIntoMealSuccessfulSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(MealLogsApiActions.mealLogReloadedIntoMeal),
+      switchMap(() => {
+        const snackBarRef = snackBar.open(
+          'The meal was loaded into the current meal.',
+          'Go to Current Meal',
+        );
+        const opened$ = snackBarRef
+          .afterOpened()
+          .pipe(
+            map(() =>
+              MealLogsSnackBarActions.showReloadIntoMealSnackbarSuccessful(),
+            ),
+          );
+        const goToCurrentMealClicked$ = snackBarRef.afterDismissed().pipe(
+          filter(({ dismissedByAction }) => dismissedByAction),
+          map(() => MealLogsSnackBarActions.goToCurrentMealClicked()),
+        );
+        return merge(opened$, goToCurrentMealClicked$);
+      }),
+    ),
+  { functional: true },
+);
+
+export const showReloadIntoMealFailedSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(MealLogsApiActions.mealLogReloadIntoMealFailed),
+      switchMap(() =>
+        snackBar
+          .open('The meal could not be loaded into the current meal.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              MealLogsSnackBarActions.showReloadIntoMealSnackbarFailed(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const navigateToCurrentMeal$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(MealLogsSnackBarActions.goToCurrentMealClicked),
+      switchMap(() => from(router.navigate(['app', 'current-meal']))),
+    ),
+  { functional: true, dispatch: false },
 );

@@ -35,3 +35,12 @@ export const MealLogsApiActions = createActionGroup({
     'Unsubscribed From Meal Logs Stream': emptyProps(),
   },
 });
+
+export const MealLogsSnackBarActions = createActionGroup({
+  source: 'Meal Logs | Snack Bar',
+  events: {
+    'Show Reload Into Meal Snackbar Successful': emptyProps(),
+    'Show Reload Into Meal Snackbar Failed': emptyProps(),
+    'Go To Current Meal Clicked': emptyProps(),
+  },
+});
