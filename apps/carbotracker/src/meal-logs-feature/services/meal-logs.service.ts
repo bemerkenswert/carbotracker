@@ -119,4 +119,30 @@ export class MealLogsService {
       }),
     );
   }
+
+  public createMealLog(params: {
+    mealEntries: MealEntry[];
+    mealType: MealType;
+    insulinToCarbRatio: number;
+    estimatedInsulin: number;
+    actualInsulin: number;
+    note: string | null;
+    date: Date;
+    uid: string;
+  }) {
+    return from(
+      addDoc(collection(getFirestore(), 'meal-logs'), {
+        type: 'meal-log',
+        mealEntries: params.mealEntries,
+        mealType: params.mealType,
+        insulinToCarbRatio: params.insulinToCarbRatio,
+        estimatedInsulin: params.estimatedInsulin,
+        actualInsulin: params.actualInsulin,
+        note: params.note,
+        date: toDateString(params.date),
+        createdAt: params.date,
+        creator: params.uid,
+      }),
+    );
+  }
 }

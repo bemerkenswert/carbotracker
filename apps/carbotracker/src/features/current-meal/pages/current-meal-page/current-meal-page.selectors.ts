@@ -1,14 +1,11 @@
 import { createSelector } from '@ngrx/store';
 import { currentMealFeature } from '../../+state/current-meal.store';
 import { settingsFeature } from '../../../settings/+state/settings.store';
+import { estimateInsulin, sumOfMealEntryCarbs } from '../../current-meal.util';
 
 export const selectSumOfCurrentMealCarbs = createSelector(
   currentMealFeature.selectAllMealEntries,
-  (mealEntries) => {
-    return mealEntries
-      .map((mealEntry) => mealEntry.amount * (mealEntry.carbs / 100))
-      .reduce((acc, curr) => acc + curr, 0);
-  },
+  (mealEntries) => sumOfMealEntryCarbs(mealEntries),
 );
 
 export const selectInsulinUnits = createSelector(
@@ -18,11 +15,11 @@ export const selectInsulinUnits = createSelector(
     const { breakfast, lunch, dinner, night } = insulinToCarbRatios;
     return {
       breakfast: breakfast
-        ? getInsulinUnits(sumOfCurrentMealCarbs, breakfast)
+        ? estimateInsulin(sumOfCurrentMealCarbs, breakfast)
         : 0,
-      lunch: lunch ? getInsulinUnits(sumOfCurrentMealCarbs, lunch) : 0,
-      dinner: dinner ? getInsulinUnits(sumOfCurrentMealCarbs, dinner) : 0,
-      night: night ? getInsulinUnits(sumOfCurrentMealCarbs, night) : 0,
+      lunch: lunch ? estimateInsulin(sumOfCurrentMealCarbs, lunch) : 0,
+      dinner: dinner ? estimateInsulin(sumOfCurrentMealCarbs, dinner) : 0,
+      night: night ? estimateInsulin(sumOfCurrentMealCarbs, night) : 0,
     };
   },
 );
@@ -31,13 +28,6 @@ export const selectShowInsulinUnits = createSelector(
   settingsFeature.selectInsulinToCarbRatios,
   ({ showInsulinUnits }) => showInsulinUnits,
 );
-
-const getInsulinUnits = (
-  sumOfCarbs: number,
-  insulinToCarbRatio: number,
-): number => {
-  return (sumOfCarbs / 10) * insulinToCarbRatio;
-};
 
 export const selectViewModel = createSelector(
   currentMealFeature.selectAllMealEntries,

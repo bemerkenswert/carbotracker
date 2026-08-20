@@ -6,7 +6,12 @@ import { Store } from '@ngrx/store';
 import { concatMap, EMPTY, exhaustMap, filter, of, switchMap, tap } from 'rxjs';
 import { SavedMealsService } from '../../../saved-meals/services/saved-meals.service';
 import { authFeature } from '../../../auth/+state/auth.store';
+import { settingsFeature } from '../../../settings/+state/settings.store';
 import { SavedMealNameDialogService } from '../../../saved-meals/saved-meal-name-dialog/saved-meal-name-dialog.service';
+import { LogMealDialogService } from '../../../../meal-logs-feature/log-meal-dialog/log-meal-dialog.service';
+import { ConfirmedLogMealDialogResult } from '../../../../meal-logs-feature/log-meal-dialog/log-meal-dialog.model';
+import { MealLogsService } from '../../../../meal-logs-feature/services/meal-logs.service';
+import { MealLogsApiActions } from '../../../../meal-logs-feature/+state/meal-logs.actions';
 import { CurrentMealService } from '../../services/current-meal.service';
 import {
   CreateMealEntryPageComponentActions,
@@ -48,6 +53,67 @@ export const saveCurrentMealAsSavedMeal = createEffect(
             ),
           ),
         );
+      }),
+    ),
+  { functional: true },
+);
+
+export const saveCurrentMealAsMealLog = createEffect(
+  (
+    actions$ = inject(Actions),
+    store = inject(Store),
+    logMealDialogService = inject(LogMealDialogService),
+    mealLogsService = inject(MealLogsService),
+  ) =>
+    actions$.pipe(
+      ofType(CurrentMealPageComponentActions.logCurrentMealClicked),
+      concatLatestFrom(() => [
+        store.select(authFeature.selectUserId),
+        store.select(currentMealFeature.selectCurrentMeal),
+        store.select(settingsFeature.selectInsulinToCarbRatios),
+      ]),
+      exhaustMap(([, uid, currentMeal, insulinToCarbRatios]) => {
+        if (!uid) {
+          return EMPTY;
+        }
+        return logMealDialogService
+          .open({
+            mealEntries: currentMeal.mealEntries,
+            showInsulinUnits: insulinToCarbRatios.showInsulinUnits ?? false,
+            insulinToCarbRatios: {
+              breakfast: insulinToCarbRatios.breakfast,
+              lunch: insulinToCarbRatios.lunch,
+              dinner: insulinToCarbRatios.dinner,
+              night: insulinToCarbRatios.night,
+            },
+          })
+          .pipe(
+            filter(
+              (result): result is ConfirmedLogMealDialogResult =>
+                !result.cancelled,
+            ),
+            exhaustMap(
+              ({ date, mealType, estimatedInsulin, actualInsulin, note }) =>
+                mealLogsService
+                  .createMealLog({
+                    mealEntries: currentMeal.mealEntries,
+                    mealType,
+                    insulinToCarbRatio: insulinToCarbRatios[mealType] ?? 0,
+                    estimatedInsulin,
+                    actualInsulin,
+                    note,
+                    date,
+                    uid,
+                  })
+                  .pipe(
+                    mapResponse({
+                      next: () => MealLogsApiActions.mealLogCreated(),
+                      error: (error) =>
+                        MealLogsApiActions.mealLogCreationFailed({ error }),
+                    }),
+                  ),
+            ),
+          );
       }),
     ),
   { functional: true },

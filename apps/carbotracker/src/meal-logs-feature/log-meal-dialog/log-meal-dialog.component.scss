@@ -1,0 +1,10 @@
+mat-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+mat-list {
+  max-height: 160px;
+  overflow-y: auto;
+}

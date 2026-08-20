@@ -5,6 +5,7 @@ import {
   provideAppInitializer,
 } from '@angular/core';
 import { MAT_SNACK_BAR_DEFAULT_OPTIONS } from '@angular/material/snack-bar';
+import { provideNativeDateAdapter } from '@angular/material/core';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideRouterStore, routerReducer } from '@ngrx/router-store';
@@ -31,6 +32,7 @@ const isLoggedIn = () => {
 export const appConfig: ApplicationConfig = {
   providers: [
     provideAnimations(),
+    provideNativeDateAdapter(),
     provideStore({
       router: routerReducer,
     }),

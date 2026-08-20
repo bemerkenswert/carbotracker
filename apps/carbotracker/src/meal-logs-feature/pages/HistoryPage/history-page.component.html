@@ -18,7 +18,15 @@
             {{ mealLog.insulin | number: '1.0-1' }} I.U.
           } @else {
             {{ mealLog.mealType }} ·
-            {{ mealLog.actualInsulin | number: '1.0-1' }} I.U.
+            <span>{{ mealLog.actualInsulin | number: '1.0-1' }} I.U.</span>
+            @if (mealLog.estimatedInsulin !== mealLog.actualInsulin) {
+              <span class="insulin-diff">
+                ({{
+                  mealLog.actualInsulin - mealLog.estimatedInsulin
+                    | number: '1.0-1'
+                }})
+              </span>
+            }
           }
         </h4>
         <p matListItemLine>
