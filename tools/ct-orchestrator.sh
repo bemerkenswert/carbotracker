@@ -132,7 +132,7 @@ orchestrator_state_add() {
   state="$(orchestrator_state_load "$state_file")"
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   entry="$(jq -n --argjson ticket "$number" --arg branch "$branch" --arg worktree "$worktree" --arg started "$now" \
-    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, lastCommentAt: null, reviewFailures: 0, failureCount: 0, mergeFailures: 0, reviewNoticePosted: false, reviewNeedsHuman: false, mergeNoticePosted: false, phase: "implementing", startedAt: $started}')"
+    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, lastCommentAt: null, reviewFailures: 0, failureCount: 0, mergeFailures: 0, reviewNeedsHuman: false, mergeNoticePosted: false, phase: "implementing", startedAt: $started}')"
   state="$(printf '%s' "$state" | jq --argjson entry "$entry" '. + [$entry]')"
   orchestrator_state_write "$state_file" "$state"
 }
@@ -141,8 +141,15 @@ orchestrator_state_complete() {
   local state_file="$1" number="$2" session_id="$3" pr_number="$4"
   local state
   state="$(orchestrator_state_load "$state_file")"
-  state="$(printf '%s' "$state" | jq --argjson n "$number" --arg sid "$session_id" --arg prn "$pr_number" \
-    '(.[] | select(.ticket == $n)) |= (.sessionId = (if $sid == "" then null else $sid end) | .prNumber = (if $prn == "" then null else ($prn | tonumber) end) | .phase = "awaiting review")')"
+  if [[ -n "$pr_number" && "$pr_number" != "" ]]; then
+    # PR exists: transition to awaiting review, clear sessionId (fresh sessions for review)
+    state="$(printf '%s' "$state" | jq --argjson n "$number" --arg prn "$pr_number" \
+      '(.[] | select(.ticket == $n)) |= (.sessionId = null | .prNumber = ($prn | tonumber) | .phase = "awaiting review")')"
+  else
+    # No PR yet: keep sessionId for potential resume, phase stays implementing
+    state="$(printf '%s' "$state" | jq --argjson n "$number" --arg sid "$session_id" \
+      '(.[] | select(.ticket == $n)) |= (.sessionId = (if $sid == "" then null else $sid end) | .prNumber = null)')"
+  fi
   orchestrator_state_write "$state_file" "$state"
 }
 
@@ -204,15 +211,6 @@ orchestrator_state_set_review_failures() {
   state="$(orchestrator_state_load "$state_file")"
   state="$(printf '%s' "$state" | jq --argjson n "$number" --argjson c "$count" \
     '(.[] | select(.ticket == $n)) |= (.reviewFailures = $c)')"
-  orchestrator_state_write "$state_file" "$state"
-}
-
-orchestrator_state_mark_notice_posted() {
-  local state_file="$1" number="$2"
-  local state
-  state="$(orchestrator_state_load "$state_file")"
-  state="$(printf '%s' "$state" | jq --argjson n "$number" \
-    '(.[] | select(.ticket == $n)) |= (.reviewNoticePosted = true)')"
   orchestrator_state_write "$state_file" "$state"
 }
 
@@ -475,35 +473,22 @@ orchestrator_pr_reply_already_posted() {
   fi
 }
 
-# Run one headless opencode session in the worktree — the ticket's original
-# session — logging the launch. Both the analyze and implement steps reuse it;
-# the caller's extra env (e.g. ORCHESTRATOR_REVIEW_PLAN_FILE) is inherited.
-orchestrator_review_run_session() {
-  local number="$1" session_id="$2" worktree="$3" prompt="$4"
-  orchestrator_log "review #$number: launching $prompt (session $session_id)"
-  # Same stdin isolation as the implement run: a review run must never drain a
-  # caller's pipe (review_poll streams its entries from a process substitution).
-  (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" --session "$session_id" "$prompt" < /dev/null)
-}
-
 # Analyze phase of the review round: run the headless /review-comments skill in
-# the ticket's session. The skill's entire output is the plan file it writes to
+# a fresh session. The skill's entire output is the plan file it writes to
 # ORCHESTRATOR_REVIEW_PLAN_FILE (set per invocation) — it never asks, never
 # posts, and never implements. Success here only means opencode exited 0; the
 # plan still has to be read and applied by the act phase.
 orchestrator_review_analyze() {
-  local number="$1" session_id="$2" pr_number="$3" worktree="$4" plan_file="$5"
+  local number="$1" pr_number="$2" worktree="$3" plan_file="$4"
   local prompt
-  # The prompt names both the PR and its ticket so the resumed session's own
-  # context (its original "implement issue N" history and any prior PR
-  # references) cannot be misread as the review's subject.
   prompt="/review-comments on PR #$pr_number (ticket #$number) headless: do not ask, do not post, do not implement — write the plan file"
-  ORCHESTRATOR_REVIEW_PLAN_FILE="$plan_file" orchestrator_review_run_session "$number" "$session_id" "$worktree" "$prompt"
+  orchestrator_log "review analyze #$number: launching fresh session for PR #$pr_number"
+  (export ORCHESTRATOR_REVIEW_PLAN_FILE="$plan_file"; cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" "$prompt" < /dev/null)
 }
 
 # Act phase of the review round: read the plan file, validate it against the
 # review-comments schema, and apply it. Comments classified `implement` are
-# applied by resuming the original opencode session with a comment-scoped
+# applied by running a fresh opencode session with a comment-scoped
 # /implement prompt — the agent makes the change (one commit per comment),
 # pushes, replies on the thread citing the commit, and resolves each inline
 # thread via the resolveReviewThread GraphQL mutation (never bash); the act
@@ -520,7 +505,7 @@ orchestrator_review_analyze() {
 # falls through to the retry/escalate path. A failed or unverifiable implement
 # step also keeps the watermark.
 orchestrator_review_act() {
-  local number="$1" pr_number="$2" plan_file="$3" session_id="$4" worktree="$5"
+  local number="$1" pr_number="$2" plan_file="$3" worktree="$4"
   local schema count needs_human i entry comment_id path type reply body latest posted implement_count
   schema="$SCRIPT_DIR/../.agents/skills/review-comments/review-plan.schema.json"
   if [[ ! -f "$plan_file" ]] \
@@ -559,7 +544,7 @@ orchestrator_review_act() {
     # The implement step runs before any bash reply is posted: if it fails the
     # round fails and retries, and the retry resumes the same session with its
     # own partial work visible — so a reply is never posted twice.
-    if ! orchestrator_review_implement "$number" "$session_id" "$pr_number" "$worktree" "$plan_file"; then
+    if ! orchestrator_review_implement "$number" "$pr_number" "$worktree" "$plan_file"; then
       orchestrator_log "ERROR: implement step failed on PR #$pr_number; keeping the watermark"
       return 1
     fi
@@ -622,25 +607,25 @@ ${ORCHESTRATOR_AI_FOOTER}"
   return 0
 }
 
-# The implement step of the review round: resume the ticket's original opencode
-# session with a comment-scoped /implement prompt. The agent applies only the
-# changes the implement comments request — one commit per comment — then pushes
-# the branch, replies on each thread citing the commit that implements it, and
-# resolves each inline thread via the resolveReviewThread GraphQL mutation
-# (never bash). The prompt mandates the AI-source footer on every reply, so the
-# agent's own replies never re-trigger the loop. The step then verifies the
-# outcome before the watermark can advance: every inline implement comment must
-# sit in a resolved thread AND have a footer-bearing reply, and a general
-# implement comment (no thread) must have gained a new footer-bearing reply on
-# the PR conversation — never a bare exit-0. Failure here keeps the watermark
-# so the round retries.
+# The implement step of the review round: run a fresh opencode session with a
+# comment-scoped /implement prompt. The agent applies only the implement
+# comments request — one commit per comment — then pushes the branch, replies on
+# each thread citing the commit that implements it, and resolves each inline
+# thread via the resolveReviewThread GraphQL mutation (never bash). The prompt
+# mandates the AI-source footer on every reply, so the agent's own replies never
+# re-trigger the loop. The step then verifies the outcome before the watermark
+# can advance: every inline implement comment must sit in a resolved thread AND
+# have a footer-bearing reply, and a general implement comment (no thread) must
+# have gained a new footer-bearing reply on the PR conversation — never a bare
+# exit-0. Failure here keeps the watermark so the round retries.
 orchestrator_review_implement() {
-  local number="$1" session_id="$2" pr_number="$3" worktree="$4" plan_file="$5"
+  local number="$1" pr_number="$2" worktree="$3" plan_file="$4"
   local descriptions prompt before_general_ids
   descriptions="$(orchestrator_review_implement_descriptions "$plan_file")"
-  prompt="/implement the review comments on PR #$pr_number (ticket #$number): $descriptions. Apply ONLY the changes these comments request — one commit per comment — then push the branch, reply on each thread citing the commit that implements it (append the AI-source footer '_Created by carbotracker's agent skills._' to every reply), and resolve each inline thread via the resolveReviewThread GraphQL mutation."
+  prompt="/implement the review comments on PR #$pr_number (ticket #$number): $descriptions. Apply ONLY the changes these comments request — one commit per comment — then push the branch, reply on each thread citing the commit that implements it (append the AI-source footer '_Created by carbotracker's agent skills._' to every reply), and resolve each inline thread via the resolveReviewThread GraphQL mutation. You have full access to the codebase — explore as needed."
   before_general_ids="$(orchestrator_pr_agent_general_comment_ids "$worktree" "$pr_number")"
-  if ! orchestrator_review_run_session "$number" "$session_id" "$worktree" "$prompt"; then
+  orchestrator_log "review implement #$number: launching fresh session for PR #$pr_number"
+  if ! (cd "$worktree" && opencode run --auto --model "$ORCHESTRATOR_MODEL" "$prompt" < /dev/null); then
     orchestrator_log "ERROR: review implement run failed on PR #$pr_number; keeping the watermark"
     return 1
   fi
@@ -740,7 +725,7 @@ orchestrator_pr_has_new_agent_general_comment() {
 }
 
 orchestrator_review_round() {
-  local number="$1" session_id="$2" pr_number="$3" worktree="$4"
+  local number="$1" pr_number="$2" worktree="$3"
   local failures retries latest body plan_file persistent_plan pr_state analyze_failed
   retries="${ORCHESTRATOR_REVIEW_RETRIES:-3}"
   failures="$(orchestrator_state_review_failures "$ORCHESTRATOR_STATE_FILE" "$number")"
@@ -774,14 +759,14 @@ orchestrator_review_round() {
   fi
   analyze_failed=""
   if [[ -z "$persistent_plan" || ! -f "$persistent_plan" ]]; then
-    if ! orchestrator_review_analyze "$number" "$session_id" "$pr_number" "$worktree" "$plan_file"; then
+    if ! orchestrator_review_analyze "$number" "$pr_number" "$worktree" "$plan_file"; then
       analyze_failed=1
     fi
   else
     orchestrator_log "review #$number: resuming from persisted plan $persistent_plan"
   fi
   if [[ -z "$analyze_failed" ]] \
-      && orchestrator_review_act "$number" "$pr_number" "$plan_file" "$session_id" "$worktree"; then
+      && orchestrator_review_act "$number" "$pr_number" "$plan_file" "$worktree"; then
     rm -f "$persistent_plan"
     orchestrator_state_set_review_failures "$ORCHESTRATOR_STATE_FILE" "$number" 0
     orchestrator_log "review #$number: round succeeded on PR #$pr_number"
@@ -815,35 +800,16 @@ orchestrator_awaiting_review_entries() {
 }
 
 orchestrator_review_poll() {
-  local line number pr_number session_id worktree last_comment_at latest notice_posted needs_human
+  local line number pr_number worktree last_comment_at latest needs_human
   while IFS= read -r line; do
     number="$(printf '%s' "$line" | jq -r '.ticket')"
     pr_number="$(printf '%s' "$line" | jq -r '.prNumber')"
-    session_id="$(printf '%s' "$line" | jq -r '.sessionId')"
     worktree="$(printf '%s' "$line" | jq -r '.worktree')"
     last_comment_at="$(printf '%s' "$line" | jq -r '.lastCommentAt // ""')"
     needs_human="$(printf '%s' "$line" | jq -r '.reviewNeedsHuman // false')"
 
     if [[ -z "$pr_number" || "$pr_number" == "null" ]]; then
       orchestrator_log "skip review #$number: no PR recorded"
-      continue
-    fi
-    if [[ -z "$session_id" || "$session_id" == "null" ]]; then
-      # No session means the agent cannot resume with full context. Tell
-      # Steffen once so the stale PR is visible, then stay quiet.
-      notice_posted="$(printf '%s' "$line" | jq -r '.reviewNoticePosted // false')"
-      if [[ "$notice_posted" != "true" ]]; then
-        if ! orchestrator_pr_post_comment "$pr_number" "Cannot auto-respond to reviews on PR #$pr_number: no opencode session was recorded for ticket #$number. A maintainer should handle this PR manually.
----
-_Created by carbotracker's agent skills._"; then
-          orchestrator_log "WARNING: failed to post missing-session notice on PR #$pr_number"
-        else
-          orchestrator_state_mark_notice_posted "$ORCHESTRATOR_STATE_FILE" "$number"
-          orchestrator_log "review #$number: posted missing-session notice on PR #$pr_number"
-        fi
-      else
-        orchestrator_log "skip review #$number: no session recorded (notice already posted)"
-      fi
       continue
     fi
 
@@ -870,7 +836,7 @@ _Created by carbotracker's agent skills._"; then
       orchestrator_state_set_review_needs_human "$ORCHESTRATOR_STATE_FILE" "$number" false
     fi
     orchestrator_log "review #$number: new comment on PR #$pr_number (latest $latest, last known ${last_comment_at:-<none>})"
-    orchestrator_review_round "$number" "$session_id" "$pr_number" "$worktree" || true
+    orchestrator_review_round "$number" "$pr_number" "$worktree" || true
   done < <(orchestrator_awaiting_review_entries)
 }
 
