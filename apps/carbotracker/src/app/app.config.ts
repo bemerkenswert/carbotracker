@@ -18,6 +18,7 @@ import { environment } from '../environments/environment';
 import { authFeature } from '../features/auth/+state/auth.store';
 import { getAuthProviders } from '../features/auth/auth.providers';
 import { getProductsProviders } from '../features/products/products.providers';
+import { getSportsProviders } from '../features/sports/sports.providers';
 import { getSettingsProviders } from '../features/settings/settings.providers';
 import { ThemeApplicationService } from './theme-application.service';
 
@@ -40,6 +41,7 @@ export const appConfig: ApplicationConfig = {
     provideRouterStore(),
     getAuthProviders(),
     getProductsProviders(),
+    getSportsProviders(),
     getSettingsProviders(),
     provideStoreDevtools(),
     provideRouter(

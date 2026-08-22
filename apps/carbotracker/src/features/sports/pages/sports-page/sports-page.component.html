@@ -1,0 +1,23 @@
+<ctui-toolbar title="Sports"></ctui-toolbar>
+@if (sports().length > 0) {
+  <mat-nav-list>
+    @for (sport of sports(); track sport.id) {
+      <mat-list-item (click)="onSportClick(sport)">
+        <h4 matListItemTitle>{{ sport.name }}</h4>
+      </mat-list-item>
+    }
+  </mat-nav-list>
+} @else {
+  No sports created yet. Add some to fill your list!
+}
+
+<button
+  (click)="onAddClick()"
+  mat-fab
+  color="primary"
+  ctuiFixedPosition
+  type="button"
+  matTooltip="Add sport"
+>
+  <mat-icon>add</mat-icon>
+</button>

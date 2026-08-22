@@ -22,6 +22,11 @@ const selectIsProductsRoute = createSelector(
   (url): boolean => url.startsWith('/app/products'),
 );
 
+const selectIsSportsRoute = createSelector(
+  getRouterSelectors().selectUrl,
+  (url): boolean => url.startsWith('/app/sports'),
+);
+
 const selectIsCurrentMealRoute = createSelector(
   getRouterSelectors().selectUrl,
   (url): boolean => url.startsWith('/app/current-meal'),
@@ -50,6 +55,12 @@ const getNavItems = () => {
       isActive: store.selectSignal(selectIsProductsRoute),
       icon: 'lunch_dining',
       label: 'Products',
+    },
+    {
+      onClick: () => store.dispatch(ShellComponentActions.sportsClicked()),
+      isActive: store.selectSignal(selectIsSportsRoute),
+      icon: 'sports_soccer',
+      label: 'Sports',
     },
     {
       onClick: () => store.dispatch(ShellComponentActions.currentMealClicked()),
