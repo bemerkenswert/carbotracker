@@ -716,7 +716,7 @@ test_state_complete_updates_entry() {
   orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local entry
   entry="$(jq '.[0]' "$TEST_STATE")"
-  assert_eq "complete clears session id when pr exists" "null" "$(jq -r '.sessionId' <<<"$entry")"
+  assert_eq "complete preserves session id when pr exists" "ses_abc" "$(jq -r '.sessionId' <<<"$entry")"
   assert_eq "complete stores pr number" "456" "$(jq -r '.prNumber' <<<"$entry")"
   assert_eq "complete transitions phase to awaiting review" "awaiting review" "$(jq -r '.phase' <<<"$entry")"
   assert_eq "complete leaves only the matching entry touched" "1" "$(jq 'length' "$TEST_STATE")"
@@ -742,7 +742,7 @@ test_state_complete_updates_only_matching_ticket() {
   orchestrator_state_complete "$TEST_STATE" 2 ses_2 22
   assert_eq "other entry keeps session null" "null" "$(jq -r '.[0].sessionId' "$TEST_STATE")"
   assert_eq "other entry keeps phase implementing" "implementing" "$(jq -r '.[0].phase' "$TEST_STATE")"
-  assert_eq "matching entry clears session id when pr exists" "null" "$(jq -r '.[1].sessionId' "$TEST_STATE")"
+  assert_eq "matching entry preserves session id when pr exists" "ses_2" "$(jq -r '.[1].sessionId' "$TEST_STATE")"
   assert_eq "matching entry gets pr number" "22" "$(jq -r '.[1].prNumber' "$TEST_STATE")"
   state_teardown
 }
@@ -2240,7 +2240,7 @@ test_state_mark_reviewed_sets_timestamp() {
   orchestrator_state_mark_reviewed "$TEST_STATE" 123 "2026-08-13T00:07:00Z"
   assert_eq "mark_reviewed stores the timestamp" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_eq "mark_reviewed leaves phase untouched" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
-  assert_eq "mark_reviewed leaves session untouched (null after complete with pr)" "null" "$(jq -r '.[0].sessionId' "$TEST_STATE")"
+  assert_eq "mark_reviewed leaves session untouched (preserved after complete with pr)" "ses_abc" "$(jq -r '.[0].sessionId' "$TEST_STATE")"
   state_teardown
 }
 
@@ -3210,11 +3210,16 @@ exit 1'
   mkdir -p "$worktree"
   export FAKE_OPENCODE_ARGS="$STATE_DIR/opencode_args"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc ""
+  # Use a valid PR number to transition to "awaiting review", then clear it
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  # Manually clear the PR number to simulate an edge case
+  local state
+  state="$(jq '.[0].prNumber = null' "$TEST_STATE")"
+  printf '%s\n' "$state" > "$TEST_STATE"
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_poll 2>&1)"
   assert_eq "poll does not launch without a pr number" "no" "$([[ -f "$FAKE_OPENCODE_ARGS" ]] && echo yes || echo no)"
-  assert_contains "logs skip for missing pr" "no PR" "$output"
+  assert_contains "logs skip for missing pr" "no PR recorded" "$output"
   unset FAKE_OPENCODE_ARGS
   state_teardown
 }
@@ -3933,7 +3938,12 @@ test_merge_poll_skips_entry_without_pr() {
   local worktree="$WT_PARENT/123-foo"
   mkdir -p "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc ""
+  # Use a valid PR number to transition to "awaiting review", then clear it
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
+  # Manually clear the PR number to simulate an edge case
+  local state
+  state="$(jq '.[0].prNumber = null' "$TEST_STATE")"
+  printf '%s\n' "$state" > "$TEST_STATE"
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_merge_poll 2>&1)"
   assert_eq "entry without pr stays in state" "1" "$(jq 'length' "$TEST_STATE")"

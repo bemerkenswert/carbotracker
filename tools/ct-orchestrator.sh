@@ -142,9 +142,9 @@ orchestrator_state_complete() {
   local state
   state="$(orchestrator_state_load "$state_file")"
   if [[ -n "$pr_number" && "$pr_number" != "" ]]; then
-    # PR exists: transition to awaiting review, clear sessionId (fresh sessions for review)
-    state="$(printf '%s' "$state" | jq --argjson n "$number" --arg prn "$pr_number" \
-      '(.[] | select(.ticket == $n)) |= (.sessionId = null | .prNumber = ($prn | tonumber) | .phase = "awaiting review")')"
+    # PR exists: transition to awaiting review, preserve sessionId for merge poll conflict resolution
+    state="$(printf '%s' "$state" | jq --argjson n "$number" --arg prn "$pr_number" --arg sid "$session_id" \
+      '(.[] | select(.ticket == $n)) |= (.sessionId = (if $sid == "" then null else $sid end) | .prNumber = ($prn | tonumber) | .phase = "awaiting review")')"
   else
     # No PR yet: keep sessionId for potential resume, phase stays implementing
     state="$(printf '%s' "$state" | jq --argjson n "$number" --arg sid "$session_id" \
