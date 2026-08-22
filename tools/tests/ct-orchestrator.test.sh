@@ -185,7 +185,16 @@ exit 0'
 fake_review_gh() {
   local latest="${1:-2026-08-13T00:07:00Z}"
   local footer="_Created by carbotracker's agent skills._"
-  fake_command gh "if [[ \"\$1\" == \"api\" ]]; then
+  fake_command gh "if [[ \"\$1\" == \"pr\" && \"\$2\" == \"view\" ]]; then
+  case \"\$*\" in
+    *--json\ state*) printf \"OPEN\n\" ;;
+    *--json\ mergeStateStatus*) printf \"CLEAN\n\" ;;
+    *--json\ labels*) printf \"[]\n\" ;;
+    *--json\ files*) printf \"[]\n\" ;;
+    *--json\ number,title,headRefName,baseRefName,state,url*) printf \"{\\\"number\\\":456,\\\"title\\\":\\\"Test PR\\\",\\\"headRefName\\\":\\\"ticket/123-foo\\\",\\\"baseRefName\\\":\\\"main\\\",\\\"state\\\":\\\"OPEN\\\",\\\"url\\\":\\\"https://github.com/test/test/pull/456\\\"}\n\" ;;
+  esac
+  exit 0
+elif [[ \"\$1\" == \"api\" ]]; then
   case \"\$2\" in
     *reviews*) printf \"[]\n\" ;;
     *pulls/*) printf \"[{\\\"created_at\\\":\\\"$latest\\\",\\\"user\\\":{\\\"type\\\":\\\"User\\\"},\\\"body\\\":\\\"human inline comment\\\"},{\\\"created_at\\\":\\\"2026-08-13T00:09:00Z\\\",\\\"body\\\":\\\"$footer\\\"}]\n\" ;;
@@ -2260,8 +2269,9 @@ test_review_round_success_updates_state() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 2
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
-  assert_eq "opencode run resumes the session headless" "run --auto --model $ORCHESTRATOR_MODEL --session ses_abc /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree"
+  assert_eq "opencode run uses fresh session for analyze" "run --auto --model $ORCHESTRATOR_MODEL /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
+  assert_not_contains "analyze does not use --session" "--session" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "state last comment updated after round" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   assert_eq "successful round resets failure counter" "0" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   assert_eq "no failure notice posted on success" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
@@ -2282,7 +2292,7 @@ test_review_round_answer_posts_reply_and_does_not_resolve() {
   export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree"
   assert_contains "answer reply posted to the thread" "pulls/456/comments/3788850731/replies" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
   assert_contains "answer reply carries the plan reply text" "The ratio is stored per meal type." "$(cat "$FAKE_THREAD_REPLY_ARGS")"
   assert_contains "answer reply carries the AI-source footer" "_Created by carbotracker's agent skills._" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
@@ -2305,7 +2315,7 @@ test_review_round_general_comment_reply_posts_on_pr() {
   export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree"
   assert_contains "general comment reply posts on the pr conversation" "issues/456/comments" "$(cat "$FAKE_PR_COMMENT_ARGS")"
   assert_contains "general comment reply carries the plan text" "Covered in the PR description." "$(cat "$FAKE_PR_COMMENT_ARGS")"
   assert_contains "general comment reply carries the AI-source footer" "_Created by carbotracker's agent skills._" "$(cat "$FAKE_PR_COMMENT_ARGS")"
@@ -2326,7 +2336,7 @@ test_review_round_pushback_sets_needs_human() {
   export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree"
   assert_contains "pushback reply posted to the thread" "pulls/456/comments/3788850735/replies" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
   assert_contains "pushback reply carries the argument" "ngrx is already the store" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
   assert_contains "pushback reply carries the AI-source footer" "_Created by carbotracker's agent skills._" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
@@ -2349,7 +2359,7 @@ test_review_round_question_sets_needs_human() {
   export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree"
   assert_contains "question reply posted to the thread" "pulls/456/comments/3788850734/replies" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
   assert_contains "question reply carries the question" "Should this be solved repo-wide?" "$(cat "$FAKE_THREAD_REPLY_ARGS")"
   assert_eq "question sets needsHuman" "true" "$(jq -r '.[0].reviewNeedsHuman' "$TEST_STATE")"
@@ -2520,7 +2530,7 @@ test_review_round_empty_plan_with_human_content_fails() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output rc
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree" 2>&1)" && rc=0 || rc=$?
   assert_eq "empty plan with human content fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
   assert_eq "empty plan with human content increments the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   assert_eq "empty plan with human content keeps the watermark" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
@@ -2558,7 +2568,7 @@ exit 0"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 2
   local output rc
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree" 2>&1)" && rc=0 || rc=$?
   assert_eq "empty plan without human content succeeds" "yes" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
   assert_eq "empty plan without human content resets the failure counter" "0" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   assert_eq "empty plan without human content posts nothing" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
@@ -2616,7 +2626,7 @@ test_review_round_malformed_plan_keeps_watermark_and_retries() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output rc
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree" 2>&1)" && rc=0 || rc=$?
   assert_eq "malformed plan fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
   assert_eq "malformed plan increments the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   assert_eq "malformed plan keeps the watermark" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
@@ -2636,7 +2646,7 @@ test_review_round_schema_invalid_plan_keeps_watermark() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output rc
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree" 2>&1)" && rc=0 || rc=$?
   assert_eq "schema-invalid plan fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
   assert_eq "schema-invalid plan keeps the watermark" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
   state_teardown
@@ -2657,7 +2667,7 @@ test_review_round_partial_reply_failure_does_not_duplicate() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output rc
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree" 2>&1)" && rc=0 || rc=$?
   assert_eq "partial reply failure still completes the round" "yes" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
   assert_eq "only the successful reply is posted" "1" "$(grep -c -- 'First reply.' "$FAKE_THREAD_REPLY_ARGS")"
   assert_eq "failed reply is never posted" "0" "$(grep -c -- 'Second reply that fails.' "$FAKE_THREAD_REPLY_ARGS")"
@@ -2679,7 +2689,7 @@ test_review_round_all_replies_fail_keeps_watermark_and_retries() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output rc
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree" 2>&1)" && rc=0 || rc=$?
   assert_eq "zero replies posted fails the round" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
   assert_eq "zero replies increments the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   assert_eq "zero replies keeps the watermark" "null" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
@@ -2698,7 +2708,7 @@ test_review_round_failure_increments_and_posts_notice() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output rc
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 456 "$worktree" 2>&1)" && rc=0 || rc=$?
   if [[ "$rc" -eq 0 ]]; then
     fail "review round fails when opencode run fails"
   else
@@ -2722,7 +2732,7 @@ test_review_round_third_failure_pauses_and_consumes() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 2
   local output rc
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 456 "$worktree" 2>&1)" && rc=0 || rc=$?
   assert_eq "third failure returns failure" "no" "$([[ "$rc" -eq 0 ]] && echo yes || echo no)"
   assert_eq "third failure caps the counter" "3" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   assert_contains "third failure notice posted" "attempt 3/3" "$(cat "$FAKE_PR_COMMENT_ARGS")"
@@ -2743,7 +2753,7 @@ test_review_round_after_pause_starts_fresh_budget() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 3
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree"
   assert_eq "resumed round resets the failure budget" "0" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   state_teardown
 }
@@ -2824,7 +2834,7 @@ test_review_round_skips_merged_pr() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 1
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 456 "$worktree" 2>&1)"
   assert_eq "merged pr launches no analyze" "" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null || true)"
   assert_eq "merged pr leaves the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   assert_eq "merged pr posts no notice" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
@@ -2843,7 +2853,7 @@ test_review_round_skips_closed_pr() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 456 "$worktree" 2>&1)"
   assert_eq "closed pr launches no analyze" "" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null || true)"
   assert_contains "closed pr logs the skip" "PR #456 is CLOSED" "$output"
   unset FAKE_OPENCODE_LOG
@@ -2862,7 +2872,7 @@ test_review_round_defers_when_state_unreadable() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 1
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 456 "$worktree" 2>&1)"
   assert_eq "unreadable state launches no analyze" "" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null || true)"
   assert_eq "unreadable state leaves the failure counter" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   assert_eq "unreadable state posts no notice" "no" "$([[ -f "$FAKE_PR_COMMENT_ARGS" ]] && echo yes || echo no)"
@@ -2884,7 +2894,7 @@ test_review_round_resumes_from_persisted_plan() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 456 "$worktree" 2>&1)"
   assert_eq "resume skips the analyze step" "" "$(cat "$FAKE_OPENCODE_LOG" 2>/dev/null || true)"
   assert_contains "resume replies from the persisted plan" "Covered in the PR description." "$(cat "$FAKE_PR_COMMENT_ARGS")"
   assert_eq "plan deleted on success" "no" "$([[ -f "$STATE_DIR/review-plan-123.json" ]] && echo yes || echo no)"
@@ -2905,7 +2915,7 @@ test_review_round_keeps_plan_on_act_failure() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   local output rc
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 456 "$worktree" 2>&1)" && rc=0 || rc=$?
   assert_eq "failed round keeps the persisted plan" "yes" "$([[ -f "$STATE_DIR/review-plan-123.json" ]] && echo yes || echo no)"
   assert_eq "failed round increments failures" "1" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   unset FAKE_OPENCODE_LOG
@@ -2923,7 +2933,7 @@ test_review_round_deletes_plan_at_retry_cap() {
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_review_failures "$TEST_STATE" 123 2
   local output rc
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>&1)" && rc=0 || rc=$?
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_review_round 123 456 "$worktree" 2>&1)" && rc=0 || rc=$?
   assert_eq "abandoned round deletes the plan" "no" "$([[ -f "$STATE_DIR/review-plan-123.json" ]] && echo yes || echo no)"
   assert_eq "abandoned round hits the cap" "3" "$(jq -r '.[0].reviewFailures' "$TEST_STATE")"
   state_teardown
@@ -2953,7 +2963,7 @@ exit 0'
   export FAKE_THREAD_REPLY_ARGS="$STATE_DIR/thread_reply"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>/dev/null
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree" 2>/dev/null
   assert_eq "already-replied thread comment is not re-posted" "" "$(cat "$FAKE_THREAD_REPLY_ARGS" 2>/dev/null || true)"
   unset FAKE_THREAD_REPLY_ARGS
   state_teardown
@@ -2986,7 +2996,7 @@ exit 0'
   export FAKE_PR_COMMENT_ARGS="$STATE_DIR/pr_comment"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 123 ticket/123-foo "$worktree"
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_complete "$TEST_STATE" 123 ses_abc 456
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 ses_abc 456 "$worktree" 2>/dev/null
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_REVIEW_PLAN_FILE="$plan" orchestrator_review_round 123 456 "$worktree" 2>/dev/null
   assert_eq "already-replied general comment is not re-posted" "" "$(cat "$FAKE_PR_COMMENT_ARGS" 2>/dev/null || true)"
   unset FAKE_PR_COMMENT_ARGS
   state_teardown
@@ -3307,7 +3317,7 @@ test_poll_once_runs_review_loop() {
   assert_eq "poll once runs review round for awaiting-review pr" "run --auto --model $ORCHESTRATOR_MODEL /review-comments on PR #456 (ticket #123) headless: do not ask, do not post, do not implement — write the plan file" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_not_contains "poll once does not use --session" "--session" "$(cat "$FAKE_OPENCODE_ARGS")"
   assert_eq "poll once updates last comment in state" "2026-08-13T00:07:00Z" "$(jq -r '.[0].lastCommentAt' "$TEST_STATE")"
-  assert_contains "logs review round" "review #123: launching /review-comments" "$output"
+  assert_contains "logs review round" "review #123: new comment on PR #456" "$output"
   unset FAKE_OPENCODE_ARGS
   state_teardown
 }
