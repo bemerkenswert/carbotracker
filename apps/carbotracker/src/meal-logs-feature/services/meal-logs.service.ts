@@ -23,9 +23,10 @@ import {
   MealLogDocument,
   MealLogDocumentType,
   MealType,
+  SportLog,
 } from '../meal-log.model';
 
-const transformMealLogDocument = (
+export const transformMealLogDocument = (
   id: string,
   data: unknown,
 ): MealLogDocument => {
@@ -41,6 +42,10 @@ const transformMealLogDocument = (
     estimatedInsulin?: number;
     actualInsulin?: number;
     insulin?: number;
+    duration?: number;
+    sportName?: string;
+    basalRate?: number | null;
+    basalReductionPercent?: number | null;
   };
   if (document.type === 'insulin-dose') {
     const insulinDose: InsulinDose = {
@@ -53,6 +58,21 @@ const transformMealLogDocument = (
       creator: document.creator,
     };
     return insulinDose;
+  }
+  if (document.type === 'sport-log') {
+    const sportLog: SportLog = {
+      id,
+      type: 'sport-log',
+      createdAt: document.createdAt?.toDate() ?? new Date(0),
+      date: document.date,
+      duration: document.duration ?? 0,
+      sportName: document.sportName ?? '',
+      basalRate: document.basalRate ?? null,
+      basalReductionPercent: document.basalReductionPercent ?? null,
+      note: document.note ?? null,
+      creator: document.creator,
+    };
+    return sportLog;
   }
   const mealLog: MealLog = {
     id,
@@ -145,6 +165,30 @@ export class MealLogsService {
         note: params.note,
         date: toDateString(params.date),
         createdAt: params.date,
+        creator: params.uid,
+      }),
+    );
+  }
+
+  public createSportLog(params: {
+    date: Date;
+    duration: number;
+    sportName: string;
+    basalRate: number | null;
+    basalReductionPercent: number | null;
+    note: string | null;
+    uid: string;
+  }) {
+    return from(
+      addDoc(collection(getFirestore(), 'meal-logs'), {
+        type: 'sport-log',
+        createdAt: params.date,
+        date: toDateString(params.date),
+        duration: params.duration,
+        sportName: params.sportName,
+        basalRate: params.basalRate,
+        basalReductionPercent: params.basalReductionPercent,
+        note: params.note,
         creator: params.uid,
       }),
     );

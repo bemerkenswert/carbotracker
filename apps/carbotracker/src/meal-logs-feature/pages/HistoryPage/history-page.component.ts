@@ -15,6 +15,7 @@ import {
 } from '@angular/material/datepicker';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
   CtuiFixedPositionDirective,
@@ -36,6 +37,7 @@ import { selectHistoryPageViewModel } from './history-page.selectors';
     MatButtonModule,
     MatIconModule,
     MatListModule,
+    MatMenuModule,
     MatTooltipModule,
     DatePipe,
     DecimalPipe,
@@ -78,7 +80,14 @@ export default class HistoryPageComponent implements OnInit, OnDestroy {
     this.store.dispatch(HistoryPageComponentActions.logInsulinDoseClicked());
   }
 
+  protected onLogSportClick() {
+    this.store.dispatch(HistoryPageComponentActions.logSportClicked());
+  }
+
   protected onEntryClick(mealLog: MealLogDocument) {
+    if (mealLog.type === 'sport-log') {
+      return;
+    }
     this.store.dispatch(
       mealLog.type === 'meal-log'
         ? HistoryPageComponentActions.editMealLogClicked({ mealLog })

@@ -12,8 +12,12 @@ import { EditMealLogDialogService } from '../edit-meal-log-dialog/edit-meal-log-
 import { ConfirmedEditMealLogDialogResult } from '../edit-meal-log-dialog/edit-meal-log-dialog.model';
 import { InsulinDoseDialogService } from '../insulin-dose-dialog/insulin-dose-dialog.service';
 import { ConfirmedInsulinDoseDialogResult } from '../insulin-dose-dialog/insulin-dose-dialog.model';
+import { SportDialogService } from '../sport-dialog/sport-dialog.service';
+import { ConfirmedSportDialogResult } from '../sport-dialog/sport-dialog.model';
 import { MealLogsService } from '../services/meal-logs.service';
 import { MealLog } from '../meal-log.model';
+import { fromDateString } from '../date.util';
+import { mealLogsFeature } from './meal-logs.feature';
 import {
   HistoryPageComponentActions,
   MealLogsApiActions,
@@ -83,6 +87,67 @@ export const createInsulinDose$ = createEffect(
               ),
           ),
         );
+      }),
+    ),
+  { functional: true },
+);
+
+export const createSportLog$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    sportDialogService = inject(SportDialogService),
+    mealLogsService = inject(MealLogsService),
+    store = inject(Store),
+  ) =>
+    actions$.pipe(
+      ofType(HistoryPageComponentActions.logSportClicked),
+      concatLatestFrom(() => [
+        store.select(authFeature.selectUserId),
+        store.select(mealLogsFeature.selectSelectedDate),
+      ]),
+      switchMap(([, uid, selectedDate]) => {
+        if (!uid) {
+          return EMPTY;
+        }
+        return sportDialogService
+          .open(
+            selectedDate
+              ? { defaultDate: fromDateString(selectedDate) }
+              : undefined,
+          )
+          .pipe(
+            filter(
+              (result): result is ConfirmedSportDialogResult =>
+                !result.cancelled,
+            ),
+            switchMap(
+              ({
+                date,
+                duration,
+                sportName,
+                basalRate,
+                basalReductionPercent,
+                note,
+              }) =>
+                mealLogsService
+                  .createSportLog({
+                    date,
+                    duration,
+                    sportName,
+                    basalRate,
+                    basalReductionPercent,
+                    note,
+                    uid,
+                  })
+                  .pipe(
+                    mapResponse({
+                      next: () => MealLogsApiActions.sportLogCreated(),
+                      error: (error) =>
+                        MealLogsApiActions.sportLogCreationFailed({ error }),
+                    }),
+                  ),
+            ),
+          );
       }),
     ),
   { functional: true },
