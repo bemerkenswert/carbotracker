@@ -60,7 +60,7 @@ export default class CreateSportPageComponent {
     this.nameAlreadyExists()(this.formGroup.controls.name.value),
   );
 
-  public onSubmit() {
+  protected onSubmit() {
     const { name } = this.formGroup.getRawValue();
     this.store.dispatch(
       ComponentActions.saveSportClicked({
