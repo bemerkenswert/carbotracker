@@ -61,7 +61,12 @@ stateDiagram-v2
 `implementing` means the orchestrator is actively running a session for the
 ticket; `failed` means a non-opencode failure is waiting for a bounded retry;
 `awaiting review` means the PR exists and a human should look at it. Only
-`implementing` entries count against the active session cap.
+entries with a **live pid** count against the active session cap — the state
+entry records the running session's process id and the count probes it with
+`kill -0` — so a session that has finished, failed, or not yet started never
+occupies a cap slot. The pid is set and cleared around the existing synchronous
+`opencode run`, so today the count tracks the daemon's own pid during the run;
+this is substrate for later parallelism.
 
 A claim is recorded **twice**: on the GitHub issue (remove `ready-for-agent`,
 add `in-progress`) and in the local state file. The label flip is what makes
@@ -412,7 +417,11 @@ interruption:
 
 Active tickets live in a single JSON array, written atomically
 (temp file + rename). Default location:
-`$HOME/.local/state/carbotracker/orchestrator.json`.
+`$HOME/.local/state/carbotracker/orchestrator.json`. Every
+load→modify→write cycle is serialised by an external lock — a sibling
+`orchestrator.json.lock` file guarded with `flock(1)` — so two parallel daemons
+can never clobber each other's changes; readers stay consistent because the
+rename is atomic.
 
 ```json
 [
@@ -430,7 +439,8 @@ Active tickets live in a single JSON array, written atomically
     "reviewNeedsHuman": false,
     "mergeNoticePosted": false,
     "phase": "awaiting review",
-    "startedAt": "2026-08-13T00:07:00Z"
+    "startedAt": "2026-08-13T00:07:00Z",
+    "pid": null
   }
 ]
 ```
@@ -451,6 +461,7 @@ Active tickets live in a single JSON array, written atomically
 | `mergeNoticePosted`  | Whether the needs-a-human merge comment was already posted        |
 | `phase`              | `implementing`, `failed`, or `awaiting review`                    |
 | `startedAt`          | UTC timestamp of the claim                                        |
+| `pid`                | Process id of the running session (`null` when none is running)   |
 
 ## Data flow
 

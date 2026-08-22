@@ -145,8 +145,47 @@ orchestrator_state_write() {
   mv "$tmp" "$state_file"
 }
 
+# The external lock that serialises the state file's load→modify→write cycle.
+# It is a sibling .lock file next to the state file, guarded with flock(1), so
+# two parallel daemons can never clobber each other's changes. The atomic
+# temp-file write inside orchestrator_state_write keeps readers consistent; the
+# lock makes the whole load→modify→write cycle exclusive to a single writer.
+orchestrator_state_lock_file() {
+  local state_file="$1"
+  printf '%s.lock' "$state_file"
+}
+
+# Apply a jq transformation to the state file inside the external lock. Every
+# mutator goes through here so no two writers can interleave a load→modify→write
+# cycle; the jq program in $1 receives the loaded array on stdin and must emit
+# the next state on stdout.
+orchestrator_state_update() {
+  local state_file="$1" jq_program="$2"
+  shift 2
+  local lock_file dir fd state
+  lock_file="$(orchestrator_state_lock_file "$state_file")"
+  dir="$(dirname "$state_file")"
+  mkdir -p "$dir"
+  exec {fd}>>"$lock_file"
+  flock "$fd"
+  state="$(orchestrator_state_load "$state_file")"
+  state="$(printf '%s' "$state" | jq "$@" "$jq_program")"
+  orchestrator_state_write "$state_file" "$state"
+  exec {fd}>&-
+}
+
 orchestrator_state_active_count() {
-  orchestrator_state_load "$1" | jq '[.[] | select(.phase == "implementing")] | length'
+  local state_file="$1" pid count=0
+  # Count entries whose pid is set and whose process is still alive — a live
+  # session, whatever its phase. A dead or absent pid (a finished, failed, or
+  # yet-unstarted entry) never counts. The probe goes through PATH (env kill)
+  # so tests can fake it deterministically.
+  while IFS= read -r pid; do
+    if env kill -0 "$pid" 2>/dev/null; then
+      count=$((count + 1))
+    fi
+  done < <(orchestrator_state_load "$state_file" | jq -r '.[] | select(.pid != null) | .pid')
+  printf '%s' "$count"
 }
 
 orchestrator_state_has_ticket() {
@@ -159,37 +198,31 @@ orchestrator_state_has_ticket() {
 
 orchestrator_state_add() {
   local state_file="$1" number="$2" branch="$3" worktree="$4"
-  local state entry now
-  state="$(orchestrator_state_load "$state_file")"
+  local now entry
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   entry="$(jq -n --argjson ticket "$number" --arg branch "$branch" --arg worktree "$worktree" --arg started "$now" \
-    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, lastCommentAt: null, reviewFailures: 0, failureCount: 0, mergeFailures: 0, reviewNeedsHuman: false, mergeNoticePosted: false, phase: "implementing", startedAt: $started}')"
-  state="$(printf '%s' "$state" | jq --argjson entry "$entry" '. + [$entry]')"
-  orchestrator_state_write "$state_file" "$state"
+    '{ticket: $ticket, branch: $branch, worktree: $worktree, sessionId: null, prNumber: null, lastCommentAt: null, reviewFailures: 0, failureCount: 0, mergeFailures: 0, reviewNeedsHuman: false, mergeNoticePosted: false, phase: "implementing", startedAt: $started, pid: null}')"
+  orchestrator_state_update "$state_file" '. + [$entry]' --argjson entry "$entry"
 }
 
 orchestrator_state_complete() {
   local state_file="$1" number="$2" session_id="$3" pr_number="$4"
-  local state
-  state="$(orchestrator_state_load "$state_file")"
   if [[ -n "$pr_number" && "$pr_number" != "" ]]; then
     # PR exists: transition to awaiting review, preserve sessionId for merge poll conflict resolution
-    state="$(printf '%s' "$state" | jq --argjson n "$number" --arg prn "$pr_number" --arg sid "$session_id" \
-      '(.[] | select(.ticket == $n)) |= (.sessionId = (if $sid == "" then null else $sid end) | .prNumber = ($prn | tonumber) | .phase = "awaiting review")')"
+    orchestrator_state_update "$state_file" \
+      '(.[] | select(.ticket == $n)) |= (.sessionId = (if $sid == "" then null else $sid end) | .prNumber = ($prn | tonumber) | .phase = "awaiting review")' \
+      --argjson n "$number" --arg prn "$pr_number" --arg sid "$session_id"
   else
     # No PR yet: keep sessionId for potential resume, phase stays implementing
-    state="$(printf '%s' "$state" | jq --argjson n "$number" --arg sid "$session_id" \
-      '(.[] | select(.ticket == $n)) |= (.sessionId = (if $sid == "" then null else $sid end) | .prNumber = null)')"
+    orchestrator_state_update "$state_file" \
+      '(.[] | select(.ticket == $n)) |= (.sessionId = (if $sid == "" then null else $sid end) | .prNumber = null)' \
+      --argjson n "$number" --arg sid "$session_id"
   fi
-  orchestrator_state_write "$state_file" "$state"
 }
 
 orchestrator_state_remove() {
   local state_file="$1" number="$2"
-  local state
-  state="$(orchestrator_state_load "$state_file")"
-  state="$(printf '%s' "$state" | jq --argjson n "$number" 'map(select(.ticket != $n))')"
-  orchestrator_state_write "$state_file" "$state"
+  orchestrator_state_update "$state_file" 'map(select(.ticket != $n))' --argjson n "$number"
 }
 
 orchestrator_state_phase() {
@@ -199,11 +232,9 @@ orchestrator_state_phase() {
 
 orchestrator_state_mark_failed() {
   local state_file="$1" number="$2"
-  local state
-  state="$(orchestrator_state_load "$state_file")"
-  state="$(printf '%s' "$state" | jq --argjson n "$number" \
-    '(.[] | select(.ticket == $n)) |= (.failureCount = ((.failureCount // 0) + 1) | .phase = "failed")')"
-  orchestrator_state_write "$state_file" "$state"
+  orchestrator_state_update "$state_file" \
+    '(.[] | select(.ticket == $n)) |= (.failureCount = ((.failureCount // 0) + 1) | .phase = "failed")' \
+    --argjson n "$number"
 }
 
 orchestrator_state_failure_count() {
@@ -214,20 +245,16 @@ orchestrator_state_failure_count() {
 
 orchestrator_state_retry_failed() {
   local state_file="$1" number="$2"
-  local state
-  state="$(orchestrator_state_load "$state_file")"
-  state="$(printf '%s' "$state" | jq --argjson n "$number" \
-    '(.[] | select(.ticket == $n and .phase == "failed")) |= (.phase = "implementing")')"
-  orchestrator_state_write "$state_file" "$state"
+  orchestrator_state_update "$state_file" \
+    '(.[] | select(.ticket == $n and .phase == "failed")) |= (.phase = "implementing")' \
+    --argjson n "$number"
 }
 
 orchestrator_state_mark_reviewed() {
   local state_file="$1" number="$2" timestamp="$3"
-  local state
-  state="$(orchestrator_state_load "$state_file")"
-  state="$(printf '%s' "$state" | jq --argjson n "$number" --arg ts "$timestamp" \
-    '(.[] | select(.ticket == $n)) |= (.lastCommentAt = $ts)')"
-  orchestrator_state_write "$state_file" "$state"
+  orchestrator_state_update "$state_file" \
+    '(.[] | select(.ticket == $n)) |= (.lastCommentAt = $ts)' \
+    --argjson n "$number" --arg ts "$timestamp"
 }
 
 orchestrator_state_review_failures() {
@@ -238,20 +265,16 @@ orchestrator_state_review_failures() {
 
 orchestrator_state_set_review_failures() {
   local state_file="$1" number="$2" count="$3"
-  local state
-  state="$(orchestrator_state_load "$state_file")"
-  state="$(printf '%s' "$state" | jq --argjson n "$number" --argjson c "$count" \
-    '(.[] | select(.ticket == $n)) |= (.reviewFailures = $c)')"
-  orchestrator_state_write "$state_file" "$state"
+  orchestrator_state_update "$state_file" \
+    '(.[] | select(.ticket == $n)) |= (.reviewFailures = $c)' \
+    --argjson n "$number" --argjson c "$count"
 }
 
 orchestrator_state_set_review_needs_human() {
   local state_file="$1" number="$2" flag="$3"
-  local state
-  state="$(orchestrator_state_load "$state_file")"
-  state="$(printf '%s' "$state" | jq --argjson n "$number" --argjson f "$flag" \
-    '(.[] | select(.ticket == $n)) |= (.reviewNeedsHuman = $f)')"
-  orchestrator_state_write "$state_file" "$state"
+  orchestrator_state_update "$state_file" \
+    '(.[] | select(.ticket == $n)) |= (.reviewNeedsHuman = $f)' \
+    --argjson n "$number" --argjson f "$flag"
 }
 
 orchestrator_state_merge_failures() {
@@ -262,11 +285,9 @@ orchestrator_state_merge_failures() {
 
 orchestrator_state_set_merge_failures() {
   local state_file="$1" number="$2" count="$3"
-  local state
-  state="$(orchestrator_state_load "$state_file")"
-  state="$(printf '%s' "$state" | jq --argjson n "$number" --argjson c "$count" \
-    '(.[] | select(.ticket == $n)) |= (.mergeFailures = $c)')"
-  orchestrator_state_write "$state_file" "$state"
+  orchestrator_state_update "$state_file" \
+    '(.[] | select(.ticket == $n)) |= (.mergeFailures = $c)' \
+    --argjson n "$number" --argjson c "$count"
 }
 
 orchestrator_state_merge_notice_posted() {
@@ -277,11 +298,18 @@ orchestrator_state_merge_notice_posted() {
 
 orchestrator_state_set_merge_notice_posted() {
   local state_file="$1" number="$2" flag="$3"
-  local state
-  state="$(orchestrator_state_load "$state_file")"
-  state="$(printf '%s' "$state" | jq --argjson n "$number" --argjson f "$flag" \
-    '(.[] | select(.ticket == $n)) |= (.mergeNoticePosted = $f)')"
-  orchestrator_state_write "$state_file" "$state"
+  orchestrator_state_update "$state_file" \
+    '(.[] | select(.ticket == $n)) |= (.mergeNoticePosted = $f)' \
+    --argjson n "$number" --argjson f "$flag"
+}
+
+orchestrator_state_set_pid() {
+  local state_file="$1" number="$2" pid="$3"
+  # pid is a JSON literal: a number when the session is running, or null to
+  # clear it once the synchronous run finishes.
+  orchestrator_state_update "$state_file" \
+    '(.[] | select(.ticket == $n)) |= (.pid = $p)' \
+    --argjson n "$number" --argjson p "$pid"
 }
 
 orchestrator_claim() {
@@ -1451,10 +1479,17 @@ orchestrator_implement() {
   session_title="carbotracker-ticket-$number"
   log_file="$(mktemp "${TMPDIR:-/tmp}/carbotracker-opencode.XXXXXX")"
   orchestrator_log "launching opencode for #$number (title $session_title)"
+  # Record the daemon's own pid as the running session's process while opencode
+  # runs synchronously, so a parallel daemon's active count sees this ticket as
+  # live for the duration of the run. Cleared as soon as the run (and its
+  # internal retry) is over, so a finished or failed session never counts.
+  orchestrator_state_set_pid "$ORCHESTRATOR_STATE_FILE" "$number" "$$"
   if ! orchestrator_run_opencode "$worktree" "$number" "$log_file" --title "$session_title"; then
+    orchestrator_state_set_pid "$ORCHESTRATOR_STATE_FILE" "$number" "null"
     orchestrator_escalate_opencode_failure "$number" "$branch" "$worktree" "$log_file" "opencode exited non-zero twice"
     return 1
   fi
+  orchestrator_state_set_pid "$ORCHESTRATOR_STATE_FILE" "$number" "null"
   if ! orchestrator_branch_has_commits "$worktree" "$branch"; then
     # opencode exited 0 but the branch tip is still at origin/main, so no PR can
     # be opened. Split the zero-commit exit by the worktree: uncommitted work
