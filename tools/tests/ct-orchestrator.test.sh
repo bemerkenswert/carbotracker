@@ -916,7 +916,7 @@ elif [[ "$1" == "issue" && "$2" == "view" ]]; then
   esac
 fi'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_ACTIVE_SESSION_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "claims all unblocked candidates" "2" "$(jq 'length' "$TEST_STATE")"
   assert_eq "claims first ticket number" "10" "$(jq -r '.[0].ticket' "$TEST_STATE")"
   assert_eq "claims second ticket number" "42" "$(jq -r '.[1].ticket' "$TEST_STATE")"
@@ -949,7 +949,7 @@ elif [[ "$1" == "session" ]]; then
 fi
 exit 0'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_ACTIVE_SESSION_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "claims both candidates despite opencode draining stdin" "2" "$(jq 'length' "$TEST_STATE")"
   assert_eq "first ticket claimed" "10" "$(jq -r '.[0].ticket' "$TEST_STATE")"
   assert_eq "second ticket claimed" "42" "$(jq -r '.[1].ticket' "$TEST_STATE")"
@@ -971,7 +971,7 @@ elif [[ "$1" == "issue" && "$2" == "view" ]]; then
 fi'
   orchestrator_state_add "$TEST_STATE" 10 ticket/10-alpha "$WT_PARENT/10-alpha"
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_ACTIVE_SESSION_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "does not re-claim an active ticket" "2" "$(jq 'length' "$TEST_STATE")"
   assert_contains "logs skip of claimed ticket" "skip #10 (Alpha): already claimed" "$output"
   state_teardown
@@ -988,14 +988,14 @@ elif [[ "$1" == "api" ]]; then
   esac
 fi'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_ACTIVE_SESSION_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "only claims unblocked candidate" "1" "$(jq 'length' "$TEST_STATE")"
   assert_eq "claims the unblocked ticket" "42" "$(jq -r '.[0].ticket' "$TEST_STATE")"
   assert_contains "logs skip of blocked ticket" "skip #10 (Alpha): blocked" "$output"
   state_teardown
 }
 
-test_poll_once_respects_concurrency_cap() {
+test_poll_once_respects_active_session_cap() {
   state_setup
   fake_pipeline 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
   printf "[{\"number\":10,\"title\":\"Alpha\"},{\"number\":42,\"title\":\"Beta\"}]\n"
@@ -1003,11 +1003,11 @@ elif [[ "$1" == "api" ]]; then
   printf "0\n"
 fi'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=1 orchestrator_poll_once 2>&1)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_ACTIVE_SESSION_CAP=1 orchestrator_poll_once 2>&1)"
   assert_eq "cap limits claims to first ticket" "1" "$(jq 'length' "$TEST_STATE")"
   assert_eq "cap claims the FIFO-first ticket" "10" "$(jq -r '.[0].ticket' "$TEST_STATE")"
   assert_eq "implemented ticket reaches awaiting review" "awaiting review" "$(jq -r '.[0].phase' "$TEST_STATE")"
-  assert_contains "logs cap reached" "concurrency cap 1 reached" "$output"
+  assert_contains "logs cap reached" "active session cap 1 reached" "$output"
   state_teardown
 }
 
@@ -1021,9 +1021,9 @@ fi
 exit 0'
   orchestrator_state_add "$TEST_STATE" 1 ticket/1-existing "$WT_PARENT/1-existing"
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=1 orchestrator_poll_once 2>&1)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_ACTIVE_SESSION_CAP=1 orchestrator_poll_once 2>&1)"
   assert_eq "no new claims at full cap" "1" "$(jq 'length' "$TEST_STATE")"
-  assert_contains "logs cap reached" "concurrency cap 1 reached" "$output"
+  assert_contains "logs cap reached" "active session cap 1 reached" "$output"
   state_teardown
 }
 
@@ -1803,7 +1803,7 @@ exit 0'
 fi
 exit 0'
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_ACTIVE_SESSION_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "failed implementation remains in state" "1" "$(jq 'length' "$TEST_STATE")"
   assert_eq "failed implementation records failed phase" "failed" "$(jq -r '.[0].phase' "$TEST_STATE")"
   assert_eq "failed implementation records one failure" "1" "$(jq -r '.[0].failureCount' "$TEST_STATE")"
@@ -1828,7 +1828,7 @@ fi
 exit 0'
   export FAKE_EDITS_FILE="$edits_file"
   local output
-  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once 2>&1)"
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_ACTIVE_SESSION_CAP=3 orchestrator_poll_once 2>&1)"
   assert_eq "failed implementation remains in state" "1" "$(jq 'length' "$TEST_STATE")"
   assert_contains "restores ready-for-agent after non-opencode failure" "--add-label ready-for-agent" "$(cat "$edits_file")"
   assert_contains "drops in-progress after non-opencode failure" "--remove-label in-progress" "$(cat "$edits_file")"
@@ -2034,7 +2034,7 @@ exit 0'
   fake_command git 'exit 0'
   local worktree="$WT_PARENT/10-alpha"
   mkdir -p "$worktree"
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once >/dev/null 2>&1
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_ACTIVE_SESSION_CAP=3 orchestrator_poll_once >/dev/null 2>&1
   assert_eq "pre-existing worktree survives failed implementation" "yes" "$([[ -d "$worktree" ]] && echo yes || echo no)"
   assert_eq "failed implementation keeps state entry" "1" "$(jq 'length' "$TEST_STATE" 2>/dev/null || echo 0)"
   state_teardown
@@ -2056,7 +2056,7 @@ fi
 exit 0'
   fake_command npm 'exit 1'
   local worktree="$WT_PARENT/10-alpha"
-  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_CONCURRENCY_CAP=3 orchestrator_poll_once >/dev/null
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_ACTIVE_SESSION_CAP=3 orchestrator_poll_once >/dev/null
   assert_eq "worktree removed after failed implementation" "no" "$([[ -d "$worktree" ]] && echo yes || echo no)"
   state_teardown
 }
@@ -4034,16 +4034,16 @@ test_poll_once_runs_merge_poll() {
 
 test_config_defaults() {
   local out
-  out="$(env CT_ORCHESTRATOR_CONF=/nonexistent bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s %s %s %s\n" "$ORCHESTRATOR_CONCURRENCY_CAP" "$ORCHESTRATOR_POLL_INTERVAL_SECONDS" "$ORCHESTRATOR_REVIEW_RETRIES" "$ORCHESTRATOR_MERGE_RETRIES"' _ "$ROOT")"
+  out="$(env CT_ORCHESTRATOR_CONF=/nonexistent bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s %s %s %s\n" "$ORCHESTRATOR_ACTIVE_SESSION_CAP" "$ORCHESTRATOR_POLL_INTERVAL_SECONDS" "$ORCHESTRATOR_REVIEW_RETRIES" "$ORCHESTRATOR_MERGE_RETRIES"' _ "$ROOT")"
   assert_eq "defaults apply when no conf exists" "3 300 3 3" "$out"
 }
 
 test_config_file_parsing() {
   state_setup
   local conf="$STATE_DIR/custom.conf"
-  printf 'ORCHESTRATOR_CONCURRENCY_CAP=1\nORCHESTRATOR_POLL_INTERVAL_SECONDS=7\nORCHESTRATOR_REVIEW_RETRIES=5\nORCHESTRATOR_MERGE_RETRIES=2\n' > "$conf"
+  printf 'ORCHESTRATOR_ACTIVE_SESSION_CAP=1\nORCHESTRATOR_POLL_INTERVAL_SECONDS=7\nORCHESTRATOR_REVIEW_RETRIES=5\nORCHESTRATOR_MERGE_RETRIES=2\n' > "$conf"
   local out
-  out="$(env CT_ORCHESTRATOR_CONF="$conf" bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s %s %s %s\n" "$ORCHESTRATOR_CONCURRENCY_CAP" "$ORCHESTRATOR_POLL_INTERVAL_SECONDS" "$ORCHESTRATOR_REVIEW_RETRIES" "$ORCHESTRATOR_MERGE_RETRIES"' _ "$ROOT")"
+  out="$(env CT_ORCHESTRATOR_CONF="$conf" bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s %s %s %s\n" "$ORCHESTRATOR_ACTIVE_SESSION_CAP" "$ORCHESTRATOR_POLL_INTERVAL_SECONDS" "$ORCHESTRATOR_REVIEW_RETRIES" "$ORCHESTRATOR_MERGE_RETRIES"' _ "$ROOT")"
   assert_eq "conf overrides cap interval and retries" "1 7 5 2" "$out"
   state_teardown
 }
@@ -4051,11 +4051,43 @@ test_config_file_parsing() {
 test_config_env_beats_conf() {
   state_setup
   local conf="$STATE_DIR/custom.conf"
-  printf 'ORCHESTRATOR_CONCURRENCY_CAP=1\nORCHESTRATOR_POLL_INTERVAL_SECONDS=7\nORCHESTRATOR_REVIEW_RETRIES=5\nORCHESTRATOR_MERGE_RETRIES=2\n' > "$conf"
+  printf 'ORCHESTRATOR_ACTIVE_SESSION_CAP=1\nORCHESTRATOR_POLL_INTERVAL_SECONDS=7\nORCHESTRATOR_REVIEW_RETRIES=5\nORCHESTRATOR_MERGE_RETRIES=2\n' > "$conf"
   local out
-  out="$(env CT_ORCHESTRATOR_CONF="$conf" ORCHESTRATOR_CONCURRENCY_CAP=9 ORCHESTRATOR_POLL_INTERVAL_SECONDS=11 ORCHESTRATOR_REVIEW_RETRIES=1 ORCHESTRATOR_MERGE_RETRIES=8 \
-    bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s %s %s %s\n" "$ORCHESTRATOR_CONCURRENCY_CAP" "$ORCHESTRATOR_POLL_INTERVAL_SECONDS" "$ORCHESTRATOR_REVIEW_RETRIES" "$ORCHESTRATOR_MERGE_RETRIES"' _ "$ROOT")"
+  out="$(env CT_ORCHESTRATOR_CONF="$conf" ORCHESTRATOR_ACTIVE_SESSION_CAP=9 ORCHESTRATOR_POLL_INTERVAL_SECONDS=11 ORCHESTRATOR_REVIEW_RETRIES=1 ORCHESTRATOR_MERGE_RETRIES=8 \
+    bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s %s %s %s\n" "$ORCHESTRATOR_ACTIVE_SESSION_CAP" "$ORCHESTRATOR_POLL_INTERVAL_SECONDS" "$ORCHESTRATOR_REVIEW_RETRIES" "$ORCHESTRATOR_MERGE_RETRIES"' _ "$ROOT")"
   assert_eq "environment beats conf file" "9 11 1 8" "$out"
+  state_teardown
+}
+
+test_config_deprecated_cap_still_honoured() {
+  state_setup
+  local conf="$STATE_DIR/deprecated.conf"
+  printf 'ORCHESTRATOR_CONCURRENCY_CAP=4\n' > "$conf"
+  local out log="$STATE_DIR/warn.log"
+  out="$(env CT_ORCHESTRATOR_CONF="$conf" bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s\n" "$ORCHESTRATOR_ACTIVE_SESSION_CAP"' _ "$ROOT" 2>"$log")"
+  assert_eq "deprecated cap still honoured when new name unset" "4" "$out"
+  assert_contains "deprecation warning logged" "ORCHESTRATOR_CONCURRENCY_CAP is deprecated" "$(cat "$log")"
+  state_teardown
+}
+
+test_config_new_cap_wins_over_deprecated() {
+  state_setup
+  local conf="$STATE_DIR/both.conf"
+  printf 'ORCHESTRATOR_CONCURRENCY_CAP=4\nORCHESTRATOR_ACTIVE_SESSION_CAP=6\n' > "$conf"
+  local out log="$STATE_DIR/warn.log"
+  out="$(env CT_ORCHESTRATOR_CONF="$conf" bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s\n" "$ORCHESTRATOR_ACTIVE_SESSION_CAP"' _ "$ROOT" 2>"$log")"
+  assert_eq "new name beats deprecated name" "6" "$out"
+  assert_eq "no deprecation warning when new name set" "" "$(cat "$log")"
+  state_teardown
+}
+
+test_config_deprecated_cap_env_beats_default_conf() {
+  state_setup
+  local out log="$STATE_DIR/warn.log"
+  out="$(env CT_ORCHESTRATOR_CONF="$ROOT/tools/ct-orchestrator.conf" ORCHESTRATOR_CONCURRENCY_CAP=8 \
+    bash -c 'source "$1/tools/ct-orchestrator.sh"; printf "%s\n" "$ORCHESTRATOR_ACTIVE_SESSION_CAP"' _ "$ROOT" 2>"$log")"
+  assert_eq "deprecated env cap beats the default conf value" "8" "$out"
+  assert_contains "deprecation warning logged for env source" "ORCHESTRATOR_CONCURRENCY_CAP is deprecated" "$(cat "$log")"
   state_teardown
 }
 
@@ -4496,6 +4528,9 @@ test_state_set_review_failures_updates
 test_config_defaults
 test_config_file_parsing
 test_config_env_beats_conf
+test_config_deprecated_cap_still_honoured
+test_config_new_cap_wins_over_deprecated
+test_config_deprecated_cap_env_beats_default_conf
 
 fake_setup
 test_issue_feature_parses_valid_declaration
@@ -4658,7 +4693,7 @@ test_poll_once_claims_candidates
 test_poll_once_implements_all_candidates_when_opencode_drains_stdin
 test_poll_once_skips_claimed
 test_poll_once_skips_blocked
-test_poll_once_respects_concurrency_cap
+test_poll_once_respects_active_session_cap
 test_poll_once_skips_when_cap_full
 test_poll_once_removes_entry_on_failed_implement
 test_poll_once_restores_ready_for_agent_on_failed_implement

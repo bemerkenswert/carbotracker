@@ -7,6 +7,7 @@ source "$SCRIPT_DIR/ct-lib.sh"
 # Snapshot environment overrides before sourcing the conf file, so that
 # explicitly set variables win over the conf file (conf beats script defaults).
 ENV_ORCHESTRATOR_POLL_INTERVAL_SECONDS="${ORCHESTRATOR_POLL_INTERVAL_SECONDS-}"
+ENV_ORCHESTRATOR_ACTIVE_SESSION_CAP="${ORCHESTRATOR_ACTIVE_SESSION_CAP-}"
 ENV_ORCHESTRATOR_CONCURRENCY_CAP="${ORCHESTRATOR_CONCURRENCY_CAP-}"
 ENV_ORCHESTRATOR_STATE_FILE="${ORCHESTRATOR_STATE_FILE-}"
 ENV_ORCHESTRATOR_WORKTREE_PARENT="${ORCHESTRATOR_WORKTREE_PARENT-}"
@@ -23,7 +24,6 @@ if [[ -f "$CONF_FILE" ]]; then
 fi
 
 ORCHESTRATOR_POLL_INTERVAL_SECONDS="${ENV_ORCHESTRATOR_POLL_INTERVAL_SECONDS:-${ORCHESTRATOR_POLL_INTERVAL_SECONDS:-300}}"
-ORCHESTRATOR_CONCURRENCY_CAP="${ENV_ORCHESTRATOR_CONCURRENCY_CAP:-${ORCHESTRATOR_CONCURRENCY_CAP:-3}}"
 ORCHESTRATOR_STATE_FILE="${ENV_ORCHESTRATOR_STATE_FILE:-${ORCHESTRATOR_STATE_FILE:-$HOME/.local/state/carbotracker/orchestrator.json}}"
 ORCHESTRATOR_WORKTREE_PARENT="${ENV_ORCHESTRATOR_WORKTREE_PARENT:-${ORCHESTRATOR_WORKTREE_PARENT:-$WORKTREE_PARENT}}"
 ORCHESTRATOR_ISSUE_LABELS="${ENV_ORCHESTRATOR_ISSUE_LABELS:-${ORCHESTRATOR_ISSUE_LABELS:-ready-for-agent,ticket}}"
@@ -70,6 +70,27 @@ orchestrator_log() {
   # state helpers or push_and_open_pr) never pollute it with log lines.
   printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2
 }
+
+# The cap on concurrently active tickets (still bounds claims per poll until
+# later tickets change its semantics). The old ORCHESTRATOR_CONCURRENCY_CAP
+# name is honoured as a deprecation source when the new name is unset, and a
+# warning is logged whenever the deprecated name is the effective source.
+# Precedence keeps the script's env-beats-conf invariant within each name, and
+# the new name beats the old name within a tier: new env, old env, new conf,
+# old conf, default.
+if [[ -n "$ENV_ORCHESTRATOR_ACTIVE_SESSION_CAP" ]]; then
+  ORCHESTRATOR_ACTIVE_SESSION_CAP="$ENV_ORCHESTRATOR_ACTIVE_SESSION_CAP"
+elif [[ -n "$ENV_ORCHESTRATOR_CONCURRENCY_CAP" ]]; then
+  ORCHESTRATOR_ACTIVE_SESSION_CAP="$ENV_ORCHESTRATOR_CONCURRENCY_CAP"
+  orchestrator_log "WARNING: ORCHESTRATOR_CONCURRENCY_CAP is deprecated; set ORCHESTRATOR_ACTIVE_SESSION_CAP instead"
+elif [[ -n "${ORCHESTRATOR_ACTIVE_SESSION_CAP-}" ]]; then
+  ORCHESTRATOR_ACTIVE_SESSION_CAP="${ORCHESTRATOR_ACTIVE_SESSION_CAP}"
+elif [[ -n "${ORCHESTRATOR_CONCURRENCY_CAP-}" ]]; then
+  ORCHESTRATOR_ACTIVE_SESSION_CAP="${ORCHESTRATOR_CONCURRENCY_CAP}"
+  orchestrator_log "WARNING: ORCHESTRATOR_CONCURRENCY_CAP is deprecated; set ORCHESTRATOR_ACTIVE_SESSION_CAP instead"
+else
+  ORCHESTRATOR_ACTIVE_SESSION_CAP=3
+fi
 
 # Every agent-authored body carries the AI-source footer so a colleague reading
 # a thread can tell the agent's reply from the human's.
@@ -1665,14 +1686,14 @@ orchestrator_poll_once() {
   active_count="$(orchestrator_state_active_count "$ORCHESTRATOR_STATE_FILE")"
   count="$(printf '%s' "$candidates" | jq 'length')"
 
-  orchestrator_log "poll: $count candidate(s), $active_count active, cap $ORCHESTRATOR_CONCURRENCY_CAP"
+  orchestrator_log "poll: $count candidate(s), $active_count active, cap $ORCHESTRATOR_ACTIVE_SESSION_CAP"
 
   while IFS= read -r line; do
     number="$(printf '%s' "$line" | jq -r '.number')"
     title="$(printf '%s' "$line" | jq -r '.title')"
 
-    if [[ "$active_count" -ge "$ORCHESTRATOR_CONCURRENCY_CAP" ]]; then
-      orchestrator_log "concurrency cap $ORCHESTRATOR_CONCURRENCY_CAP reached; leaving remaining tickets for the next poll"
+    if [[ "$active_count" -ge "$ORCHESTRATOR_ACTIVE_SESSION_CAP" ]]; then
+      orchestrator_log "active session cap $ORCHESTRATOR_ACTIVE_SESSION_CAP reached; leaving remaining tickets for the next poll"
       break
     fi
 
@@ -1738,7 +1759,7 @@ orchestrator_self_refresh() {
 }
 
 orchestrator_daemon() {
-  orchestrator_log "orchestrator started: poll every ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s, concurrency cap $ORCHESTRATOR_CONCURRENCY_CAP, model $ORCHESTRATOR_MODEL, state $ORCHESTRATOR_STATE_FILE"
+  orchestrator_log "orchestrator started: poll every ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s, active session cap $ORCHESTRATOR_ACTIVE_SESSION_CAP, model $ORCHESTRATOR_MODEL, state $ORCHESTRATOR_STATE_FILE"
   while true; do
     orchestrator_self_refresh
     # Reconcile at the top of every poll, not just at startup: a transiently
