@@ -1,5 +1,15 @@
+mat-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 mat-radio-group {
   display: flex;
   flex-direction: column;
   margin: 8px 0;
+}
+
+.validation-message {
+  color: var(--mat-sys-error);
 }

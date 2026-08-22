@@ -61,6 +61,9 @@
     <mat-label>Note</mat-label>
     <input matInput [(ngModel)]="note" />
   </mat-form-field>
+  @if (validationMessage) {
+    <p class="validation-message">{{ validationMessage }}</p>
+  }
 </mat-dialog-content>
 <mat-dialog-actions>
   <button mat-button [matDialogClose]="{ cancelled: true }">Cancel</button>

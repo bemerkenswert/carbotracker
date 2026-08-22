@@ -51,6 +51,31 @@ export class SportDialogComponent {
     );
   }
 
+  protected get validationMessage(): string | null {
+    if (this.sportName.trim().length === 0) {
+      return 'Enter a sport name.';
+    }
+    if (this.duration === null || this.duration <= 0) {
+      return 'Enter a duration greater than 0.';
+    }
+    if (
+      this.reductionMode === 'rate' &&
+      (this.basalRate === null || this.basalRate <= 0)
+    ) {
+      return 'Enter a basal rate greater than 0.';
+    }
+    if (
+      this.reductionMode === 'percent' &&
+      (this.basalReductionPercent === null || this.basalReductionPercent <= 0)
+    ) {
+      return 'Enter a reduction percentage greater than 0.';
+    }
+    if (Number.isNaN(this.selectedDateTime().getTime())) {
+      return 'Enter a valid date and time.';
+    }
+    return null;
+  }
+
   protected getResult(): SportDialogResult {
     return {
       cancelled: false,
