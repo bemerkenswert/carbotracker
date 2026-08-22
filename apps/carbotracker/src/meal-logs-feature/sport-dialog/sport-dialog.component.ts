@@ -1,5 +1,12 @@
 import { Component, inject } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import {
+  AbstractControl,
+  FormBuilder,
+  FormControl,
+  ReactiveFormsModule,
+  ValidationErrors,
+  Validators,
+} from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -14,6 +21,43 @@ import {
   SportDialogResult,
 } from './sport-dialog.model';
 
+const greaterThanZero = (
+  control: AbstractControl<number | null>,
+): ValidationErrors | null => {
+  const value = control.value;
+  if (value === null || value === undefined || value <= 0) {
+    return { greaterThanZero: true };
+  }
+  return null;
+};
+
+const createSportFormGroup = (data: SportDialogData) => {
+  const fb = inject(FormBuilder);
+  return fb.group({
+    date: new FormControl<Date>(data.defaultDate ?? new Date(), {
+      nonNullable: true,
+      validators: [Validators.required],
+    }),
+    time: new FormControl<string>(toLocalTimeString(new Date()), {
+      nonNullable: true,
+      validators: [Validators.required],
+    }),
+    duration: new FormControl<number | null>(null, {
+      validators: [Validators.required, greaterThanZero],
+    }),
+    sportName: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required],
+    }),
+    reductionMode: new FormControl<BasalReductionMode>('none', {
+      nonNullable: true,
+    }),
+    basalRate: new FormControl<number | null>(null),
+    basalReductionPercent: new FormControl<number | null>(null),
+    note: new FormControl<string>('', { nonNullable: true }),
+  });
+};
+
 @Component({
   selector: 'carbotracker-sport-dialog',
   imports: [
@@ -24,7 +68,7 @@ import {
     MatDatepickerModule,
     MatNativeDateModule,
     MatRadioModule,
-    FormsModule,
+    ReactiveFormsModule,
   ],
   templateUrl: './sport-dialog.component.html',
   styleUrls: ['./sport-dialog.component.scss'],
@@ -32,79 +76,46 @@ import {
 export class SportDialogComponent {
   private readonly data = inject<SportDialogData>(MAT_DIALOG_DATA);
 
-  protected date: Date = this.data.defaultDate ?? new Date();
-  protected time: string = toLocalTimeString(new Date());
-  protected duration: number | null = null;
-  protected sportName = '';
-  protected reductionMode: BasalReductionMode = 'none';
-  protected basalRate: number | null = null;
-  protected basalReductionPercent: number | null = null;
-  protected note = '';
+  protected readonly sportForm = createSportFormGroup(this.data);
 
   protected get canSave(): boolean {
-    return (
-      this.sportName.trim().length > 0 &&
-      this.duration !== null &&
-      this.duration > 0 &&
-      this.isReductionValid() &&
-      !Number.isNaN(this.selectedDateTime().getTime())
-    );
+    return this.sportForm.valid;
   }
 
-  protected get validationMessage(): string | null {
-    if (this.sportName.trim().length === 0) {
-      return 'Enter a sport name.';
+  protected onReductionModeChange(mode: BasalReductionMode) {
+    const rateControl = this.sportForm.controls.basalRate;
+    const percentControl = this.sportForm.controls.basalReductionPercent;
+    if (mode === 'rate') {
+      rateControl.setValidators([Validators.required, greaterThanZero]);
+      percentControl.clearValidators();
+    } else if (mode === 'percent') {
+      percentControl.setValidators([Validators.required, greaterThanZero]);
+      rateControl.clearValidators();
+    } else {
+      rateControl.clearValidators();
+      percentControl.clearValidators();
     }
-    if (this.duration === null || this.duration <= 0) {
-      return 'Enter a duration greater than 0.';
-    }
-    if (
-      this.reductionMode === 'rate' &&
-      (this.basalRate === null || this.basalRate <= 0)
-    ) {
-      return 'Enter a basal rate greater than 0.';
-    }
-    if (
-      this.reductionMode === 'percent' &&
-      (this.basalReductionPercent === null || this.basalReductionPercent <= 0)
-    ) {
-      return 'Enter a reduction percentage greater than 0.';
-    }
-    if (Number.isNaN(this.selectedDateTime().getTime())) {
-      return 'Enter a valid date and time.';
-    }
-    return null;
+    rateControl.updateValueAndValidity();
+    percentControl.updateValueAndValidity();
   }
 
   protected getResult(): SportDialogResult {
+    const formValue = this.sportForm.getRawValue();
+    const [hours, minutes] = formValue.time.split(':').map(Number);
+    const date = new Date(formValue.date);
+    date.setHours(hours, minutes, 0, 0);
     return {
       cancelled: false,
-      date: this.selectedDateTime(),
-      duration: this.duration as number,
-      sportName: this.sportName.trim(),
-      basalRate: this.reductionMode === 'rate' ? this.basalRate : null,
+      date,
+      duration: formValue.duration as number,
+      sportName: formValue.sportName.trim(),
+      basalRate:
+        formValue.reductionMode === 'rate' ? formValue.basalRate : null,
       basalReductionPercent:
-        this.reductionMode === 'percent' ? this.basalReductionPercent : null,
-      note: this.note.trim() || null,
+        formValue.reductionMode === 'percent'
+          ? formValue.basalReductionPercent
+          : null,
+      note: formValue.note.trim() || null,
     };
-  }
-
-  private isReductionValid(): boolean {
-    if (this.reductionMode === 'rate') {
-      return this.basalRate !== null && this.basalRate > 0;
-    }
-    if (this.reductionMode === 'percent') {
-      return (
-        this.basalReductionPercent !== null && this.basalReductionPercent > 0
-      );
-    }
-    return true;
-  }
-
-  private selectedDateTime(): Date {
-    const [hours, minutes] = this.time.split(':').map(Number);
-    const date = new Date(this.date);
-    date.setHours(hours, minutes, 0, 0);
-    return date;
   }
 }

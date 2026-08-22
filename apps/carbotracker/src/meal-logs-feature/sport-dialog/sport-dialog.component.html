@@ -2,16 +2,27 @@
 <mat-dialog-content>
   <mat-form-field appearance="fill">
     <mat-label>Date</mat-label>
-    <input matInput [matDatepicker]="datePicker" [(ngModel)]="date" />
+    <input
+      matInput
+      formControlName="date"
+      [matDatepicker]="datePicker"
+      required
+    />
     <mat-datepicker-toggle
       matIconSuffix
       [for]="datePicker"
     ></mat-datepicker-toggle>
     <mat-datepicker #datePicker></mat-datepicker>
+    @if (sportForm.controls.date.invalid) {
+      <mat-error>Enter a valid date and time.</mat-error>
+    }
   </mat-form-field>
   <mat-form-field appearance="fill">
     <mat-label>Start time</mat-label>
-    <input matInput type="time" [(ngModel)]="time" />
+    <input matInput type="time" formControlName="time" required />
+    @if (sportForm.controls.time.invalid) {
+      <mat-error>Enter a valid date and time.</mat-error>
+    }
   </mat-form-field>
   <mat-form-field appearance="fill">
     <mat-label>Duration (hours)</mat-label>
@@ -20,20 +31,29 @@
       type="number"
       min="0"
       step="0.5"
-      [(ngModel)]="duration"
+      formControlName="duration"
       cdkFocusInitial
     />
+    @if (sportForm.controls.duration.invalid) {
+      <mat-error>Enter a duration greater than 0.</mat-error>
+    }
   </mat-form-field>
   <mat-form-field appearance="fill">
     <mat-label>Sport</mat-label>
-    <input matInput [(ngModel)]="sportName" />
+    <input matInput formControlName="sportName" required />
+    @if (sportForm.controls.sportName.invalid) {
+      <mat-error>Enter a sport name.</mat-error>
+    }
   </mat-form-field>
-  <mat-radio-group [(ngModel)]="reductionMode">
+  <mat-radio-group
+    [formControl]="sportForm.controls.reductionMode"
+    (change)="onReductionModeChange($event.value)"
+  >
     <mat-radio-button value="none">No basal reduction</mat-radio-button>
     <mat-radio-button value="rate">Temporary rate (U/h)</mat-radio-button>
     <mat-radio-button value="percent">Percentage reduction</mat-radio-button>
   </mat-radio-group>
-  @if (reductionMode === 'rate') {
+  @if (sportForm.controls.reductionMode.value === 'rate') {
     <mat-form-field appearance="fill">
       <mat-label>Basal rate (U/h)</mat-label>
       <input
@@ -41,11 +61,15 @@
         type="number"
         min="0"
         step="0.1"
-        [(ngModel)]="basalRate"
+        formControlName="basalRate"
+        required
       />
+      @if (sportForm.controls.basalRate.invalid) {
+        <mat-error>Enter a basal rate greater than 0.</mat-error>
+      }
     </mat-form-field>
   }
-  @if (reductionMode === 'percent') {
+  @if (sportForm.controls.reductionMode.value === 'percent') {
     <mat-form-field appearance="fill">
       <mat-label>Reduction (%)</mat-label>
       <input
@@ -53,17 +77,18 @@
         type="number"
         min="0"
         step="5"
-        [(ngModel)]="basalReductionPercent"
+        formControlName="basalReductionPercent"
+        required
       />
+      @if (sportForm.controls.basalReductionPercent.invalid) {
+        <mat-error>Enter a reduction percentage greater than 0.</mat-error>
+      }
     </mat-form-field>
   }
   <mat-form-field appearance="fill">
     <mat-label>Note</mat-label>
-    <input matInput [(ngModel)]="note" />
+    <input matInput formControlName="note" />
   </mat-form-field>
-  @if (validationMessage) {
-    <p class="validation-message">{{ validationMessage }}</p>
-  }
 </mat-dialog-content>
 <mat-dialog-actions>
   <button mat-button [matDialogClose]="{ cancelled: true }">Cancel</button>
