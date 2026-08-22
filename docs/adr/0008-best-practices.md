@@ -1,4 +1,4 @@
-# 0007. Best practices
+# 0008. Best practices
 
 - **Status:** Accepted
 - **Deciders:** carbotracker maintainers
