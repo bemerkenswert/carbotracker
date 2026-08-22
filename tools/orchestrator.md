@@ -145,8 +145,11 @@ open/sync/re-label event; branch protection on `main` requires them.
 
 `merge-gate` reads only the PR's labels from the event payload, so it needs no
 permissions and no checkout; `rules-gate` additionally checks out the branch to
-diff the rules file against its base. Both labels are bootstrapped by
-`orchestrator_ensure_labels`.
+diff the rules file against its base. The labels these gates rely on are never
+created by the daemon: startup runs `orchestrator_verify_labels`, which checks
+every label the pipeline depends on (the merge-gate labels plus the
+issue-lifecycle labels) and logs a warning naming any that are missing — label
+lifecycle is owned by the maintainer via the Terraform repo.
 
 ## Crash recovery
 

@@ -4321,6 +4321,55 @@ test_cli_invalid_command() {
   fi
 }
 
+# The startup path must never create labels: `once` mode (and the daemon) verify
+# every label the daemon relies on exists and warn when missing, because label
+# lifecycle is owned by the maintainer via the Terraform repo. This test pins
+# that a full startup run invokes `label view` for each required label and
+# never invokes `label create`.
+test_cli_once_never_creates_labels() {
+  fake_setup
+  state_setup
+  local args_file="$STATE_DIR/gh_args"
+  fake_command gh 'printf "%s\n" "$*" >> "$FAKE_GH_ARGS"
+if [[ "$1" == "label" && "$2" == "view" ]]; then exit 0
+elif [[ "$1" == "issue" && "$2" == "list" ]]; then printf "[]\n"
+fi
+exit 0'
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" \
+    FAKE_GH_ARGS="$args_file" \
+    bash "$ROOT/tools/ct-orchestrator.sh" once >/dev/null 2>&1
+
+  assert_eq "startup never invokes label create" "0" "$(grep -c 'label create' "$args_file" || true)"
+  local verified expected
+  verified="$(awk '$1 == "label" && $2 == "view" {print $3}' "$args_file" | sort)"
+  expected="$(printf '%s\n' ready-for-agent ticket in-progress needs-triage suspect-diff human-approved security-rule-approved | sort)"
+  assert_eq "startup verifies exactly the required labels" "$expected" "$verified"
+  state_teardown
+  fake_teardown
+}
+
+# A missing label must produce a warning naming it, and the daemon must keep
+# running (exit 0) — the gap degrades the pipeline visibly, never silently.
+test_verify_labels_warns_on_missing() {
+  fake_setup
+  local args_file="$FAKE_DIR/gh_args"
+  fake_command gh 'printf "%s\n" "$*" >> "$FAKE_GH_ARGS"
+if [[ "$1" == "label" && "$2" == "view" ]]; then
+  if [[ "$3" == "suspect-diff" ]]; then exit 1; fi
+fi
+exit 0'
+  local output
+  if output="$(FAKE_GH_ARGS="$args_file" orchestrator_verify_labels 2>&1)"; then
+    pass "missing label does not stop the daemon"
+  else
+    fail "missing label does not stop the daemon"
+  fi
+  assert_contains "warns naming the missing label" "required label 'suspect-diff' does not exist" "$output"
+  assert_eq "warns only about the missing label" "1" "$(printf '%s' "$output" | grep -c 'does not exist' || true)"
+  assert_eq "verification never creates labels" "0" "$(grep -c 'label create' "$args_file" || true)"
+  fake_teardown
+}
+
 test_state_loaded_but_empty_file() {
   state_setup
   touch "$TEST_STATE"
@@ -4699,6 +4748,9 @@ fake_setup
 test_cli_help
 test_cli_invalid_command
 fake_teardown
+
+test_cli_once_never_creates_labels
+test_verify_labels_warns_on_missing
 
 printf '1..%d\n' "$tests"
 if [[ $failures -gt 0 ]]; then

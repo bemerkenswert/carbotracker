@@ -46,13 +46,23 @@ ORCHESTRATOR_MODEL="${ENV_ORCHESTRATOR_MODEL:-${ORCHESTRATOR_MODEL:-opencode-go/
 # between polls: an in-flight implement run must never be orphaned.
 ORCHESTRATOR_SELF_HASH="$(sha256sum "${BASH_SOURCE[0]}" 2>/dev/null | cut -d' ' -f1 || true)"
 
-orchestrator_ensure_labels() {
-  gh label create suspect-diff --description "The implementation changed a feature other than the one declared by the ticket" --color D93F0B --force >/dev/null 2>&1 \
-    || orchestrator_log "WARNING: could not create or update suspect-diff label"
-  gh label create human-approved --description "A human has approved an orchestrator warning" --color 0E8A16 --force >/dev/null 2>&1 \
-    || orchestrator_log "WARNING: could not create or update human-approved label"
-  gh label create security-rule-approved --description "A human has approved a firestore.rules change" --color 006B75 --force >/dev/null 2>&1 \
-    || orchestrator_log "WARNING: could not create or update security-rule-approved label"
+# The labels the daemon relies on: the issue-lifecycle labels (the
+# configurable ORCHESTRATOR_ISSUE_LABELS and ORCHESTRATOR_IN_PROGRESS_LABEL,
+# plus the hard-coded needs-triage escalation label) and the merge-gate labels
+# (suspect-diff, human-approved, security-rule-approved) the merge-gate
+# workflow reads. The daemon never creates any of them — label lifecycle is
+# owned by the maintainer via the Terraform repo — so startup verifies each one
+# exists and warns (naming it) when missing, then keeps running: a missing
+# label degrades the pipeline visibly, never silently.
+orchestrator_verify_labels() {
+  local labels=() label
+  IFS=',' read -ra labels <<< "$ORCHESTRATOR_ISSUE_LABELS"
+  labels+=("$ORCHESTRATOR_IN_PROGRESS_LABEL" needs-triage suspect-diff human-approved security-rule-approved)
+  for label in "${labels[@]}"; do
+    if ! gh label view "$label" >/dev/null 2>&1; then
+      orchestrator_log "WARNING: required label '$label' does not exist; provision it via the Terraform repo (the daemon never creates labels)"
+    fi
+  done
 }
 
 orchestrator_log() {
@@ -1791,7 +1801,7 @@ main() {
   fi
   case "${1:-}" in
     once | --once)
-      orchestrator_ensure_labels
+      orchestrator_verify_labels
       orchestrator_reconcile
       orchestrator_poll_once
       ;;
@@ -1799,7 +1809,7 @@ main() {
       orchestrator_help
       ;;
     "")
-      orchestrator_ensure_labels
+      orchestrator_verify_labels
       orchestrator_daemon
       ;;
     *)
