@@ -790,6 +790,22 @@ test_state_set_pid_sets_and_clears() {
   state_teardown
 }
 
+test_state_clear_pids_clears_every_entry() {
+  state_setup
+  orchestrator_state_add "$TEST_STATE" 1 ticket/1-a "$WT_PARENT/1-a"
+  orchestrator_state_add "$TEST_STATE" 2 ticket/2-b "$WT_PARENT/2-b"
+  orchestrator_state_add "$TEST_STATE" 3 ticket/3-c "$WT_PARENT/3-c"
+  orchestrator_state_set_pid "$TEST_STATE" 1 1111
+  orchestrator_state_set_pid "$TEST_STATE" 2 2222
+  orchestrator_state_clear_pids "$TEST_STATE"
+  assert_eq "clear_pids nulls the first entry's pid" "null" "$(jq -r '.[0].pid' "$TEST_STATE")"
+  assert_eq "clear_pids nulls the second entry's pid" "null" "$(jq -r '.[1].pid' "$TEST_STATE")"
+  assert_eq "clear_pids leaves a null pid null" "null" "$(jq -r '.[2].pid' "$TEST_STATE")"
+  assert_eq "clear_pids preserves the entries" "3" "$(jq 'length' "$TEST_STATE")"
+  assert_eq "clear_pids preserves other fields" "implementing" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  state_teardown
+}
+
 test_state_writes_serialised_under_lock() {
   state_setup
   # Ten concurrent adds to an empty state file: without the external lock a
@@ -4327,6 +4343,35 @@ fi'
   state_teardown
 }
 
+# A simulated restart: a previous daemon crash left a stale pid in the state
+# file (here one whose process a fake kill reports alive). Startup must clear
+# every pid before reconcile re-derives the entries, so the stale handle is
+# never probed as a running session and never counts against the active cap.
+test_cli_once_clears_stale_pids_on_restart() {
+  state_setup
+  fake_command gh 'if [[ "$1" == "label" && "$2" == "view" ]]; then exit 0
+elif [[ "$1" == "issue" && "$2" == "list" ]]; then printf "[]\n"
+fi
+exit 0'
+  # The failed phase is a stable fixture: reconcile skips failed entries, so the
+  # seeded stale pid survives until the startup clear runs and the test can read
+  # it back without reconcile mutating the entry first.
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_add "$TEST_STATE" 10 ticket/10-alpha "$WT_PARENT/10-alpha"
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_mark_failed "$TEST_STATE" 10
+  ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_state_set_pid "$TEST_STATE" 10 4242
+  fake_command kill 'if [[ "$1" == "-0" && "$2" == "4242" ]]; then exit 0; fi
+exit 1'
+  local output
+  output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" bash "$ROOT/tools/ct-orchestrator.sh" once 2>&1)"
+  assert_eq "restart clears the stale pid" "null" "$(jq -r '.[0].pid' "$TEST_STATE")"
+  assert_eq "restart leaves the entry's other fields intact" "failed" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  assert_eq "restart does not treat the stale pid as running" "0" "$(orchestrator_state_active_count "$TEST_STATE")"
+  # The clear runs before reconcile and the poll's cap check: the poll log's
+  # active count is zero even though the stale pid's process is alive.
+  assert_contains "restart reports zero active sessions at the poll" "0 active" "$output"
+  state_teardown
+}
+
 test_cli_invalid_command() {
   if bash "$ROOT/tools/ct-orchestrator.sh" bogus >/dev/null 2>&1; then
     fail "invalid command exits non-zero"
@@ -4563,6 +4608,7 @@ test_state_complete_with_missing_values
 test_state_complete_updates_only_matching_ticket
 test_state_remove_removes_entry
 test_state_set_pid_sets_and_clears
+test_state_clear_pids_clears_every_entry
 test_state_writes_serialised_under_lock
 test_state_add_creates_last_comment_null
 test_state_add_creates_review_failures_zero
@@ -4755,6 +4801,7 @@ test_claim_marks_issue_in_progress
 test_claim_failure_leaves_no_state
 test_poll_once_runs_review_loop
 test_cli_once
+test_cli_once_clears_stale_pids_on_restart
 fake_teardown
 
 fake_setup

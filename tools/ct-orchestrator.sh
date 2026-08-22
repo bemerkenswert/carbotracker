@@ -312,6 +312,16 @@ orchestrator_state_set_pid() {
     --argjson n "$number" --argjson p "$pid"
 }
 
+# Clear every pid field in the state file, run once at daemon startup. A stored
+# pid is only authoritative for the daemon instance that wrote it — after a
+# restart (or crash) the handle is meaningless and could collide with an
+# unrelated process — so each entry is cleared before reconcile re-derives it
+# from observable git facts (pushed branch, open PR, unpushed work).
+orchestrator_state_clear_pids() {
+  local state_file="$1"
+  orchestrator_state_update "$state_file" 'map(.pid = null)'
+}
+
 orchestrator_claim() {
   local number="$1" branch="$2" worktree="$3"
   # The claim is the GitHub-side label flip: dropping ready-for-agent takes
@@ -1824,6 +1834,9 @@ main() {
   case "${1:-}" in
     once | --once)
       orchestrator_verify_labels
+      # Any pid in the state file was written by a previous instance; clear it
+      # before reconcile re-derives each entry.
+      orchestrator_state_clear_pids "$ORCHESTRATOR_STATE_FILE"
       orchestrator_reconcile
       orchestrator_poll_once
       ;;
@@ -1832,6 +1845,7 @@ main() {
       ;;
     "")
       orchestrator_verify_labels
+      orchestrator_state_clear_pids "$ORCHESTRATOR_STATE_FILE"
       orchestrator_daemon
       ;;
     *)

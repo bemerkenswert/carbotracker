@@ -12,8 +12,11 @@ writes a structured plan — and an **act** step that applies the plan (posting
 replies and pausing for human decisions). It runs as a systemd user service
 (see `carbotracker-orchestrator.service`).
 
-On startup the daemon first **reconciles** the state file against observable
-git facts, and repeats that reconcile at the top of **every** poll cycle (see
+On startup the daemon first **clears every stored pid** — a process id is only
+authoritative for the daemon instance that wrote it, so after a restart (or
+crash) the handle is meaningless and could collide with an unrelated process —
+and then **reconciles** the state file against observable git facts. It repeats
+that reconcile at the top of **every** poll cycle (see
 [Crash recovery](#crash-recovery)), so a VPS restart or crashed run resumes from
 what actually exists on disk rather than from stale in-memory state, and a
 recovery that hit a transient `gh` failure retries on the poll cadence instead
@@ -66,7 +69,10 @@ entry records the running session's process id and the count probes it with
 `kill -0` — so a session that has finished, failed, or not yet started never
 occupies a cap slot. The pid is set and cleared around the existing synchronous
 `opencode run`, so today the count tracks the daemon's own pid during the run;
-this is substrate for later parallelism.
+this is substrate for later parallelism. Because a pid is only meaningful to the
+daemon instance that wrote it, every stored pid is cleared at daemon startup
+before reconcile re-derives each entry from git facts — a stale pid left by a
+crash is never probed as a running session.
 
 A claim is recorded **twice**: on the GitHub issue (remove `ready-for-agent`,
 add `in-progress`) and in the local state file. The label flip is what makes
@@ -159,9 +165,10 @@ lifecycle is owned by the maintainer via the Terraform repo.
 ## Crash recovery
 
 The state file is the orchestrator's memory, never the source of truth. At
-daemon start and at the top of every poll cycle (`once` mode runs it once) the
-orchestrator runs `orchestrator_reconcile`, which walks every entry in the state
-file and inspects the observable facts —
+daemon start the orchestrator clears every stored pid (a pid from a previous
+instance is stale after a restart); it then runs `orchestrator_reconcile`, at
+startup and again at the top of every poll cycle (`once` mode runs it once),
+which walks every entry in the state file and inspects the observable facts —
 does the worktree directory exist, what does `git status`/`git log` say, is the
 branch pushed (`git ls-remote`), and is there a PR for the branch (`gh pr list
 --head <branch> --state all`). It then transitions each ticket to the phase
@@ -465,7 +472,7 @@ rename is atomic.
 
 ## Data flow
 
-The full flow: startup reconciliation, then each poll cycle.
+The full flow: startup clears stored pids and reconciles, then each poll cycle.
 
 ```mermaid
 flowchart TD
@@ -604,7 +611,10 @@ Follow the daemon with `journalctl --user -u carbotracker-orchestrator -f`.
   favour of
   what the remote actually reports, so a crash between push and PR creation is
   recovered by creating the PR rather than re-running the agent, and a branch
-  whose PR was already merged is never given a second PR.
+  whose PR was already merged is never given a second PR. A stale `pid` from a
+  crashed instance is likewise never trusted: startup clears every stored pid
+  before the first reconcile, so a dead or unrelated process handle is never
+  treated as a running session.
 - Review detection compares strictly against the watermark. The watermark is
   the newest comment that is human-authored (`user.type == "User"`) and **not**
   the pipeline's own output — bot comments and reviews carrying the
