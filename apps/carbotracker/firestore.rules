@@ -15,6 +15,19 @@ service cloud.firestore {
       allow create: if documentCreatorIsRequester(request)
     }
 
+    match /sports/{sportId} {
+      function isSportOwner(request, resource) {
+        return request.auth.uid == resource.data.creator;
+      }
+
+      function sportCreatorIsRequester(request) {
+        return request.resource.data.creator == request.auth.uid;
+      }
+
+      allow read, update, delete: if isSportOwner(request, resource)
+      allow create: if sportCreatorIsRequester(request)
+    }
+
     match /current-meals/{currentMealId}  {   
       function isCurrentMealOwner(request, currentMealId) {
         return request.auth != null && request.auth.uid == currentMealId;
