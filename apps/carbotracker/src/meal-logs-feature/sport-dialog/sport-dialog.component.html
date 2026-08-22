@@ -6,7 +6,6 @@
       matInput
       [formControl]="sportForm.controls.date"
       [matDatepicker]="datePicker"
-      required
     />
     <mat-datepicker-toggle
       matIconSuffix
@@ -19,12 +18,7 @@
   </mat-form-field>
   <mat-form-field>
     <mat-label>Start time</mat-label>
-    <input
-      matInput
-      type="time"
-      [formControl]="sportForm.controls.time"
-      required
-    />
+    <input matInput type="time" [formControl]="sportForm.controls.time" />
     @if (sportForm.controls.time.invalid) {
       <mat-error>Enter a valid date and time.</mat-error>
     }
@@ -45,7 +39,7 @@
   </mat-form-field>
   <mat-form-field>
     <mat-label>Sport</mat-label>
-    <input matInput [formControl]="sportForm.controls.sportName" required />
+    <input matInput [formControl]="sportForm.controls.sportName" />
     @if (sportForm.controls.sportName.invalid) {
       <mat-error>Enter a sport name.</mat-error>
     }
