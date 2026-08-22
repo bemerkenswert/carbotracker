@@ -677,6 +677,7 @@ test_state_add_creates_entry() {
   assert_eq "entry tracks session id as null" "null" "$(jq -r '.sessionId' <<<"$entry")"
   assert_eq "entry tracks pr number as null" "null" "$(jq -r '.prNumber' <<<"$entry")"
   assert_eq "entry tracks phase" "implementing" "$(jq -r '.phase' <<<"$entry")"
+  assert_eq "entry tracks pid as null until the run starts" "null" "$(jq -r '.pid' <<<"$entry")"
   assert_eq "entry tracks implementation failures as zero" "0" "$(jq -r '.failureCount' <<<"$entry")"
   local started
   started="$(jq -r '.startedAt' <<<"$entry")"
@@ -757,12 +758,52 @@ test_state_remove_removes_entry() {
   state_teardown
 }
 
-test_state_active_count_counts_implementing_only() {
+test_state_active_count_counts_live_pids() {
   state_setup
+  # fake_command kill makes the liveness probe deterministic: only pid 12345 is
+  # alive, everything else (and any absent pid) is dead.
+  fake_command kill 'if [[ "$1" == "-0" && "$2" == "12345" ]]; then exit 0; fi
+exit 1'
   orchestrator_state_add "$TEST_STATE" 1 ticket/1-a "$WT_PARENT/1-a"
   orchestrator_state_add "$TEST_STATE" 2 ticket/2-b "$WT_PARENT/2-b"
-  orchestrator_state_complete "$TEST_STATE" 2 ses_2 22
-  assert_eq "completed tickets do not count toward cap" "1" "$(orchestrator_state_active_count "$TEST_STATE")"
+  orchestrator_state_add "$TEST_STATE" 3 ticket/3-c "$WT_PARENT/3-c"
+  orchestrator_state_set_pid "$TEST_STATE" 1 12345
+  orchestrator_state_set_pid "$TEST_STATE" 3 54321
+  assert_eq "active count ignores entries with a dead pid" "1" "$(orchestrator_state_active_count "$TEST_STATE")"
+  assert_eq "entry with absent pid stays implementing" "implementing" "$(jq -r '.[1].phase' "$TEST_STATE")"
+  assert_eq "entry with dead pid stays implementing" "implementing" "$(jq -r '.[2].phase' "$TEST_STATE")"
+  orchestrator_state_complete "$TEST_STATE" 1 ses_1 11
+  assert_eq "live pid counts regardless of phase" "1" "$(orchestrator_state_active_count "$TEST_STATE")"
+  # Drop the fake so later tests probe liveness with the real kill.
+  rm -f "$FAKE_DIR/kill"
+  state_teardown
+}
+
+test_state_set_pid_sets_and_clears() {
+  state_setup
+  orchestrator_state_add "$TEST_STATE" 1 ticket/1-a "$WT_PARENT/1-a"
+  assert_eq "new entry has no pid" "null" "$(jq -r '.[0].pid' "$TEST_STATE")"
+  orchestrator_state_set_pid "$TEST_STATE" 1 4242
+  assert_eq "set_pid records the running session's pid" "4242" "$(jq -r '.[0].pid' "$TEST_STATE")"
+  orchestrator_state_set_pid "$TEST_STATE" 1 "null"
+  assert_eq "set_pid null clears the pid" "null" "$(jq -r '.[0].pid' "$TEST_STATE")"
+  state_teardown
+}
+
+test_state_writes_serialised_under_lock() {
+  state_setup
+  # Ten concurrent adds to an empty state file: without the external lock a
+  # load→modify→write cycle would clobber the others' entries; with it every
+  # addition survives.
+  local i pids=()
+  for i in $(seq 1 10); do
+    ( orchestrator_state_add "$TEST_STATE" "$i" "ticket/$i-a" "$WT_PARENT/$i-a" ) &
+    pids+=("$!")
+  done
+  for p in "${pids[@]}"; do
+    wait "$p" || true
+  done
+  assert_eq "no concurrent write clobbers another" "10" "$(jq 'length' "$TEST_STATE")"
   state_teardown
 }
 
@@ -1020,6 +1061,9 @@ elif [[ "$1" == "api" ]]; then
 fi
 exit 0'
   orchestrator_state_add "$TEST_STATE" 1 ticket/1-existing "$WT_PARENT/1-existing"
+  # The pre-existing entry must hold a live pid to count against the cap: a
+  # freshly claimed entry has no running session yet, so it is not active.
+  orchestrator_state_set_pid "$TEST_STATE" 1 "$$"
   local output
   output="$(ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" ORCHESTRATOR_ACTIVE_SESSION_CAP=1 orchestrator_poll_once 2>&1)"
   assert_eq "no new claims at full cap" "1" "$(jq 'length' "$TEST_STATE")"
@@ -2005,7 +2049,7 @@ exit 1'
   ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_claim 10 ticket/10-alpha "$WT_PARENT/10-alpha"
   assert_contains "claim removes ready-for-agent" "--remove-label ready-for-agent" "$(cat "$args_file")"
   assert_contains "claim adds in-progress" "--add-label in-progress" "$(cat "$args_file")"
-  assert_eq "claim records state entry" "1" "$(orchestrator_state_active_count "$TEST_STATE")"
+  assert_eq "claim records state entry" "1" "$(jq 'length' "$TEST_STATE")"
   assert_eq "state entry phase is implementing" "implementing" "$(jq -r '.[0].phase' "$TEST_STATE")"
   unset FAKE_EDIT_ARGS
   state_teardown
@@ -4518,7 +4562,8 @@ test_state_complete_updates_entry
 test_state_complete_with_missing_values
 test_state_complete_updates_only_matching_ticket
 test_state_remove_removes_entry
-test_state_active_count_counts_implementing_only
+test_state_set_pid_sets_and_clears
+test_state_writes_serialised_under_lock
 test_state_add_creates_last_comment_null
 test_state_add_creates_review_failures_zero
 test_state_mark_reviewed_sets_timestamp
@@ -4533,6 +4578,7 @@ test_config_new_cap_wins_over_deprecated
 test_config_deprecated_cap_env_beats_default_conf
 
 fake_setup
+test_state_active_count_counts_live_pids
 test_issue_feature_parses_valid_declaration
 test_issue_feature_rejects_invalid_declaration
 test_changed_features_maps_feature_folders
