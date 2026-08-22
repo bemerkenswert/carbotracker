@@ -69,7 +69,7 @@ export default class CreateSportPageComponent {
     );
   }
 
-  public onGoBack() {
+  protected onGoBack() {
     this.store.dispatch(ComponentActions.goBackIconClicked());
   }
 }
