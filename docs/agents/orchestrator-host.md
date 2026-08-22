@@ -170,7 +170,7 @@ Expect startup reconcile, a poll line (`poll: 0 candidate(s), 0 active`), then
 - **Single-cycle test**: `~/git/carbotracker/tools/ct-orchestrator.sh once`
   (reconcile + one poll, then exit).
 - **Tune**: edit `~/git/carbotracker/tools/ct-orchestrator.conf`
-  (`ORCHESTRATOR_POLL_INTERVAL_SECONDS`, `ORCHESTRATOR_CONCURRENCY_CAP`);
+  (`ORCHESTRATOR_POLL_INTERVAL_SECONDS`, `ORCHESTRATOR_ACTIVE_SESSION_CAP`);
   env vars override the conf file.
 - **Attach to a failed session**: the opencode session stays in
   `~/.local/share/opencode`; open a terminal and `opencode` into it (or

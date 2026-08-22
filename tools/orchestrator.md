@@ -1,7 +1,7 @@
 # Carbotracker orchestrator
 
 `ct-orchestrator.sh` is the ticket-to-PR pipeline: it polls GitHub for
-`ready-for-agent` tickets, claims them up to a concurrency cap, and runs each
+`ready-for-agent` tickets, claims them up to an active session cap, and runs each
 one through a full implementation cycle — worktree, dependency install,
 headless `opencode`, and finally a pushed branch with a pull request. Once a
 PR is up it runs the **merge poll** (detecting merged or closed PRs and
@@ -61,7 +61,7 @@ stateDiagram-v2
 `implementing` means the orchestrator is actively running a session for the
 ticket; `failed` means a non-opencode failure is waiting for a bounded retry;
 `awaiting review` means the PR exists and a human should look at it. Only
-`implementing` entries count against the concurrency cap.
+`implementing` entries count against the active session cap.
 
 A claim is recorded **twice**: on the GitHub issue (remove `ready-for-agent`,
 add `in-progress`) and in the local state file. The label flip is what makes
@@ -79,7 +79,7 @@ Each poll, before the review loop, the orchestrator walks every state entry in
   `in-progress` label, closes the issue with the comment
   "PR #&lt;n&gt; merged. Issue closed.", prunes the worktree and branch, and
   removes the entry from the state file. The lifecycle (issue → PR → merged →
-  closed) is complete and the ticket no longer occupies a concurrency slot. If
+  closed) is complete and the ticket no longer occupies an active session slot. If
   the close fails, the entry is **kept** so the merge is re-detected and the
   close retried on the next poll — the closure is never silently dropped.
 - **`CLOSED`** — the PR was closed without merging: the work is rejected. The
@@ -540,7 +540,7 @@ file, which wins over defaults):
 | Variable                              | Default                                             |
 | ------------------------------------- | --------------------------------------------------- |
 | `ORCHESTRATOR_POLL_INTERVAL_SECONDS`  | `300`                                               |
-| `ORCHESTRATOR_CONCURRENCY_CAP`        | `3`                                                 |
+| `ORCHESTRATOR_ACTIVE_SESSION_CAP`     | `3`                                                 |
 | `ORCHESTRATOR_ISSUE_LABELS`           | `ready-for-agent,ticket`                            |
 | `ORCHESTRATOR_IN_PROGRESS_LABEL`      | `in-progress`                                       |
 | `ORCHESTRATOR_REVIEW_RETRIES`         | `3`                                                 |
