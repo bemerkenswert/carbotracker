@@ -2571,23 +2571,52 @@ test_review_plan_validator_reference_resolves() {
 # The self-refresh must re-exec when the on-disk script hash differs from the
 # one recorded at load, and stay put otherwise. The exec target is overridden
 # with `exit 42` so the re-exec is observable without launching a daemon.
+# Every case runs against an empty temp state file so the check that no session
+# is in flight is deterministic.
 test_self_refresh_re_execs_on_hash_change() {
   local rc
-  (ORCHESTRATOR_SELF_HASH=stale ORCHESTRATOR_SELF_EXEC='exit 42' orchestrator_self_refresh >/dev/null 2>&1) && rc=0 || rc=$?
+  state_setup
+  (ORCHESTRATOR_SELF_HASH=stale ORCHESTRATOR_SELF_EXEC='exit 42' ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_self_refresh >/dev/null 2>&1) && rc=0 || rc=$?
   assert_eq "changed hash re-execs" "42" "$rc"
+  state_teardown
 }
 
 test_self_refresh_passes_on_matching_hash() {
   local current rc
+  state_setup
   current="$(sha256sum "$ROOT/tools/ct-orchestrator.sh" | cut -d' ' -f1)"
-  (ORCHESTRATOR_SELF_HASH="$current" ORCHESTRATOR_SELF_EXEC='exit 42' orchestrator_self_refresh >/dev/null 2>&1) && rc=0 || rc=$?
+  (ORCHESTRATOR_SELF_HASH="$current" ORCHESTRATOR_SELF_EXEC='exit 42' ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_self_refresh >/dev/null 2>&1) && rc=0 || rc=$?
   assert_eq "matching hash does not re-exec" "0" "$rc"
+  state_teardown
 }
 
 test_self_refresh_skips_without_hash() {
   local rc
-  (ORCHESTRATOR_SELF_HASH="" ORCHESTRATOR_SELF_EXEC='exit 42' orchestrator_self_refresh >/dev/null 2>&1) && rc=0 || rc=$?
+  state_setup
+  (ORCHESTRATOR_SELF_HASH="" ORCHESTRATOR_SELF_EXEC='exit 42' ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_self_refresh >/dev/null 2>&1) && rc=0 || rc=$?
   assert_eq "missing recorded hash does not re-exec" "0" "$rc"
+  state_teardown
+}
+
+# The self-refresh must defer its re-exec while a session is in flight: any
+# state entry still carrying a pid means a background child could be orphaned
+# by a refresh, so the re-exec waits until every pid has cleared.
+test_self_refresh_defers_while_session_in_flight() {
+  local rc
+  state_setup
+  printf '%s\n' '[{"ticket": 123, "pid": 4242}]' > "$TEST_STATE"
+  (ORCHESTRATOR_SELF_HASH=stale ORCHESTRATOR_SELF_EXEC='exit 42' ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_self_refresh >/dev/null 2>&1) && rc=0 || rc=$?
+  assert_eq "re-exec postponed while a pid entry is present" "0" "$rc"
+  state_teardown
+}
+
+test_self_refresh_proceeds_once_pid_clears() {
+  local rc
+  state_setup
+  printf '%s\n' '[{"ticket": 123, "pid": null}]' > "$TEST_STATE"
+  (ORCHESTRATOR_SELF_HASH=stale ORCHESTRATOR_SELF_EXEC='exit 42' ORCHESTRATOR_STATE_FILE="$TEST_STATE" orchestrator_self_refresh >/dev/null 2>&1) && rc=0 || rc=$?
+  assert_eq "re-exec proceeds once no pid entry remains" "42" "$rc"
+  state_teardown
 }
 
 test_review_round_malformed_plan_keeps_watermark_and_retries() {
@@ -4596,6 +4625,8 @@ test_review_plan_validator_reference_resolves
 test_self_refresh_re_execs_on_hash_change
 test_self_refresh_passes_on_matching_hash
 test_self_refresh_skips_without_hash
+test_self_refresh_defers_while_session_in_flight
+test_self_refresh_proceeds_once_pid_clears
 test_state_add_creates_review_needs_human_false
 test_state_set_review_needs_human_updates
 test_review_poll_launches_round_on_new_comment

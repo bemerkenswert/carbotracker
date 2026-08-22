@@ -42,8 +42,9 @@ ORCHESTRATOR_MODEL="${ENV_ORCHESTRATOR_MODEL:-${ORCHESTRATOR_MODEL:-opencode-go/
 # on-disk hash against it between polls and re-execs itself when they differ,
 # so a repo update (rename, edit, pull) is picked up without a manual service
 # restart — a stale daemon once called a validator script that had been
-# renamed on disk underneath it and failed every review round. Checked only
-# between polls: an in-flight implement run must never be orphaned.
+# renamed on disk underneath it and failed every review round. Re-exec is
+# deferred while a session is in flight (a state entry still carries its pid),
+# so an in-flight implement or review run is never orphaned by a refresh.
 ORCHESTRATOR_SELF_HASH="$(sha256sum "${BASH_SOURCE[0]}" 2>/dev/null | cut -d' ' -f1 || true)"
 
 orchestrator_ensure_labels() {
@@ -116,6 +117,17 @@ orchestrator_state_write() {
 
 orchestrator_state_active_count() {
   orchestrator_state_load "$1" | jq '[.[] | select(.phase == "implementing")] | length'
+}
+
+# True while any state entry still carries a running session's pid, meaning the
+# daemon must not re-exec itself yet: a self-refresh mid-session would orphan
+# the background child. The reaper clears a pid the moment its child exits, so
+# a set pid implies a session in flight; the self-refresh waits until every pid
+# has cleared rather than trusting that a poll boundary means nothing is
+# mid-flight.
+orchestrator_state_has_active_session() {
+  local state_file="$1"
+  orchestrator_state_load "$state_file" | jq -e '[.[] | select(.pid != null)] | length > 0' >/dev/null 2>&1
 }
 
 orchestrator_state_has_ticket() {
@@ -1747,11 +1759,17 @@ orchestrator_poll_once() {
 # including ct-lib.sh — before the loop continues; the durable state (state
 # file + GitHub) makes the restart safe. ORCHESTRATOR_SELF_EXEC overrides the
 # re-exec command so tests can assert the refresh without re-launching the
-# daemon. Call only between polls, never mid-poll.
+# daemon. Re-exec is deferred while any state entry records a session's pid, so
+# a background child is never orphaned by a refresh; once every pid clears the
+# re-exec happens at the next poll.
 orchestrator_self_refresh() {
   local current
   current="$(sha256sum "${BASH_SOURCE[0]}" 2>/dev/null | cut -d' ' -f1 || true)"
   if [[ -z "$current" || -z "$ORCHESTRATOR_SELF_HASH" || "$current" == "$ORCHESTRATOR_SELF_HASH" ]]; then
+    return 0
+  fi
+  if orchestrator_state_has_active_session "$ORCHESTRATOR_STATE_FILE"; then
+    orchestrator_log "orchestrator script changed on disk; deferring re-exec while a session is in flight"
     return 0
   fi
   orchestrator_log "orchestrator script changed on disk (hash $ORCHESTRATOR_SELF_HASH -> $current); re-executing to load the new code"

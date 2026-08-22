@@ -30,8 +30,10 @@ load time and, when the on-disk hash differs at the top of a poll cycle, it
 re-execs itself to load the new code — including `ct-lib.sh`. This keeps a
 long-running daemon in sync with the repo it lives in (a main update once
 renamed a helper script out from under a running daemon and broke every review
-round); it never happens mid-poll, so an in-flight implement run is never
-orphaned.
+round). Re-exec is deferred while a session is in flight: any state entry still
+carrying its session's `pid` postpones the refresh to the next poll, so a
+background child is never orphaned by a re-exec; the refresh proceeds once
+every `pid` has cleared.
 
 ## Lifecycle
 
