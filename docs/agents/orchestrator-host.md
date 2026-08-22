@@ -126,6 +126,12 @@ The installer clones the repo first, installs Node, then checks that
 `gh git node npm jq opencode systemctl loginctl` are all present. `node`/`npm`
 are installed by the script, not by hand.
 
+Labels are provisioned by the Terraform repo, never by the daemon: the
+orchestrator only verifies at startup that the labels it relies on exist and
+warns when one is missing (see the merge-gate section of
+`tools/orchestrator.md`). The THEBOT doc work (#329) rewrites this section for
+the GitHub App identity.
+
 Node **follow-major**: the script reads `.nvmrc`'s major and runs
 `nvm install <major>` — the latest patch of that major, matching CI's
 `node-version: '22'` — rather than the exact `.nvmrc` pin. The stable
