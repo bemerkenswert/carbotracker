@@ -1,6 +1,6 @@
 <h2 mat-dialog-title>Log sport</h2>
 <mat-dialog-content>
-  <mat-form-field appearance="fill">
+  <mat-form-field>
     <mat-label>Date</mat-label>
     <input
       matInput
@@ -17,7 +17,7 @@
       <mat-error>Enter a valid date and time.</mat-error>
     }
   </mat-form-field>
-  <mat-form-field appearance="fill">
+  <mat-form-field>
     <mat-label>Start time</mat-label>
     <input
       matInput
@@ -29,7 +29,7 @@
       <mat-error>Enter a valid date and time.</mat-error>
     }
   </mat-form-field>
-  <mat-form-field appearance="fill">
+  <mat-form-field>
     <mat-label>Duration (hours)</mat-label>
     <input
       matInput
@@ -43,7 +43,7 @@
       <mat-error>Enter a duration greater than 0.</mat-error>
     }
   </mat-form-field>
-  <mat-form-field appearance="fill">
+  <mat-form-field>
     <mat-label>Sport</mat-label>
     <input matInput [formControl]="sportForm.controls.sportName" required />
     @if (sportForm.controls.sportName.invalid) {
@@ -59,7 +59,7 @@
     <mat-radio-button value="percent">Percentage reduction</mat-radio-button>
   </mat-radio-group>
   @if (sportForm.controls.reductionMode.value === 'rate') {
-    <mat-form-field appearance="fill">
+    <mat-form-field>
       <mat-label>Basal rate (U/h)</mat-label>
       <input
         matInput
@@ -75,7 +75,7 @@
     </mat-form-field>
   }
   @if (sportForm.controls.reductionMode.value === 'percent') {
-    <mat-form-field appearance="fill">
+    <mat-form-field>
       <mat-label>Reduction (%)</mat-label>
       <input
         matInput
@@ -90,7 +90,7 @@
       }
     </mat-form-field>
   }
-  <mat-form-field appearance="fill">
+  <mat-form-field>
     <mat-label>Note</mat-label>
     <input matInput [formControl]="sportForm.controls.note" />
   </mat-form-field>

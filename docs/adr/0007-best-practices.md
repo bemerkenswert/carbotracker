@@ -16,7 +16,11 @@ Bind every reactive form control to the template with the `[formControl]="formGr
 
 `formControlName` resolves a string key against a parent `formGroup` directive at runtime. A typo in the name fails silently, and a control without the parent `formGroup` directive throws `NG01050` (`formControlName must be used with a parent formGroup`), which is how the Save button ended up permanently disabled in an earlier round of the sport dialog. `[formControl]` binds the actual `FormControl` instance directly, so a typo in `formGroup.controls.x` is a compile-time TypeScript error, and the binding needs no parent `formGroup` wrapper at all.
 
+### Use the default `mat-form-field` appearance
+
+Do not set the `appearance` attribute on `mat-form-field`. The default appearance is already `fill` (Angular Material `DEFAULT_APPEARANCE = 'fill'`), so `appearance="fill"` is a redundant no-op that only invites drift from the default.
+
 ## Consequences
 
-- Templates bind controls via `[formControl]` and omit the `[formGroup]` wrapper.
+- Templates bind controls via `[formControl]` and omit the `[formGroup]` wrapper and the `appearance` attribute on `mat-form-field`.
 - The sport dialog aligns with ADR-0002's `[formControl]` recommendation; older dialogs that still use `formControlName` are accepted legacy.
