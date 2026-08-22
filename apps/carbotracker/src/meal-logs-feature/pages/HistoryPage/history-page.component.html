@@ -8,38 +8,63 @@
   <mat-nav-list>
     @for (mealLog of viewModel().mealLogsForSelectedDate; track mealLog.id) {
       <mat-list-item (click)="onEntryClick(mealLog)">
-        @if (mealLog.type === 'insulin-dose') {
-          <mat-icon matListItemIcon>medication</mat-icon>
-        } @else {
-          <mat-icon matListItemIcon>restaurant</mat-icon>
+        @switch (mealLog.type) {
+          @case ('insulin-dose') {
+            <mat-icon matListItemIcon>medication</mat-icon>
+          }
+          @case ('meal-log') {
+            <mat-icon matListItemIcon>restaurant</mat-icon>
+          }
+          @case ('sport-log') {
+            <mat-icon matListItemIcon>directions_bike</mat-icon>
+          }
         }
         <h4 matListItemTitle>
-          @if (mealLog.type === 'insulin-dose') {
-            {{ mealLog.insulin | number: '1.0-1' }} I.U.
-          } @else {
-            {{ mealLog.mealType }} ·
-            <span>{{ mealLog.actualInsulin | number: '1.0-1' }} I.U.</span>
-            @if (mealLog.estimatedInsulin !== mealLog.actualInsulin) {
-              <span class="insulin-diff">
-                ({{
-                  mealLog.actualInsulin - mealLog.estimatedInsulin
-                    | number: '1.0-1'
-                }})
-              </span>
+          @switch (mealLog.type) {
+            @case ('insulin-dose') {
+              {{ mealLog.insulin | number: '1.0-1' }} I.U.
+            }
+            @case ('meal-log') {
+              {{ mealLog.mealType }} ·
+              <span>{{ mealLog.actualInsulin | number: '1.0-1' }} I.U.</span>
+              @if (mealLog.estimatedInsulin !== mealLog.actualInsulin) {
+                <span class="insulin-diff">
+                  ({{
+                    mealLog.actualInsulin - mealLog.estimatedInsulin
+                      | number: '1.0-1'
+                  }})
+                </span>
+              }
+            }
+            @case ('sport-log') {
+              {{ mealLog.sportName }} ·
+              {{ mealLog.duration | number: '1.0-1' }} h ·
+              {{ mealLog.createdAt | date: 'HH:mm' }}
+              @if (mealLog.basalRate !== null) {
+                · Basal {{ mealLog.basalRate | number: '1.0-1' }} U/h
+              }
+              @if (mealLog.basalReductionPercent !== null) {
+                · Basal −{{ mealLog.basalReductionPercent | number: '1.0-0' }}%
+              }
+              @if (mealLog.note) {
+                · {{ mealLog.note }}
+              }
             }
           }
         </h4>
-        <p matListItemLine>
-          {{ mealLog.createdAt | date: 'short' }}
-          @if (mealLog.type === 'meal-log') {
-            · Estimated
-            {{ mealLog.estimatedInsulin | number: '1.0-1' }} I.U. · Ratio
-            {{ mealLog.insulinToCarbRatio | number: '1.0-1' }}
-          }
-          @if (mealLog.note) {
-            · {{ mealLog.note }}
-          }
-        </p>
+        @if (mealLog.type !== 'sport-log') {
+          <p matListItemLine>
+            {{ mealLog.createdAt | date: 'short' }}
+            @if (mealLog.type === 'meal-log') {
+              · Estimated
+              {{ mealLog.estimatedInsulin | number: '1.0-1' }} I.U. · Ratio
+              {{ mealLog.insulinToCarbRatio | number: '1.0-1' }}
+            }
+            @if (mealLog.note) {
+              · {{ mealLog.note }}
+            }
+          </p>
+        }
         <div matListItemMeta>
           @if (mealLog.type === 'meal-log') {
             <button
@@ -66,12 +91,22 @@
 }
 
 <button
-  (click)="onLogInsulinDoseClick()"
   color="primary"
   ctuiFixedPosition
   mat-fab
-  matTooltip="Log insulin dose"
+  matTooltip="Log entry"
   type="button"
+  [matMenuTriggerFor]="logMenu"
 >
   <mat-icon>add</mat-icon>
 </button>
+<mat-menu #logMenu="matMenu">
+  <button mat-menu-item (click)="onLogInsulinDoseClick()">
+    <mat-icon>medication</mat-icon>
+    <span>Log insulin dose</span>
+  </button>
+  <button mat-menu-item (click)="onLogSportClick()">
+    <mat-icon>directions_bike</mat-icon>
+    <span>Log sport</span>
+  </button>
+</mat-menu>

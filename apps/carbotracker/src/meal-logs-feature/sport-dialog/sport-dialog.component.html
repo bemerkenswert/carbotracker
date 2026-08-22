@@ -1,0 +1,75 @@
+<h2 mat-dialog-title>Log sport</h2>
+<mat-dialog-content>
+  <mat-form-field appearance="fill">
+    <mat-label>Date</mat-label>
+    <input matInput [matDatepicker]="datePicker" [(ngModel)]="date" />
+    <mat-datepicker-toggle
+      matIconSuffix
+      [for]="datePicker"
+    ></mat-datepicker-toggle>
+    <mat-datepicker #datePicker></mat-datepicker>
+  </mat-form-field>
+  <mat-form-field appearance="fill">
+    <mat-label>Start time</mat-label>
+    <input matInput type="time" [(ngModel)]="time" />
+  </mat-form-field>
+  <mat-form-field appearance="fill">
+    <mat-label>Duration (hours)</mat-label>
+    <input
+      matInput
+      type="number"
+      min="0"
+      step="0.5"
+      [(ngModel)]="duration"
+      cdkFocusInitial
+    />
+  </mat-form-field>
+  <mat-form-field appearance="fill">
+    <mat-label>Sport</mat-label>
+    <input matInput [(ngModel)]="sportName" />
+  </mat-form-field>
+  <mat-radio-group [(ngModel)]="reductionMode">
+    <mat-radio-button value="none">No basal reduction</mat-radio-button>
+    <mat-radio-button value="rate">Temporary rate (U/h)</mat-radio-button>
+    <mat-radio-button value="percent">Percentage reduction</mat-radio-button>
+  </mat-radio-group>
+  @if (reductionMode === 'rate') {
+    <mat-form-field appearance="fill">
+      <mat-label>Basal rate (U/h)</mat-label>
+      <input
+        matInput
+        type="number"
+        min="0"
+        step="0.1"
+        [(ngModel)]="basalRate"
+      />
+    </mat-form-field>
+  }
+  @if (reductionMode === 'percent') {
+    <mat-form-field appearance="fill">
+      <mat-label>Reduction (%)</mat-label>
+      <input
+        matInput
+        type="number"
+        min="0"
+        step="5"
+        [(ngModel)]="basalReductionPercent"
+      />
+    </mat-form-field>
+  }
+  <mat-form-field appearance="fill">
+    <mat-label>Note</mat-label>
+    <input matInput [(ngModel)]="note" />
+  </mat-form-field>
+</mat-dialog-content>
+<mat-dialog-actions>
+  <button mat-button [matDialogClose]="{ cancelled: true }">Cancel</button>
+  <button
+    color="primary"
+    mat-raised-button
+    [disabled]="!canSave"
+    [matDialogClose]="getResult()"
+  >
+    Save
+  </button>
+</mat-dialog-actions>
