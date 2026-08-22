@@ -10,7 +10,9 @@ import { authFeature } from '../../features/auth/+state/auth.store';
 import { EditMealLogDialogService } from '../edit-meal-log-dialog/edit-meal-log-dialog.service';
 import { InsulinDoseDialogService } from '../insulin-dose-dialog/insulin-dose-dialog.service';
 import { MealLog, MealLogDocument } from '../meal-log.model';
+import { SportDialogService } from '../sport-dialog/sport-dialog.service';
 import { MealLogsService } from '../services/meal-logs.service';
+import { mealLogsFeature } from './meal-logs.feature';
 import {
   HistoryPageComponentActions,
   MealLogsApiActions,
@@ -18,6 +20,7 @@ import {
 } from './meal-logs.actions';
 import {
   createInsulinDose$,
+  createSportLog$,
   deleteMealLogDocument$,
   editInsulinDose$,
   editMealLog$,
@@ -212,6 +215,170 @@ describe('createInsulinDose$', () => {
         error: expect.any(Error),
       }),
     ]);
+  });
+});
+
+describe('createSportLog$', () => {
+  const buildStore = (selectedDate: string | null): Store =>
+    ({
+      select: jest.fn((selector) => {
+        if (selector === authFeature.selectUserId) {
+          return of('user-1');
+        }
+        if (selector === mealLogsFeature.selectSelectedDate) {
+          return of(selectedDate);
+        }
+        return of(null);
+      }),
+    }) as unknown as Store;
+
+  const buildMocks = () => {
+    const mealLogsService = {
+      createSportLog: jest.fn(() => of(undefined)),
+    } as unknown as MealLogsService;
+    const sportDialogService = {
+      open: jest.fn(),
+    } as unknown as jest.Mocked<SportDialogService>;
+    return { mealLogsService, sportDialogService };
+  };
+
+  it('opens the dialog with the calendar-selected day and creates a sport log on confirm', () => {
+    const { mealLogsService, sportDialogService } = buildMocks();
+    sportDialogService.open.mockReturnValue(
+      of({
+        cancelled: false,
+        date: new Date('2026-08-10T23:30'),
+        duration: 2.5,
+        sportName: 'Cycling',
+        basalRate: 0.5,
+        basalReductionPercent: null,
+        note: 'fast pace',
+      }),
+    );
+
+    const actions$ = new Subject<Action>();
+    const results: Action[] = [];
+    createSportLog$(
+      actions$.asObservable(),
+      sportDialogService,
+      mealLogsService,
+      buildStore('2026-08-10'),
+    )
+      .pipe(take(1))
+      .subscribe((action) => results.push(action));
+
+    actions$.next(HistoryPageComponentActions.logSportClicked());
+
+    expect(sportDialogService.open).toHaveBeenCalledWith({
+      defaultDate: new Date(2026, 7, 10),
+    });
+    expect(mealLogsService.createSportLog).toHaveBeenCalledWith({
+      date: new Date('2026-08-10T23:30'),
+      duration: 2.5,
+      sportName: 'Cycling',
+      basalRate: 0.5,
+      basalReductionPercent: null,
+      note: 'fast pace',
+      uid: 'user-1',
+    });
+    expect(results).toEqual([MealLogsApiActions.sportLogCreated()]);
+  });
+
+  it('opens the dialog without a default date when no calendar day is selected', () => {
+    const { sportDialogService } = buildMocks();
+    sportDialogService.open.mockReturnValue(of({ cancelled: true }));
+
+    const actions$ = new Subject<Action>();
+    createSportLog$(
+      actions$.asObservable(),
+      sportDialogService,
+      { createSportLog: jest.fn() } as unknown as MealLogsService,
+      buildStore(null),
+    )
+      .pipe(take(1))
+      .subscribe();
+
+    actions$.next(HistoryPageComponentActions.logSportClicked());
+
+    expect(sportDialogService.open).toHaveBeenCalledWith(undefined);
+  });
+
+  it('does not create a sport log when the dialog is cancelled', () => {
+    const { mealLogsService, sportDialogService } = buildMocks();
+    sportDialogService.open.mockReturnValue(of({ cancelled: true }));
+
+    const actions$ = new Subject<Action>();
+    createSportLog$(
+      actions$.asObservable(),
+      sportDialogService,
+      mealLogsService,
+      buildStore('2026-08-10'),
+    )
+      .pipe(take(1))
+      .subscribe();
+
+    actions$.next(HistoryPageComponentActions.logSportClicked());
+
+    expect(mealLogsService.createSportLog).not.toHaveBeenCalled();
+  });
+
+  it('dispatches sportLogCreationFailed when saving fails', () => {
+    const { mealLogsService, sportDialogService } = buildMocks();
+    sportDialogService.open.mockReturnValue(
+      of({
+        cancelled: false,
+        date: new Date('2026-08-10T14:00'),
+        duration: 1,
+        sportName: 'Swimming',
+        basalRate: null,
+        basalReductionPercent: 30,
+        note: null,
+      }),
+    );
+    mealLogsService.createSportLog.mockReturnValue(
+      throwError(() => new Error('boom')),
+    );
+
+    const actions$ = new Subject<Action>();
+    const results: Action[] = [];
+    createSportLog$(
+      actions$.asObservable(),
+      sportDialogService,
+      mealLogsService,
+      buildStore('2026-08-10'),
+    )
+      .pipe(take(1))
+      .subscribe((action) => results.push(action));
+
+    actions$.next(HistoryPageComponentActions.logSportClicked());
+
+    expect(results).toEqual([
+      MealLogsApiActions.sportLogCreationFailed({
+        error: expect.any(Error),
+      }),
+    ]);
+  });
+
+  it('does nothing when there is no user id', () => {
+    const { mealLogsService, sportDialogService } = buildMocks();
+    const store = {
+      select: jest.fn(() => of(null)),
+    } as unknown as Store;
+
+    const actions$ = new Subject<Action>();
+    createSportLog$(
+      actions$.asObservable(),
+      sportDialogService,
+      mealLogsService,
+      store,
+    )
+      .pipe(take(1))
+      .subscribe();
+
+    actions$.next(HistoryPageComponentActions.logSportClicked());
+
+    expect(sportDialogService.open).not.toHaveBeenCalled();
+    expect(mealLogsService.createSportLog).not.toHaveBeenCalled();
   });
 });
 

@@ -1,0 +1,100 @@
+<h2 mat-dialog-title>Log sport</h2>
+<mat-dialog-content>
+  <mat-form-field>
+    <mat-label>Date</mat-label>
+    <input
+      matInput
+      [formControl]="sportForm.controls.date"
+      [matDatepicker]="datePicker"
+    />
+    <mat-datepicker-toggle
+      matIconSuffix
+      [for]="datePicker"
+    ></mat-datepicker-toggle>
+    <mat-datepicker #datePicker></mat-datepicker>
+    @if (sportForm.controls.date.invalid) {
+      <mat-error>Enter a valid date and time.</mat-error>
+    }
+  </mat-form-field>
+  <mat-form-field>
+    <mat-label>Start time</mat-label>
+    <input matInput type="time" [formControl]="sportForm.controls.time" />
+    @if (sportForm.controls.time.invalid) {
+      <mat-error>Enter a valid date and time.</mat-error>
+    }
+  </mat-form-field>
+  <mat-form-field>
+    <mat-label>Duration (hours)</mat-label>
+    <input
+      matInput
+      type="number"
+      min="0"
+      step="0.5"
+      [formControl]="sportForm.controls.duration"
+      cdkFocusInitial
+    />
+    @if (sportForm.controls.duration.invalid) {
+      <mat-error>Enter a duration greater than 0.</mat-error>
+    }
+  </mat-form-field>
+  <mat-form-field>
+    <mat-label>Sport</mat-label>
+    <input matInput [formControl]="sportForm.controls.sportName" />
+    @if (sportForm.controls.sportName.invalid) {
+      <mat-error>Enter a sport name.</mat-error>
+    }
+  </mat-form-field>
+  <mat-radio-group
+    [formControl]="sportForm.controls.reductionMode"
+    (change)="onReductionModeChange($event.value)"
+  >
+    <mat-radio-button value="none">No basal reduction</mat-radio-button>
+    <mat-radio-button value="rate">Temporary rate (U/h)</mat-radio-button>
+    <mat-radio-button value="percent">Percentage reduction</mat-radio-button>
+  </mat-radio-group>
+  @if (sportForm.controls.reductionMode.value === 'rate') {
+    <mat-form-field>
+      <mat-label>Basal rate (U/h)</mat-label>
+      <input
+        matInput
+        type="number"
+        min="0"
+        step="0.1"
+        [formControl]="sportForm.controls.basalRate"
+      />
+      @if (sportForm.controls.basalRate.invalid) {
+        <mat-error>Enter a basal rate greater than 0.</mat-error>
+      }
+    </mat-form-field>
+  }
+  @if (sportForm.controls.reductionMode.value === 'percent') {
+    <mat-form-field>
+      <mat-label>Reduction (%)</mat-label>
+      <input
+        matInput
+        type="number"
+        min="0"
+        step="5"
+        [formControl]="sportForm.controls.basalReductionPercent"
+      />
+      @if (sportForm.controls.basalReductionPercent.invalid) {
+        <mat-error>Enter a reduction percentage greater than 0.</mat-error>
+      }
+    </mat-form-field>
+  }
+  <mat-form-field>
+    <mat-label>Note</mat-label>
+    <input matInput [formControl]="sportForm.controls.note" />
+  </mat-form-field>
+</mat-dialog-content>
+<mat-dialog-actions>
+  <button mat-button [matDialogClose]="{ cancelled: true }">Cancel</button>
+  <button
+    color="primary"
+    mat-raised-button
+    [disabled]="!canSave"
+    [matDialogClose]="getResult()"
+  >
+    Save
+  </button>
+</mat-dialog-actions>
