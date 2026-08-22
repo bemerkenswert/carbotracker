@@ -28,9 +28,21 @@ _Avoid_: Meal (when meaning a slot, since "meal" already means CurrentMeal)
 For a meal type, the user's ratio of insulin units per gram of carbs. Used to estimate a bolus dose for a current meal.
 _Avoid_: Ratio, carb factor, insulin factor
 
+**Basal rate**:
+The insulin per hour a pump delivers continuously. Measured in units per hour (U/h). During sport the user temporarily lowers it, either to a chosen rate in U/h or by a chosen percentage.
+_Avoid_: Base rate, background insulin (when it means the pump setting)
+
 **Saved meal**:
 A named, immutable snapshot of a current meal's meal entries, stored by the user so it can be loaded back later (e.g. "Steffens Pasta Dream" = 250 g spaghetti, 60 g meat, 60 g bread).
 _Avoid_: Recipe, saved-this-meal
+
+**Sport**:
+A kind of sport the user defines in their own catalog, e.g. Cycling, Hiking. Carries only a name. Parallel to Product.
+_Avoid_: Sport type, activity type
+
+**SportLog**:
+A history record of a sport session: a start time, a duration in hours, a sport name, and optionally a basal reduction. The sport name is a snapshot — either the catalog Sport's name at logging time, or a free-text name for a one-shot sport (which the user can optionally also save to their sports catalog). The basal reduction has one of two modes — the temporary basal rate in U/h, or a percentage reduction of the basal rate. A sport session crossing midnight belongs to the day it started.
+_Avoid_: Activity, workout, sport entry
 
 ## Pipeline
 
