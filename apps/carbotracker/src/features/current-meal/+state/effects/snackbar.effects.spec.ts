@@ -13,10 +13,14 @@ import {
   showAddMealEntrySuccessfulSnackbar$,
   showClearCurrentMealFailedSnackbar$,
   showClearCurrentMealSuccessfulSnackbar$,
+  showDeleteMealEntryFailedSnackbar$,
+  showDeleteMealEntrySuccessfulSnackbar$,
   showMealLogSavedFailedSnackbar$,
   showMealLogSavedSuccessfulSnackbar$,
   showSaveCurrentMealFailedSnackbar$,
   showSaveCurrentMealSuccessfulSnackbar$,
+  showUpdateMealEntryFailedSnackbar$,
+  showUpdateMealEntrySuccessfulSnackbar$,
 } from './snackbar.effects';
 
 describe('snackbar effects', () => {
@@ -86,6 +90,66 @@ describe('snackbar effects', () => {
       );
       expect(results).toEqual([
         CurrentMealSnackBarActions.showAddMealEntrySnackbarFailed(),
+      ]);
+    });
+  });
+
+  describe('showUpdateMealEntrySuccessfulSnackbar$', () => {
+    it('shows the update meal entry success snackbar', () => {
+      const results = run(() => showUpdateMealEntrySuccessfulSnackbar$());
+
+      actions$.next(CurrentMealApiActions.updateMealEntrySuccessful());
+
+      expect(snackBar.open).toHaveBeenCalledWith('The meal entry was updated.');
+      expect(results).toEqual([
+        CurrentMealSnackBarActions.showUpdateMealEntrySnackbarSuccessful(),
+      ]);
+    });
+  });
+
+  describe('showUpdateMealEntryFailedSnackbar$', () => {
+    it('shows the update meal entry failure snackbar', () => {
+      const results = run(() => showUpdateMealEntryFailedSnackbar$());
+
+      actions$.next(
+        CurrentMealApiActions.updateMealEntryFailed({ error: 'boom' }),
+      );
+
+      expect(snackBar.open).toHaveBeenCalledWith(
+        'The meal entry could not be updated.',
+      );
+      expect(results).toEqual([
+        CurrentMealSnackBarActions.showUpdateMealEntrySnackbarFailed(),
+      ]);
+    });
+  });
+
+  describe('showDeleteMealEntrySuccessfulSnackbar$', () => {
+    it('shows the delete meal entry success snackbar', () => {
+      const results = run(() => showDeleteMealEntrySuccessfulSnackbar$());
+
+      actions$.next(CurrentMealApiActions.deleteMealEntrySuccessful());
+
+      expect(snackBar.open).toHaveBeenCalledWith('The meal entry was deleted.');
+      expect(results).toEqual([
+        CurrentMealSnackBarActions.showDeleteMealEntrySnackbarSuccessful(),
+      ]);
+    });
+  });
+
+  describe('showDeleteMealEntryFailedSnackbar$', () => {
+    it('shows the delete meal entry failure snackbar', () => {
+      const results = run(() => showDeleteMealEntryFailedSnackbar$());
+
+      actions$.next(
+        CurrentMealApiActions.deleteMealEntryFailed({ error: 'boom' }),
+      );
+
+      expect(snackBar.open).toHaveBeenCalledWith(
+        'The meal entry could not be deleted.',
+      );
+      expect(results).toEqual([
+        CurrentMealSnackBarActions.showDeleteMealEntrySnackbarFailed(),
       ]);
     });
   });
