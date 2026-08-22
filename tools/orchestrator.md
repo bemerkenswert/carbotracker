@@ -151,9 +151,12 @@ diff the rules file against its base. Both labels are bootstrapped by
 ## Crash recovery
 
 The state file is the orchestrator's memory, never the source of truth. At
-daemon start and at the top of every poll cycle (`once` mode runs it once) the
-orchestrator runs `orchestrator_reconcile`, which walks every entry in the state
-file and inspects the observable facts —
+daemon start the orchestrator first **clears every stored `pid`** — a process
+id is only authoritative for the daemon instance that wrote it, so after a
+restart (or crash) the handle is meaningless and could collide with an
+unrelated process. It then runs `orchestrator_reconcile` — at daemon start and
+again at the top of every poll cycle (`once` mode runs it once) — which walks
+every entry in the state file and inspects the observable facts —
 does the worktree directory exist, what does `git status`/`git log` say, is the
 branch pushed (`git ls-remote`), and is there a PR for the branch (`gh pr list
 --head <branch> --state all`). It then transitions each ticket to the phase

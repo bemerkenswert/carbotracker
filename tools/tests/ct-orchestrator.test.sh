@@ -747,6 +747,52 @@ test_state_active_count_counts_implementing_only() {
   state_teardown
 }
 
+test_state_clear_pids_nulls_all_entries() {
+  state_setup
+  printf '[{"ticket":1,"branch":"ticket/1-a","worktree":"%s/1-a","pid":1111,"phase":"implementing"},{"ticket":2,"branch":"ticket/2-b","worktree":"%s/2-b","pid":null,"phase":"implementing"}]' "$WT_PARENT" "$WT_PARENT" > "$TEST_STATE"
+  orchestrator_state_clear_pids "$TEST_STATE"
+  assert_eq "clears a stale pid" "null" "$(jq -r '.[0].pid' "$TEST_STATE")"
+  assert_eq "leaves an already-null pid null" "null" "$(jq -r '.[1].pid' "$TEST_STATE")"
+  assert_eq "no entry is left running after clearing" "0" "$(jq '[.[] | select(.pid != null)] | length' "$TEST_STATE")"
+  assert_eq "clearing leaves other fields intact" "implementing" "$(jq -r '.[0].phase' "$TEST_STATE")"
+  assert_eq "state file stays valid json" "yes" "$(jq -e . "$TEST_STATE" >/dev/null 2>&1 && echo yes || echo no)"
+  state_teardown
+}
+
+test_state_clear_pids_leaves_clean_state_untouched() {
+  state_setup
+  orchestrator_state_clear_pids "$TEST_STATE"
+  assert_eq "missing state file is not materialised" "no" "$([[ -f "$TEST_STATE" ]] && echo yes || echo no)"
+  orchestrator_state_add "$TEST_STATE" 1 ticket/1-a "$WT_PARENT/1-a"
+  local before
+  before="$(cat "$TEST_STATE")"
+  orchestrator_state_clear_pids "$TEST_STATE"
+  assert_eq "state without stale pids is left byte-identical" "$before" "$(cat "$TEST_STATE")"
+  state_teardown
+}
+
+test_daemon_startup_clears_stale_pids() {
+  state_setup
+  printf '[{"ticket":123,"branch":"ticket/123-foo","worktree":"%s/123-foo","pid":9999,"phase":"implementing","startedAt":"2026-08-22T00:00:00Z"}]' "$WT_PARENT" > "$TEST_STATE"
+  fake_command sleep 'exit 42'
+  local rc
+  rc=0
+  if ORCHESTRATOR_STATE_FILE="$TEST_STATE" ORCHESTRATOR_WORKTREE_PARENT="$WT_PARENT" bash -c '
+    source "$1/tools/ct-orchestrator.sh"
+    orchestrator_self_refresh() { :; }
+    orchestrator_reconcile() { :; }
+    orchestrator_poll_once() { :; }
+    orchestrator_daemon
+  ' _ "$ROOT" >/dev/null 2>&1; then
+    rc=0
+  else
+    rc=$?
+  fi
+  assert_eq "daemon runs one poll then exits via faked sleep" "42" "$rc"
+  assert_eq "stale pid cleared on daemon startup" "null" "$(jq -r '.[0].pid' "$TEST_STATE")"
+  state_teardown
+}
+
 test_candidate_issues_sorted_fifo() {
   fake_command gh 'if [[ "$1" == "issue" && "$2" == "list" ]]; then
   printf "[{\"number\":42,\"title\":\"Beta\"},{\"number\":10,\"title\":\"Alpha\"}]\n"
@@ -4500,6 +4546,8 @@ test_state_complete_with_missing_values
 test_state_complete_updates_only_matching_ticket
 test_state_remove_removes_entry
 test_state_active_count_counts_implementing_only
+test_state_clear_pids_nulls_all_entries
+test_state_clear_pids_leaves_clean_state_untouched
 test_state_add_creates_last_comment_null
 test_state_add_creates_review_failures_zero
 test_state_add_creates_review_notice_false
@@ -4539,6 +4587,7 @@ test_body_blocker_numbers_stops_at_next_section
 test_opencode_session_id_filters_by_title
 test_opencode_session_id_no_match
 test_reconcile_empty_state_is_noop
+test_daemon_startup_clears_stale_pids
 test_reconcile_pr_exists_sets_awaiting_review
 test_reconcile_pushed_branch_creates_pr
 test_reconcile_resumes_with_continue_when_no_session

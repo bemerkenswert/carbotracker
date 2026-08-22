@@ -114,6 +114,23 @@ orchestrator_state_write() {
   mv "$tmp" "$state_file"
 }
 
+# A stored process id is only authoritative for the daemon instance that wrote
+# it. After a restart (or crash) the handle is meaningless and could collide
+# with an unrelated process, so every entry's pid is cleared once at daemon
+# startup; reconcile then re-derives each ticket from observable git facts.
+# A missing/empty state file or one without stale pids is left untouched, so
+# startup never materialises or rewrites state that has nothing to clear.
+orchestrator_state_clear_pids() {
+  local state_file="$1"
+  local state
+  state="$(orchestrator_state_load "$state_file")"
+  if ! printf '%s' "$state" | jq -e '[.[] | select(.pid != null)] | length > 0' >/dev/null 2>&1; then
+    return 0
+  fi
+  state="$(printf '%s' "$state" | jq '[.[] | .pid = null]')"
+  orchestrator_state_write "$state_file" "$state"
+}
+
 orchestrator_state_active_count() {
   orchestrator_state_load "$1" | jq '[.[] | select(.phase == "implementing")] | length'
 }
@@ -1763,6 +1780,9 @@ orchestrator_self_refresh() {
 
 orchestrator_daemon() {
   orchestrator_log "orchestrator started: poll every ${ORCHESTRATOR_POLL_INTERVAL_SECONDS}s, concurrency cap $ORCHESTRATOR_CONCURRENCY_CAP, model $ORCHESTRATOR_MODEL, state $ORCHESTRATOR_STATE_FILE"
+  # Stored pids belong to the previous daemon instance; drop them before
+  # reconcile re-derives every ticket from observable git facts.
+  orchestrator_state_clear_pids "$ORCHESTRATOR_STATE_FILE"
   while true; do
     orchestrator_self_refresh
     # Reconcile at the top of every poll, not just at startup: a transiently
