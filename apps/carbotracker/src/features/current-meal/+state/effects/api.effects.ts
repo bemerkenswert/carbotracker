@@ -200,17 +200,25 @@ export const updateMealEntryOfCurrentMeal = createEffect(
       ]),
       concatMap(([{ mealEntry }, uid, currentMeal]) => {
         if (uid) {
-          return currentMealService.updateMealEntry({
-            currentMeal,
-            mealEntry,
-            uid,
-          });
+          return currentMealService
+            .updateMealEntry({
+              currentMeal,
+              mealEntry,
+              uid,
+            })
+            .pipe(
+              mapResponse({
+                next: () => CurrentMealApiActions.updateMealEntrySuccessful(),
+                error: (error) =>
+                  CurrentMealApiActions.updateMealEntryFailed({ error }),
+              }),
+            );
         } else {
           return of();
         }
       }),
     ),
-  { functional: true, dispatch: false },
+  { functional: true },
 );
 
 export const deleteMealEntryOfCurrentMeal = createEffect(
@@ -227,17 +235,25 @@ export const deleteMealEntryOfCurrentMeal = createEffect(
       ]),
       concatMap(([{ mealEntry }, uid, currentMeal]) => {
         if (uid) {
-          return currentMealService.deleteMealEntry({
-            currentMeal,
-            mealEntry,
-            uid,
-          });
+          return currentMealService
+            .deleteMealEntry({
+              currentMeal,
+              mealEntry,
+              uid,
+            })
+            .pipe(
+              mapResponse({
+                next: () => CurrentMealApiActions.deleteMealEntrySuccessful(),
+                error: (error) =>
+                  CurrentMealApiActions.deleteMealEntryFailed({ error }),
+              }),
+            );
         } else {
           return of();
         }
       }),
     ),
-  { functional: true, dispatch: false },
+  { functional: true },
 );
 
 export const startStreamingCurrentMeal$ = createEffect(

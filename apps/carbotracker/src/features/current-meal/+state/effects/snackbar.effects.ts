@@ -42,6 +42,78 @@ export const showAddMealEntryFailedSnackbar$ = createEffect(
   { functional: true },
 );
 
+export const showUpdateMealEntrySuccessfulSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(CurrentMealApiActions.updateMealEntrySuccessful),
+      switchMap(() =>
+        snackBar
+          .open('The meal entry was updated.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              CurrentMealSnackBarActions.showUpdateMealEntrySnackbarSuccessful(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const showUpdateMealEntryFailedSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(CurrentMealApiActions.updateMealEntryFailed),
+      switchMap(() =>
+        snackBar
+          .open('The meal entry could not be updated.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              CurrentMealSnackBarActions.showUpdateMealEntrySnackbarFailed(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const showDeleteMealEntrySuccessfulSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(CurrentMealApiActions.deleteMealEntrySuccessful),
+      switchMap(() =>
+        snackBar
+          .open('The meal entry was deleted.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              CurrentMealSnackBarActions.showDeleteMealEntrySnackbarSuccessful(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const showDeleteMealEntryFailedSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(CurrentMealApiActions.deleteMealEntryFailed),
+      switchMap(() =>
+        snackBar
+          .open('The meal entry could not be deleted.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              CurrentMealSnackBarActions.showDeleteMealEntrySnackbarFailed(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
 export const showClearCurrentMealSuccessfulSnackbar$ = createEffect(
   (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
     actions$.pipe(

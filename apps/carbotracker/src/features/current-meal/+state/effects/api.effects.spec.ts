@@ -17,13 +17,16 @@ import { CurrentMealApiActions } from '../actions/api.actions';
 import {
   CreateMealEntryPageComponentActions,
   CurrentMealPageComponentActions,
+  EditMealEntryPageComponentActions,
 } from '../actions/component.actions';
 import { currentMealFeature } from '../current-meal.store';
 import {
   addMealEntryToCurrentMeal,
+  deleteMealEntryOfCurrentMeal,
   removeAllMealEntriesOfCurrentMeal$,
   saveCurrentMealAsMealLog,
   saveCurrentMealAsSavedMeal,
+  updateMealEntryOfCurrentMeal,
 } from './api.effects';
 
 const mealEntry: MealEntry = {
@@ -402,6 +405,150 @@ describe('addMealEntryToCurrentMeal', () => {
 
     expect(results).toEqual([
       CurrentMealApiActions.addMealEntryFailed({ error: expect.any(Error) }),
+    ]);
+  });
+});
+
+describe('updateMealEntryOfCurrentMeal', () => {
+  let actions$: Subject<Action>;
+  let currentMealService: jest.Mocked<CurrentMealService>;
+
+  beforeEach(() => {
+    actions$ = new Subject<Action>();
+    currentMealService = {
+      updateMealEntry: jest.fn(() => of(undefined)),
+    } as unknown as jest.Mocked<CurrentMealService>;
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideMockActions(() => actions$),
+        provideMockStore({
+          selectors: [
+            { selector: authFeature.selectUserId, value: 'user-1' },
+            {
+              selector: currentMealFeature.selectCurrentMeal,
+              value: currentMeal,
+            },
+          ],
+        }),
+        { provide: CurrentMealService, useValue: currentMealService },
+      ],
+    });
+  });
+
+  it('dispatches updateMealEntrySuccessful when the entry is updated', () => {
+    const results: Action[] = [];
+
+    TestBed.runInInjectionContext(() =>
+      updateMealEntryOfCurrentMeal()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
+    );
+
+    actions$.next(EditMealEntryPageComponentActions.saveClicked({ mealEntry }));
+
+    expect(currentMealService.updateMealEntry).toHaveBeenCalledWith({
+      currentMeal,
+      mealEntry,
+      uid: 'user-1',
+    });
+    expect(results).toEqual([
+      CurrentMealApiActions.updateMealEntrySuccessful(),
+    ]);
+  });
+
+  it('dispatches updateMealEntryFailed when updating fails', () => {
+    currentMealService.updateMealEntry.mockReturnValue(
+      throwError(() => new Error('boom')),
+    );
+    const results: Action[] = [];
+
+    TestBed.runInInjectionContext(() =>
+      updateMealEntryOfCurrentMeal()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
+    );
+
+    actions$.next(EditMealEntryPageComponentActions.saveClicked({ mealEntry }));
+
+    expect(results).toEqual([
+      CurrentMealApiActions.updateMealEntryFailed({
+        error: expect.any(Error),
+      }),
+    ]);
+  });
+});
+
+describe('deleteMealEntryOfCurrentMeal', () => {
+  let actions$: Subject<Action>;
+  let currentMealService: jest.Mocked<CurrentMealService>;
+
+  beforeEach(() => {
+    actions$ = new Subject<Action>();
+    currentMealService = {
+      deleteMealEntry: jest.fn(() => of(undefined)),
+    } as unknown as jest.Mocked<CurrentMealService>;
+
+    TestBed.configureTestingModule({
+      providers: [
+        provideMockActions(() => actions$),
+        provideMockStore({
+          selectors: [
+            { selector: authFeature.selectUserId, value: 'user-1' },
+            {
+              selector: currentMealFeature.selectCurrentMeal,
+              value: currentMeal,
+            },
+          ],
+        }),
+        { provide: CurrentMealService, useValue: currentMealService },
+      ],
+    });
+  });
+
+  it('dispatches deleteMealEntrySuccessful when the entry is deleted', () => {
+    const results: Action[] = [];
+
+    TestBed.runInInjectionContext(() =>
+      deleteMealEntryOfCurrentMeal()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
+    );
+
+    actions$.next(
+      EditMealEntryPageComponentActions.deleteMealEntryClicked({ mealEntry }),
+    );
+
+    expect(currentMealService.deleteMealEntry).toHaveBeenCalledWith({
+      currentMeal,
+      mealEntry,
+      uid: 'user-1',
+    });
+    expect(results).toEqual([
+      CurrentMealApiActions.deleteMealEntrySuccessful(),
+    ]);
+  });
+
+  it('dispatches deleteMealEntryFailed when deleting fails', () => {
+    currentMealService.deleteMealEntry.mockReturnValue(
+      throwError(() => new Error('boom')),
+    );
+    const results: Action[] = [];
+
+    TestBed.runInInjectionContext(() =>
+      deleteMealEntryOfCurrentMeal()
+        .pipe(take(1))
+        .subscribe((action) => results.push(action)),
+    );
+
+    actions$.next(
+      EditMealEntryPageComponentActions.deleteMealEntryClicked({ mealEntry }),
+    );
+
+    expect(results).toEqual([
+      CurrentMealApiActions.deleteMealEntryFailed({
+        error: expect.any(Error),
+      }),
     ]);
   });
 });
