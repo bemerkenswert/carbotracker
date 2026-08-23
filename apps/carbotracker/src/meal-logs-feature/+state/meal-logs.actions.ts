@@ -19,7 +19,6 @@ export const HistoryPageComponentActions = createActionGroup({
 export const SportLogDialogActions = createActionGroup({
   source: 'Meal Logs | Sport Log Dialog',
   events: {
-    'Save Sport To Catalog': props<{ sportName: string }>(),
     'Sport Saved To Catalog': emptyProps(),
     'Sport Save To Catalog Failed': props<{ error: unknown }>(),
     'Sport Name Already In Catalog': emptyProps(),

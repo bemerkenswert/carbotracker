@@ -12,7 +12,9 @@ import {
   from,
   map,
   merge,
+  Observable,
   of,
+  share,
   switchMap,
   tap,
 } from 'rxjs';
@@ -105,14 +107,19 @@ export const createInsulinDose$ = createEffect(
   { functional: true },
 );
 
-export const createSportLog$ = createEffect(
-  (
-    actions$ = inject(Actions),
-    sportDialogService = inject(SportDialogService),
-    mealLogsService = inject(MealLogsService),
-    store = inject(Store),
-  ) =>
-    actions$.pipe(
+const confirmedSportLogDialogResultSources = new WeakMap<
+  Actions,
+  Observable<{ uid: string; result: ConfirmedSportDialogResult }>
+>();
+
+const confirmedSportLogDialogResult$ = (
+  actions$: Actions,
+  sportDialogService: SportDialogService,
+  store: Store,
+): Observable<{ uid: string; result: ConfirmedSportDialogResult }> => {
+  let source = confirmedSportLogDialogResultSources.get(actions$);
+  if (!source) {
+    source = actions$.pipe(
       ofType(HistoryPageComponentActions.logSportClicked),
       concatLatestFrom(() => [
         store.select(authFeature.selectUserId),
@@ -133,37 +140,43 @@ export const createSportLog$ = createEffect(
               (result): result is ConfirmedSportDialogResult =>
                 !result.cancelled,
             ),
-            switchMap((result) => {
-              const saveToCatalog$ = result.saveToCatalog
-                ? of(
-                    SportLogDialogActions.saveSportToCatalog({
-                      sportName: result.sportName,
-                    }),
-                  )
-                : EMPTY;
-              return merge(
-                saveToCatalog$,
-                mealLogsService
-                  .createSportLog({
-                    date: result.date,
-                    duration: result.duration,
-                    sportName: result.sportName,
-                    basalRate: result.basalRate,
-                    basalReductionPercent: result.basalReductionPercent,
-                    note: result.note,
-                    uid,
-                  })
-                  .pipe(
-                    mapResponse({
-                      next: () => MealLogsApiActions.sportLogCreated(),
-                      error: (error) =>
-                        MealLogsApiActions.sportLogCreationFailed({ error }),
-                    }),
-                  ),
-              );
-            }),
+            map((result) => ({ uid, result })),
           );
       }),
+      share(),
+    );
+    confirmedSportLogDialogResultSources.set(actions$, source);
+  }
+  return source;
+};
+
+export const createSportLog$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    sportDialogService = inject(SportDialogService),
+    mealLogsService = inject(MealLogsService),
+    store = inject(Store),
+  ) =>
+    confirmedSportLogDialogResult$(actions$, sportDialogService, store).pipe(
+      switchMap(({ uid, result }) =>
+        mealLogsService
+          .createSportLog({
+            date: result.date,
+            duration: result.duration,
+            sportName: result.sportName,
+            basalRate: result.basalRate,
+            basalReductionPercent: result.basalReductionPercent,
+            note: result.note,
+            uid,
+          })
+          .pipe(
+            mapResponse({
+              next: () => MealLogsApiActions.sportLogCreated(),
+              error: (error) =>
+                MealLogsApiActions.sportLogCreationFailed({ error }),
+            }),
+          ),
+      ),
     ),
   { functional: true },
 );
@@ -171,24 +184,21 @@ export const createSportLog$ = createEffect(
 export const saveSportToCatalogFromDialog$ = createEffect(
   (
     actions$ = inject(Actions),
+    sportDialogService = inject(SportDialogService),
     sportsService = inject(SportsService),
     store = inject(Store),
   ) =>
-    actions$.pipe(
-      ofType(SportLogDialogActions.saveSportToCatalog),
-      concatLatestFrom(() => [
-        store.select(authFeature.selectUserId),
+    confirmedSportLogDialogResult$(actions$, sportDialogService, store).pipe(
+      filter(({ result }) => result.saveToCatalog),
+      concatLatestFrom(() =>
         store.select(sportsFeature.selectSportNameAlreadyExists),
-      ]),
-      exhaustMap(([{ sportName }, uid, isNameTaken]) => {
-        if (!uid) {
-          return EMPTY;
-        }
-        if (isNameTaken(sportName)) {
+      ),
+      exhaustMap(([{ uid, result }, isNameTaken]) => {
+        if (isNameTaken(result.sportName)) {
           return of(SportLogDialogActions.sportNameAlreadyInCatalog());
         }
         return sportsService
-          .createSport({ name: sportName, creator: uid })
+          .createSport({ name: result.sportName, creator: uid })
           .pipe(
             mapResponse({
               next: () => SportLogDialogActions.sportSavedToCatalog(),
