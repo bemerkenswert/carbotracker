@@ -39,11 +39,30 @@
   </mat-form-field>
   <mat-form-field>
     <mat-label>Sport</mat-label>
-    <input matInput [formControl]="sportForm.controls.sportName" />
+    <input
+      matInput
+      [formControl]="sportForm.controls.sportName"
+      [matAutocomplete]="sportAutocomplete"
+      (input)="onSportNameTyped()"
+    />
+    <mat-autocomplete
+      #sportAutocomplete="matAutocomplete"
+      (optionSelected)="onCatalogSportSelected($event.option.value)"
+    >
+      @for (sport of filteredCatalogSports(); track sport.id) {
+        <mat-option [value]="sport.name">{{ sport.name }}</mat-option>
+      }
+    </mat-autocomplete>
     @if (sportForm.controls.sportName.invalid) {
       <mat-error>Enter a sport name.</mat-error>
     }
   </mat-form-field>
+  <mat-checkbox
+    [formControl]="sportForm.controls.saveToCatalog"
+    [disabled]="sportForm.controls.catalogSportId.value !== null"
+  >
+    Save to my sports
+  </mat-checkbox>
   <mat-radio-group
     [formControl]="sportForm.controls.reductionMode"
     (change)="onReductionModeChange($event.value)"

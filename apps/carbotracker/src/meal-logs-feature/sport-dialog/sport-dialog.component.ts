@@ -1,4 +1,5 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import {
   AbstractControl,
   FormBuilder,
@@ -8,12 +9,16 @@ import {
   Validators,
 } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialogModule, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatRadioModule } from '@angular/material/radio';
+import { Store } from '@ngrx/store';
+import { sportsFeature } from '../../features/sports/+state';
 import { toLocalTimeString } from '../date.util';
 import {
   BasalReductionMode,
@@ -49,6 +54,8 @@ const createSportFormGroup = (data: SportDialogData) => {
       nonNullable: true,
       validators: [Validators.required],
     }),
+    catalogSportId: new FormControl<string | null>(null),
+    saveToCatalog: new FormControl<boolean>(false, { nonNullable: true }),
     reductionMode: new FormControl<BasalReductionMode>('none', {
       nonNullable: true,
     }),
@@ -63,6 +70,8 @@ const createSportFormGroup = (data: SportDialogData) => {
   imports: [
     MatDialogModule,
     MatButtonModule,
+    MatCheckboxModule,
+    MatAutocompleteModule,
     MatFormFieldModule,
     MatInputModule,
     MatDatepickerModule,
@@ -75,11 +84,54 @@ const createSportFormGroup = (data: SportDialogData) => {
 })
 export class SportDialogComponent {
   private readonly data = inject<SportDialogData>(MAT_DIALOG_DATA);
+  private readonly store = inject(Store);
+
+  protected readonly catalogSports = this.store.selectSignal(
+    sportsFeature.selectAll,
+  );
 
   protected readonly sportForm = createSportFormGroup(this.data);
 
+  private readonly typedSportName = toSignal(
+    this.sportForm.controls.sportName.valueChanges,
+    { initialValue: this.sportForm.controls.sportName.value },
+  );
+
+  protected readonly filteredCatalogSports = computed(() => {
+    const query = this.typedSportName().trim().toLowerCase();
+    if (!query) {
+      return this.catalogSports();
+    }
+    return this.catalogSports().filter((sport) =>
+      sport.name.toLowerCase().includes(query),
+    );
+  });
+
   protected get canSave(): boolean {
     return this.sportForm.valid;
+  }
+
+  protected onCatalogSportSelected(sportName: string) {
+    const sport = this.catalogSports().find(
+      (sport) => sport.name === sportName,
+    );
+    if (sport) {
+      this.sportForm.controls.catalogSportId.setValue(sport.id);
+      this.sportForm.controls.saveToCatalog.setValue(false);
+    }
+  }
+
+  protected onSportNameTyped() {
+    const selectedSportId = this.sportForm.controls.catalogSportId.value;
+    if (selectedSportId === null) {
+      return;
+    }
+    const selectedSport = this.catalogSports().find(
+      (sport) => sport.id === selectedSportId,
+    );
+    if (selectedSport?.name !== this.sportForm.controls.sportName.value) {
+      this.sportForm.controls.catalogSportId.setValue(null);
+    }
   }
 
   protected onReductionModeChange(mode: BasalReductionMode) {
@@ -109,6 +161,7 @@ export class SportDialogComponent {
       date,
       duration: formValue.duration as number,
       sportName: formValue.sportName.trim(),
+      saveToCatalog: formValue.saveToCatalog,
       basalRate:
         formValue.reductionMode === 'rate' ? formValue.basalRate : null,
       basalReductionPercent:

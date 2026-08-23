@@ -82,4 +82,26 @@ describe('transformMealLogDocument', () => {
       creator: 'user-1',
     });
   });
+
+  it('keeps the stored sport name as a snapshot, unaffected by catalog renames', () => {
+    const createdAt = new Date('2026-08-10T23:30');
+    const document = {
+      type: 'sport-log',
+      createdAt: { toDate: () => createdAt },
+      date: '2026-08-10',
+      duration: 2.5,
+      sportName: 'Cycling',
+      basalRate: null,
+      basalReductionPercent: null,
+      note: null,
+      creator: 'user-1',
+    };
+
+    const result = transformMealLogDocument('s1', document);
+
+    expect(result).toMatchObject({
+      type: 'sport-log',
+      sportName: 'Cycling',
+    });
+  });
 });

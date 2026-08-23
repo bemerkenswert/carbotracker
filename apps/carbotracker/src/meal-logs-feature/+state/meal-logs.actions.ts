@@ -1,5 +1,6 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
 import { MealLogDocument } from '../meal-log.model';
+import { ConfirmedSportDialogResult } from '../sport-dialog/sport-dialog.model';
 
 export const HistoryPageComponentActions = createActionGroup({
   source: 'Meal Logs | History Page Component',
@@ -13,6 +14,19 @@ export const HistoryPageComponentActions = createActionGroup({
     'Edit Meal Log Clicked': props<{ mealLog: MealLogDocument }>(),
     'Delete Meal Log Document Clicked': props<{ mealLog: MealLogDocument }>(),
     'Reload Meal Log Into Meal Clicked': props<{ mealLog: MealLogDocument }>(),
+  },
+});
+
+export const SportLogDialogActions = createActionGroup({
+  source: 'Meal Logs | Sport Log Dialog',
+  events: {
+    'Sport Log Confirmed': props<{
+      uid: string;
+      result: ConfirmedSportDialogResult;
+    }>(),
+    'Sport Saved To Catalog': emptyProps(),
+    'Sport Save To Catalog Failed': props<{ error: unknown }>(),
+    'Sport Name Already In Catalog': emptyProps(),
   },
 });
 
@@ -45,5 +59,8 @@ export const MealLogsSnackBarActions = createActionGroup({
     'Show Reload Into Meal Snackbar Successful': emptyProps(),
     'Show Reload Into Meal Snackbar Failed': emptyProps(),
     'Go To Current Meal Clicked': emptyProps(),
+    'Show Sport Saved To Catalog Snackbar': emptyProps(),
+    'Show Sport Already In Catalog Snackbar': emptyProps(),
+    'Show Sport Save To Catalog Failed Snackbar': emptyProps(),
   },
 });

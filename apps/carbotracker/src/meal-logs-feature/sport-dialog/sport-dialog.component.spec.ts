@@ -1,7 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { provideMockStore } from '@ngrx/store/testing';
+import { Store } from '@ngrx/store';
 import { By } from '@angular/platform-browser';
+import { getInitialState as getSportsInitialState } from '../../features/sports/+state/sports.store';
+import { Sport } from '../../features/sports/sport.model';
 import { SportDialogComponent } from './sport-dialog.component';
 
 describe('SportDialogComponent', () => {
@@ -11,7 +15,10 @@ describe('SportDialogComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [SportDialogComponent, NoopAnimationsModule],
-      providers: [{ provide: MAT_DIALOG_DATA, useValue: {} }],
+      providers: [
+        { provide: MAT_DIALOG_DATA, useValue: {} },
+        provideMockStore({ initialState: { sports: getSportsInitialState() } }),
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(SportDialogComponent);
@@ -57,5 +64,70 @@ describe('SportDialogComponent', () => {
     fixture.detectChanges();
 
     expect(saveButton().disabled).toBe(true);
+  });
+
+  const seedCatalog = (sports: Sport[]) => {
+    const store = TestBed.inject(Store);
+    store.setState({
+      sports: {
+        ...getSportsInitialState(),
+        sports: {
+          ids: sports.map((sport) => sport.id),
+          entities: Object.fromEntries(
+            sports.map((sport) => [sport.id, sport]),
+          ),
+        },
+      },
+    });
+    fixture.detectChanges();
+  };
+
+  it('lists catalog sports in the autocomplete while typing', () => {
+    seedCatalog([
+      { id: 's1', name: 'Cycling', creator: 'user-a' },
+      { id: 's2', name: 'Running', creator: 'user-a' },
+    ]);
+    component.sportForm.controls.sportName.setValue('Cyc');
+
+    expect(component.filteredCatalogSports()).toEqual([
+      { id: 's1', name: 'Cycling', creator: 'user-a' },
+    ]);
+  });
+
+  it('marks a picked catalog sport as selected and disables save-to-catalog', () => {
+    seedCatalog([
+      { id: 's1', name: 'Cycling', creator: 'user-a' },
+      { id: 's2', name: 'Running', creator: 'user-a' },
+    ]);
+    component.sportForm.controls.sportName.setValue('Cycling');
+    component.onCatalogSportSelected('Cycling');
+
+    expect(component.sportForm.controls.catalogSportId.value).toBe('s1');
+    expect(component.sportForm.controls.saveToCatalog.value).toBe(false);
+  });
+
+  it('keeps a free-typed value that matches no catalog sport as free text', () => {
+    seedCatalog([
+      { id: 's1', name: 'Cycling', creator: 'user-a' },
+      { id: 's2', name: 'Running', creator: 'user-a' },
+    ]);
+    component.sportForm.controls.sportName.setValue('CrossFit');
+    component.onSportNameTyped();
+
+    expect(component.sportForm.controls.catalogSportId.value).toBeNull();
+    expect(component.sportForm.controls.saveToCatalog.disabled).toBe(false);
+  });
+
+  it('clears the selected catalog sport when the name is typed over', () => {
+    seedCatalog([
+      { id: 's1', name: 'Cycling', creator: 'user-a' },
+      { id: 's2', name: 'Running', creator: 'user-a' },
+    ]);
+    component.sportForm.controls.sportName.setValue('Cycling');
+    component.onCatalogSportSelected('Cycling');
+    component.sportForm.controls.sportName.setValue('Cycling long');
+    component.onSportNameTyped();
+
+    expect(component.sportForm.controls.catalogSportId.value).toBeNull();
   });
 });

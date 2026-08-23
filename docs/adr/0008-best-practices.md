@@ -26,6 +26,10 @@ Do not put the `required` attribute on an input bound to a reactive form control
 
 `MatInput.required` derives from the bound control via `hasValidator(Validators.required)`, so the Material required marker still renders when the control carries `Validators.required`. A template `required` attribute is a second source of truth that duplicates — and can silently disagree with — the control's validation.
 
+### Use readable variable names
+
+Never use single-character variable names (`s`, `c`, `i`, …). Name a value for what it holds — `sport` or `catalogSport` instead of `s`. Single-character names are unreadable and hard to grep for, and offer the reader no hint about what the value means.
+
 ## Consequences
 
 - Templates bind controls via `[formControl]` and omit the `[formGroup]` wrapper, the `appearance` attribute on `mat-form-field`, and the `required` attribute on inputs whose control already declares `Validators.required`.

@@ -13,12 +13,5 @@ export const selectCreateSportPageViewModel = createSelector(
   }),
 );
 
-export const selectSportNameAlreadyExists = createSelector(
-  sportsFeature.selectAll,
-  (sports) =>
-    (name: string): boolean =>
-      sports.some(
-        (sport) =>
-          sport.name.trim().toLowerCase() === name.trim().toLowerCase(),
-      ),
-);
+export const selectSportNameAlreadyExists =
+  sportsFeature.selectSportNameAlreadyExists;
