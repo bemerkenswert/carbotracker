@@ -112,7 +112,9 @@ export class SportDialogComponent {
   }
 
   protected onCatalogSportSelected(sportName: string) {
-    const sport = this.catalogSports().find((s) => s.name === sportName);
+    const sport = this.catalogSports().find(
+      (sport) => sport.name === sportName,
+    );
     if (sport) {
       this.sportForm.controls.catalogSportId.setValue(sport.id);
       this.sportForm.controls.saveToCatalog.setValue(false);
