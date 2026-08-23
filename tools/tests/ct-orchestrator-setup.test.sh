@@ -133,6 +133,52 @@ fake_all_prereqs() {
   fake_command loginctl 'exit 0'
 }
 
+test_verify_labels_ok() {
+  local sandbox
+  sandbox="$(mktemp -d)"
+  # Fake gh label view to succeed for all labels
+  cat > "$sandbox/gh" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "label" && "$2" == "view" ]]; then
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "$sandbox/gh"
+  PATH="$sandbox:$PATH"
+  if setup_verify_labels; then
+    pass "verify_labels passes when all labels exist"
+  else
+    fail "verify_labels passes when all labels exist"
+  fi
+  rm -rf "$sandbox"
+}
+
+test_verify_labels_missing() {
+  local sandbox
+  sandbox="$(mktemp -d)"
+  # Fake gh label view to fail for some labels
+  cat > "$sandbox/gh" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "label" && "$2" == "view" ]]; then
+  case "$3" in
+    needs-triage|needs-info|ready-for-human|ready-for-agent|wontfix)
+      exit 1
+      ;;
+    *) exit 0 ;;
+  esac
+fi
+exit 1
+EOF
+  chmod +x "$sandbox/gh"
+  PATH="$sandbox:$PATH"
+  local output
+  output=$(setup_verify_labels 2>&1 || true)
+  assert_contains "verify_labels fails when labels are missing" "needs-triage" "$output"
+  assert_contains "verify_labels fails when labels are missing" "Provision labels via Terraform" "$output"
+  rm -rf "$sandbox"
+}
+
 test_check_prereqs_ok() {
   fake_all_prereqs
   if check_prereqs gh git node npm jq opencode rg systemctl loginctl; then
@@ -265,6 +311,8 @@ run_test() {
 
 run_test test_check_prereqs_ok
 run_test test_check_prereqs_missing
+run_test test_verify_labels_ok
+run_test test_verify_labels_missing
 run_test test_clone_creates
 run_test test_clone_pulls_when_exists
 run_test test_clone_override
