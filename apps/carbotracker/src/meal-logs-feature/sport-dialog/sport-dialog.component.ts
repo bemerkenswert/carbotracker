@@ -127,7 +127,7 @@ export class SportDialogComponent {
       return;
     }
     const selectedSport = this.catalogSports().find(
-      (s) => s.id === selectedSportId,
+      (sport) => sport.id === selectedSportId,
     );
     if (selectedSport?.name !== this.sportForm.controls.sportName.value) {
       this.sportForm.controls.catalogSportId.setValue(null);
