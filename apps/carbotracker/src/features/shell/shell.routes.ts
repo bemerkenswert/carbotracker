@@ -15,6 +15,10 @@ const SHELL_ROUTES: Routes = [
         loadChildren: () => import('../products/products.routes'),
       },
       {
+        path: 'sports',
+        loadChildren: () => import('../sports/sports.routes'),
+      },
+      {
         path: 'current-meal',
         loadChildren: () => import('../current-meal/current-meal.routes'),
       },

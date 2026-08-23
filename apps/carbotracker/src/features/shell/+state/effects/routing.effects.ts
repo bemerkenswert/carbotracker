@@ -26,6 +26,26 @@ export const navigateToProducts$ = createEffect(
   { functional: true },
 );
 
+export const navigateToSports$ = createEffect(
+  (actions$ = inject(Actions), router = inject(Router)) =>
+    actions$.pipe(
+      ofType(ShellComponentActions.sportsClicked),
+      switchMap(() =>
+        from(router.navigate(['app', 'sports'])).pipe(
+          mapResponse({
+            next: () =>
+              ShellRouterEffectsActions.navigationToSportsPageSuccessful(),
+            error: (error) =>
+              ShellRouterEffectsActions.navigationToSportsPageFailed({
+                error,
+              }),
+          }),
+        ),
+      ),
+    ),
+  { functional: true },
+);
+
 export const navigateToCurrentMeal$ = createEffect(
   (actions$ = inject(Actions), router = inject(Router)) =>
     actions$.pipe(

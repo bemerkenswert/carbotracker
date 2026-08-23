@@ -5,6 +5,8 @@ export const ShellRouterEffectsActions = createActionGroup({
   events: {
     'Navigation to Products Page Successful': emptyProps(),
     'Navigation to Products Page Failed': props<{ error: unknown }>(),
+    'Navigation to Sports Page Successful': emptyProps(),
+    'Navigation to Sports Page Failed': props<{ error: unknown }>(),
     'Navigation to Current Meal Page Successful': emptyProps(),
     'Navigation to Current Meal Page Failed': props<{ error: unknown }>(),
     'Navigation to Saved Meals Page Successful': emptyProps(),
