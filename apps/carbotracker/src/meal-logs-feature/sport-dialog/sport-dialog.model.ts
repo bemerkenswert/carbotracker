@@ -10,6 +10,8 @@ export type ConfirmedSportDialogResult = {
   date: Date;
   duration: number;
   sportName: string;
+  /** Whether a free-text sport name should be saved into the catalog. */
+  saveToCatalog: boolean;
   basalRate: number | null;
   basalReductionPercent: number | null;
   note: string | null;

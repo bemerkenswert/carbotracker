@@ -5,8 +5,20 @@ import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { concatLatestFrom, mapResponse } from '@ngrx/operators';
 import { routerNavigatedAction } from '@ngrx/router-store';
 import { Store } from '@ngrx/store';
-import { EMPTY, filter, from, map, merge, switchMap, tap } from 'rxjs';
+import {
+  EMPTY,
+  exhaustMap,
+  filter,
+  from,
+  map,
+  merge,
+  of,
+  switchMap,
+  tap,
+} from 'rxjs';
 import { authFeature } from '../../features/auth/+state/auth.store';
+import { sportsFeature } from '../../features/sports/+state';
+import { SportsService } from '../../features/sports/services/sports.service';
 import { ConfirmationDialogService } from '@carbotracker/ui';
 import { EditMealLogDialogService } from '../edit-meal-log-dialog/edit-meal-log-dialog.service';
 import { ConfirmedEditMealLogDialogResult } from '../edit-meal-log-dialog/edit-meal-log-dialog.model';
@@ -22,6 +34,7 @@ import {
   HistoryPageComponentActions,
   MealLogsApiActions,
   MealLogsSnackBarActions,
+  SportLogDialogActions,
 } from './meal-logs.actions';
 
 export const startStreamingMealLogs$ = createEffect(
@@ -120,23 +133,24 @@ export const createSportLog$ = createEffect(
               (result): result is ConfirmedSportDialogResult =>
                 !result.cancelled,
             ),
-            switchMap(
-              ({
-                date,
-                duration,
-                sportName,
-                basalRate,
-                basalReductionPercent,
-                note,
-              }) =>
+            switchMap((result) => {
+              const saveToCatalog$ = result.saveToCatalog
+                ? of(
+                    SportLogDialogActions.saveSportToCatalog({
+                      sportName: result.sportName,
+                    }),
+                  )
+                : EMPTY;
+              return merge(
+                saveToCatalog$,
                 mealLogsService
                   .createSportLog({
-                    date,
-                    duration,
-                    sportName,
-                    basalRate,
-                    basalReductionPercent,
-                    note,
+                    date: result.date,
+                    duration: result.duration,
+                    sportName: result.sportName,
+                    basalRate: result.basalRate,
+                    basalReductionPercent: result.basalReductionPercent,
+                    note: result.note,
                     uid,
                   })
                   .pipe(
@@ -146,7 +160,41 @@ export const createSportLog$ = createEffect(
                         MealLogsApiActions.sportLogCreationFailed({ error }),
                     }),
                   ),
-            ),
+              );
+            }),
+          );
+      }),
+    ),
+  { functional: true },
+);
+
+export const saveSportToCatalogFromDialog$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    sportsService = inject(SportsService),
+    store = inject(Store),
+  ) =>
+    actions$.pipe(
+      ofType(SportLogDialogActions.saveSportToCatalog),
+      concatLatestFrom(() => [
+        store.select(authFeature.selectUserId),
+        store.select(sportsFeature.selectSportNameAlreadyExists),
+      ]),
+      exhaustMap(([{ sportName }, uid, isNameTaken]) => {
+        if (!uid) {
+          return EMPTY;
+        }
+        if (isNameTaken(sportName)) {
+          return of(SportLogDialogActions.sportNameAlreadyInCatalog());
+        }
+        return sportsService
+          .createSport({ name: sportName, creator: uid })
+          .pipe(
+            mapResponse({
+              next: () => SportLogDialogActions.sportSavedToCatalog(),
+              error: (error) =>
+                SportLogDialogActions.sportSaveToCatalogFailed({ error }),
+            }),
           );
       }),
     ),
@@ -360,4 +408,58 @@ export const navigateToCurrentMeal$ = createEffect(
       switchMap(() => from(router.navigate(['app', 'current-meal']))),
     ),
   { functional: true, dispatch: false },
+);
+
+export const showSportSavedToCatalogSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(SportLogDialogActions.sportSavedToCatalog),
+      switchMap(() =>
+        snackBar
+          .open('The sport was added to your catalog.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              MealLogsSnackBarActions.showSportSavedToCatalogSnackbar(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const showSportAlreadyInCatalogSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(SportLogDialogActions.sportNameAlreadyInCatalog),
+      switchMap(() =>
+        snackBar
+          .open('This sport is already in your catalog.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              MealLogsSnackBarActions.showSportAlreadyInCatalogSnackbar(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
+);
+
+export const showSportSaveToCatalogFailedSnackbar$ = createEffect(
+  (actions$ = inject(Actions), snackBar = inject(MatSnackBar)) =>
+    actions$.pipe(
+      ofType(SportLogDialogActions.sportSaveToCatalogFailed),
+      switchMap(() =>
+        snackBar
+          .open('The sport could not be added to your catalog.')
+          .afterOpened()
+          .pipe(
+            map(() =>
+              MealLogsSnackBarActions.showSportSaveToCatalogFailedSnackbar(),
+            ),
+          ),
+      ),
+    ),
+  { functional: true },
 );

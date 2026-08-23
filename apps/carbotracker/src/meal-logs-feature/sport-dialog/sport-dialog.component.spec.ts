@@ -1,7 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { provideMockStore } from '@ngrx/store/testing';
 import { By } from '@angular/platform-browser';
+import { getInitialState as getSportsInitialState } from '../../features/sports/+state/sports.store';
 import { SportDialogComponent } from './sport-dialog.component';
 
 describe('SportDialogComponent', () => {
@@ -11,7 +13,10 @@ describe('SportDialogComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [SportDialogComponent, NoopAnimationsModule],
-      providers: [{ provide: MAT_DIALOG_DATA, useValue: {} }],
+      providers: [
+        { provide: MAT_DIALOG_DATA, useValue: {} },
+        provideMockStore({ initialState: { sports: getSportsInitialState() } }),
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(SportDialogComponent);

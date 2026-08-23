@@ -16,6 +16,16 @@ export const HistoryPageComponentActions = createActionGroup({
   },
 });
 
+export const SportLogDialogActions = createActionGroup({
+  source: 'Meal Logs | Sport Log Dialog',
+  events: {
+    'Save Sport To Catalog': props<{ sportName: string }>(),
+    'Sport Saved To Catalog': emptyProps(),
+    'Sport Save To Catalog Failed': props<{ error: unknown }>(),
+    'Sport Name Already In Catalog': emptyProps(),
+  },
+});
+
 export const MealLogsApiActions = createActionGroup({
   source: 'Meal Logs | Meal Logs Api',
   events: {
@@ -45,5 +55,8 @@ export const MealLogsSnackBarActions = createActionGroup({
     'Show Reload Into Meal Snackbar Successful': emptyProps(),
     'Show Reload Into Meal Snackbar Failed': emptyProps(),
     'Go To Current Meal Clicked': emptyProps(),
+    'Show Sport Saved To Catalog Snackbar': emptyProps(),
+    'Show Sport Already In Catalog Snackbar': emptyProps(),
+    'Show Sport Save To Catalog Failed Snackbar': emptyProps(),
   },
 });

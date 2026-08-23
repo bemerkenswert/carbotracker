@@ -38,12 +38,33 @@
     }
   </mat-form-field>
   <mat-form-field>
-    <mat-label>Sport</mat-label>
-    <input matInput [formControl]="sportForm.controls.sportName" />
+    <mat-label>Sport from your catalog</mat-label>
+    <mat-select
+      [formControl]="sportForm.controls.catalogSportId"
+      (selectionChange)="onCatalogSportSelected($event.value)"
+    >
+      @for (sport of catalogSports(); track sport.id) {
+        <mat-option [value]="sport.id">{{ sport.name }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field>
+    <mat-label>Or type a sport name</mat-label>
+    <input
+      matInput
+      [formControl]="sportForm.controls.sportName"
+      (input)="onSportNameTyped()"
+    />
     @if (sportForm.controls.sportName.invalid) {
       <mat-error>Enter a sport name.</mat-error>
     }
   </mat-form-field>
+  <mat-checkbox
+    [formControl]="sportForm.controls.saveToCatalog"
+    [disabled]="sportForm.controls.catalogSportId.value !== null"
+  >
+    Save to my sports
+  </mat-checkbox>
   <mat-radio-group
     [formControl]="sportForm.controls.reductionMode"
     (change)="onReductionModeChange($event.value)"

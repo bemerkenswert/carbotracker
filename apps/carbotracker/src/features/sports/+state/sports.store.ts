@@ -43,9 +43,19 @@ export const sportsFeature = createFeature({
       (sportId, sports): Sport | null =>
         sports.find((sport) => sport.id === sportId) ?? null,
     );
+    const selectSportNameAlreadyExists = createSelector(
+      entitySelectors.selectAll,
+      (sports) =>
+        (name: string): boolean =>
+          sports.some(
+            (sport) =>
+              sport.name.trim().toLowerCase() === name.trim().toLowerCase(),
+          ),
+    );
     return {
       ...entitySelectors,
       selectCurrentSport,
+      selectSportNameAlreadyExists,
     };
   },
 });

@@ -89,4 +89,37 @@ describe('sportsFeature', () => {
 
     expect(currentSport).toBeNull();
   });
+
+  it('flags a sport name that already exists in the catalog ignoring case', () => {
+    const state = sportsFeature.reducer(
+      getInitialState(),
+      SportsApiActions.sportsCollectionChanged({
+        sports: [createSport('s1', 'Cycling', 'user-a')],
+      }),
+    );
+    const sports = sportsFeature.selectAll.projector(
+      sportsFeature.selectSports.projector(state),
+    );
+    const isNameTaken =
+      sportsFeature.selectSportNameAlreadyExists.projector(sports);
+
+    expect(isNameTaken('cycling')).toBe(true);
+    expect(isNameTaken('CYCLING')).toBe(true);
+  });
+
+  it('does not flag a sport name that is not in the catalog', () => {
+    const state = sportsFeature.reducer(
+      getInitialState(),
+      SportsApiActions.sportsCollectionChanged({
+        sports: [createSport('s1', 'Cycling', 'user-a')],
+      }),
+    );
+    const sports = sportsFeature.selectAll.projector(
+      sportsFeature.selectSports.projector(state),
+    );
+    const isNameTaken =
+      sportsFeature.selectSportNameAlreadyExists.projector(sports);
+
+    expect(isNameTaken('Swimming')).toBe(false);
+  });
 });
