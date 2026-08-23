@@ -12,9 +12,7 @@ import {
   from,
   map,
   merge,
-  Observable,
   of,
-  share,
   switchMap,
   tap,
 } from 'rxjs';
@@ -107,19 +105,13 @@ export const createInsulinDose$ = createEffect(
   { functional: true },
 );
 
-const confirmedSportLogDialogResultSources = new WeakMap<
-  Actions,
-  Observable<{ uid: string; result: ConfirmedSportDialogResult }>
->();
-
-const confirmedSportLogDialogResult$ = (
-  actions$: Actions,
-  sportDialogService: SportDialogService,
-  store: Store,
-): Observable<{ uid: string; result: ConfirmedSportDialogResult }> => {
-  let source = confirmedSportLogDialogResultSources.get(actions$);
-  if (!source) {
-    source = actions$.pipe(
+export const openSportLogDialog$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    sportDialogService = inject(SportDialogService),
+    store = inject(Store),
+  ) =>
+    actions$.pipe(
       ofType(HistoryPageComponentActions.logSportClicked),
       concatLatestFrom(() => [
         store.select(authFeature.selectUserId),
@@ -140,24 +132,19 @@ const confirmedSportLogDialogResult$ = (
               (result): result is ConfirmedSportDialogResult =>
                 !result.cancelled,
             ),
-            map((result) => ({ uid, result })),
+            map((result) =>
+              SportLogDialogActions.sportLogConfirmed({ uid, result }),
+            ),
           );
       }),
-      share(),
-    );
-    confirmedSportLogDialogResultSources.set(actions$, source);
-  }
-  return source;
-};
+    ),
+  { functional: true },
+);
 
 export const createSportLog$ = createEffect(
-  (
-    actions$ = inject(Actions),
-    sportDialogService = inject(SportDialogService),
-    mealLogsService = inject(MealLogsService),
-    store = inject(Store),
-  ) =>
-    confirmedSportLogDialogResult$(actions$, sportDialogService, store).pipe(
+  (actions$ = inject(Actions), mealLogsService = inject(MealLogsService)) =>
+    actions$.pipe(
+      ofType(SportLogDialogActions.sportLogConfirmed),
       switchMap(({ uid, result }) =>
         mealLogsService
           .createSportLog({
@@ -184,11 +171,11 @@ export const createSportLog$ = createEffect(
 export const saveSportToCatalogFromDialog$ = createEffect(
   (
     actions$ = inject(Actions),
-    sportDialogService = inject(SportDialogService),
     sportsService = inject(SportsService),
     store = inject(Store),
   ) =>
-    confirmedSportLogDialogResult$(actions$, sportDialogService, store).pipe(
+    actions$.pipe(
+      ofType(SportLogDialogActions.sportLogConfirmed),
       filter(({ result }) => result.saveToCatalog),
       concatLatestFrom(() =>
         store.select(sportsFeature.selectSportNameAlreadyExists),

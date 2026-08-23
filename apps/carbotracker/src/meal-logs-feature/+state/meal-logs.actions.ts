@@ -1,5 +1,6 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
 import { MealLogDocument } from '../meal-log.model';
+import { ConfirmedSportDialogResult } from '../sport-dialog/sport-dialog.model';
 
 export const HistoryPageComponentActions = createActionGroup({
   source: 'Meal Logs | History Page Component',
@@ -19,6 +20,10 @@ export const HistoryPageComponentActions = createActionGroup({
 export const SportLogDialogActions = createActionGroup({
   source: 'Meal Logs | Sport Log Dialog',
   events: {
+    'Sport Log Confirmed': props<{
+      uid: string;
+      result: ConfirmedSportDialogResult;
+    }>(),
     'Sport Saved To Catalog': emptyProps(),
     'Sport Save To Catalog Failed': props<{ error: unknown }>(),
     'Sport Name Already In Catalog': emptyProps(),

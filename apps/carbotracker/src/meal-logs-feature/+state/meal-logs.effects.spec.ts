@@ -13,6 +13,7 @@ import { EditMealLogDialogService } from '../edit-meal-log-dialog/edit-meal-log-
 import { InsulinDoseDialogService } from '../insulin-dose-dialog/insulin-dose-dialog.service';
 import { MealLog, MealLogDocument } from '../meal-log.model';
 import { SportDialogService } from '../sport-dialog/sport-dialog.service';
+import { ConfirmedSportDialogResult } from '../sport-dialog/sport-dialog.model';
 import { MealLogsService } from '../services/meal-logs.service';
 import { mealLogsFeature } from './meal-logs.feature';
 import {
@@ -28,6 +29,7 @@ import {
   editInsulinDose$,
   editMealLog$,
   navigateToCurrentMeal$,
+  openSportLogDialog$,
   reloadMealLogIntoMeal$,
   saveSportToCatalogFromDialog$,
   showReloadIntoMealFailedSnackbar$,
@@ -225,7 +227,7 @@ describe('createInsulinDose$', () => {
   });
 });
 
-describe('createSportLog$', () => {
+describe('openSportLogDialog$', () => {
   const buildStore = (selectedDate: string | null): Store =>
     ({
       select: jest.fn((selector) => {
@@ -240,36 +242,32 @@ describe('createSportLog$', () => {
     }) as unknown as Store;
 
   const buildMocks = () => {
-    const mealLogsService = {
-      createSportLog: jest.fn(() => of(undefined)),
-    } as unknown as MealLogsService;
     const sportDialogService = {
       open: jest.fn(),
     } as unknown as jest.Mocked<SportDialogService>;
-    return { mealLogsService, sportDialogService };
+    return { sportDialogService };
   };
 
-  it('opens the dialog with the calendar-selected day and creates a sport log on confirm', () => {
-    const { mealLogsService, sportDialogService } = buildMocks();
-    sportDialogService.open.mockReturnValue(
-      of({
-        cancelled: false,
-        date: new Date('2026-08-10T23:30'),
-        duration: 2.5,
-        sportName: 'Cycling',
-        saveToCatalog: false,
-        basalRate: 0.5,
-        basalReductionPercent: null,
-        note: 'fast pace',
-      }),
-    );
+  const confirmedResult: ConfirmedSportDialogResult = {
+    cancelled: false,
+    date: new Date('2026-08-10T23:30'),
+    duration: 2.5,
+    sportName: 'Cycling',
+    saveToCatalog: false,
+    basalRate: 0.5,
+    basalReductionPercent: null,
+    note: 'fast pace',
+  };
+
+  it('opens the dialog with the calendar-selected day and dispatches the confirmed result', () => {
+    const { sportDialogService } = buildMocks();
+    sportDialogService.open.mockReturnValue(of(confirmedResult));
 
     const actions$ = new Subject<Action>();
     const results: Action[] = [];
-    createSportLog$(
+    openSportLogDialog$(
       actions$.asObservable(),
       sportDialogService,
-      mealLogsService,
       buildStore('2026-08-10'),
     )
       .pipe(take(1))
@@ -280,6 +278,103 @@ describe('createSportLog$', () => {
     expect(sportDialogService.open).toHaveBeenCalledWith({
       defaultDate: new Date(2026, 7, 10),
     });
+    expect(results).toEqual([
+      SportLogDialogActions.sportLogConfirmed({
+        uid: 'user-1',
+        result: confirmedResult,
+      }),
+    ]);
+  });
+
+  it('opens the dialog without a default date when no calendar day is selected', () => {
+    const { sportDialogService } = buildMocks();
+    sportDialogService.open.mockReturnValue(of(confirmedResult));
+
+    const actions$ = new Subject<Action>();
+    openSportLogDialog$(
+      actions$.asObservable(),
+      sportDialogService,
+      buildStore(null),
+    )
+      .pipe(take(1))
+      .subscribe();
+
+    actions$.next(HistoryPageComponentActions.logSportClicked());
+
+    expect(sportDialogService.open).toHaveBeenCalledWith(undefined);
+  });
+
+  it('does not dispatch when the dialog is cancelled', () => {
+    const { sportDialogService } = buildMocks();
+    sportDialogService.open.mockReturnValue(of({ cancelled: true }));
+
+    const actions$ = new Subject<Action>();
+    const results: Action[] = [];
+    openSportLogDialog$(
+      actions$.asObservable(),
+      sportDialogService,
+      buildStore('2026-08-10'),
+    )
+      .pipe(take(1))
+      .subscribe((action) => results.push(action));
+
+    actions$.next(HistoryPageComponentActions.logSportClicked());
+
+    expect(results).toEqual([]);
+  });
+
+  it('does nothing when there is no user id', () => {
+    const { sportDialogService } = buildMocks();
+    const store = {
+      select: jest.fn(() => of(null)),
+    } as unknown as Store;
+
+    const actions$ = new Subject<Action>();
+    openSportLogDialog$(
+      actions$.asObservable(),
+      sportDialogService,
+      store,
+    ).subscribe();
+
+    actions$.next(HistoryPageComponentActions.logSportClicked());
+
+    expect(sportDialogService.open).not.toHaveBeenCalled();
+  });
+});
+
+describe('createSportLog$', () => {
+  const buildMocks = () => {
+    const mealLogsService = {
+      createSportLog: jest.fn(() => of(undefined)),
+    } as unknown as MealLogsService;
+    return { mealLogsService };
+  };
+
+  it('creates a sport log when the dialog result is confirmed', () => {
+    const { mealLogsService } = buildMocks();
+
+    const actions$ = new Subject<Action>();
+    const results: Action[] = [];
+    createSportLog$(actions$.asObservable(), mealLogsService)
+      .pipe(take(1))
+      .subscribe((action) => results.push(action));
+
+    actions$.next(
+      SportLogDialogActions.sportLogConfirmed({
+        uid: 'user-1',
+        result: {
+          cancelled: false,
+          date: new Date('2026-08-10T23:30'),
+          duration: 2.5,
+          sportName: 'Cycling',
+          saveToCatalog: false,
+          basalRate: 0.5,
+          basalReductionPercent: null,
+          note: 'fast pace',
+        },
+      }),
+    );
+
     expect(mealLogsService.createSportLog).toHaveBeenCalledWith({
       date: new Date('2026-08-10T23:30'),
       duration: 2.5,
@@ -293,32 +388,29 @@ describe('createSportLog$', () => {
   });
 
   it('creates the sport log when the free-text name should be saved to the catalog', () => {
-    const { mealLogsService, sportDialogService } = buildMocks();
-    sportDialogService.open.mockReturnValue(
-      of({
-        cancelled: false,
-        date: new Date('2026-08-10T14:00'),
-        duration: 1,
-        sportName: 'Swimming',
-        saveToCatalog: true,
-        basalRate: null,
-        basalReductionPercent: null,
-        note: null,
-      }),
-    );
+    const { mealLogsService } = buildMocks();
 
     const actions$ = new Subject<Action>();
     const results: Action[] = [];
-    createSportLog$(
-      actions$.asObservable(),
-      sportDialogService,
-      mealLogsService,
-      buildStore('2026-08-10'),
-    )
+    createSportLog$(actions$.asObservable(), mealLogsService)
       .pipe(take(1))
       .subscribe((action) => results.push(action));
 
-    actions$.next(HistoryPageComponentActions.logSportClicked());
+    actions$.next(
+      SportLogDialogActions.sportLogConfirmed({
+        uid: 'user-1',
+        result: {
+          cancelled: false,
+          date: new Date('2026-08-10T14:00'),
+          duration: 1,
+          sportName: 'Swimming',
+          saveToCatalog: true,
+          basalRate: null,
+          basalReductionPercent: null,
+          note: null,
+        },
+      }),
+    );
 
     expect(mealLogsService.createSportLog).toHaveBeenCalledWith({
       date: new Date('2026-08-10T14:00'),
@@ -332,138 +424,37 @@ describe('createSportLog$', () => {
     expect(results).toEqual([MealLogsApiActions.sportLogCreated()]);
   });
 
-  it('does not dispatch a catalog save when creating the log fails', () => {
-    const { mealLogsService, sportDialogService } = buildMocks();
-    sportDialogService.open.mockReturnValue(
-      of({
-        cancelled: false,
-        date: new Date('2026-08-10T14:00'),
-        duration: 1,
-        sportName: 'Swimming',
-        saveToCatalog: true,
-        basalRate: null,
-        basalReductionPercent: null,
-        note: null,
-      }),
-    );
+  it('dispatches sportLogCreationFailed when saving fails', () => {
+    const { mealLogsService } = buildMocks();
     mealLogsService.createSportLog.mockReturnValue(
       throwError(() => new Error('boom')),
     );
 
     const actions$ = new Subject<Action>();
     const results: Action[] = [];
-    createSportLog$(
-      actions$.asObservable(),
-      sportDialogService,
-      mealLogsService,
-      buildStore('2026-08-10'),
-    )
+    createSportLog$(actions$.asObservable(), mealLogsService)
       .pipe(take(1))
       .subscribe((action) => results.push(action));
 
-    actions$.next(HistoryPageComponentActions.logSportClicked());
+    actions$.next(
+      SportLogDialogActions.sportLogConfirmed({
+        uid: 'user-1',
+        result: {
+          cancelled: false,
+          date: new Date('2026-08-10T14:00'),
+          duration: 1,
+          sportName: 'Swimming',
+          saveToCatalog: false,
+          basalRate: null,
+          basalReductionPercent: 30,
+          note: null,
+        },
+      }),
+    );
 
     expect(results).toEqual([
       MealLogsApiActions.sportLogCreationFailed({ error: expect.any(Error) }),
     ]);
-  });
-
-  it('opens the dialog without a default date when no calendar day is selected', () => {
-    const { sportDialogService } = buildMocks();
-    sportDialogService.open.mockReturnValue(of({ cancelled: true }));
-
-    const actions$ = new Subject<Action>();
-    createSportLog$(
-      actions$.asObservable(),
-      sportDialogService,
-      { createSportLog: jest.fn() } as unknown as MealLogsService,
-      buildStore(null),
-    )
-      .pipe(take(1))
-      .subscribe();
-
-    actions$.next(HistoryPageComponentActions.logSportClicked());
-
-    expect(sportDialogService.open).toHaveBeenCalledWith(undefined);
-  });
-
-  it('does not create a sport log when the dialog is cancelled', () => {
-    const { mealLogsService, sportDialogService } = buildMocks();
-    sportDialogService.open.mockReturnValue(of({ cancelled: true }));
-
-    const actions$ = new Subject<Action>();
-    createSportLog$(
-      actions$.asObservable(),
-      sportDialogService,
-      mealLogsService,
-      buildStore('2026-08-10'),
-    )
-      .pipe(take(1))
-      .subscribe();
-
-    actions$.next(HistoryPageComponentActions.logSportClicked());
-
-    expect(mealLogsService.createSportLog).not.toHaveBeenCalled();
-  });
-
-  it('dispatches sportLogCreationFailed when saving fails', () => {
-    const { mealLogsService, sportDialogService } = buildMocks();
-    sportDialogService.open.mockReturnValue(
-      of({
-        cancelled: false,
-        date: new Date('2026-08-10T14:00'),
-        duration: 1,
-        sportName: 'Swimming',
-        saveToCatalog: false,
-        basalRate: null,
-        basalReductionPercent: 30,
-        note: null,
-      }),
-    );
-    mealLogsService.createSportLog.mockReturnValue(
-      throwError(() => new Error('boom')),
-    );
-
-    const actions$ = new Subject<Action>();
-    const results: Action[] = [];
-    createSportLog$(
-      actions$.asObservable(),
-      sportDialogService,
-      mealLogsService,
-      buildStore('2026-08-10'),
-    )
-      .pipe(take(1))
-      .subscribe((action) => results.push(action));
-
-    actions$.next(HistoryPageComponentActions.logSportClicked());
-
-    expect(results).toEqual([
-      MealLogsApiActions.sportLogCreationFailed({
-        error: expect.any(Error),
-      }),
-    ]);
-  });
-
-  it('does nothing when there is no user id', () => {
-    const { mealLogsService, sportDialogService } = buildMocks();
-    const store = {
-      select: jest.fn(() => of(null)),
-    } as unknown as Store;
-
-    const actions$ = new Subject<Action>();
-    createSportLog$(
-      actions$.asObservable(),
-      sportDialogService,
-      mealLogsService,
-      store,
-    )
-      .pipe(take(1))
-      .subscribe();
-
-    actions$.next(HistoryPageComponentActions.logSportClicked());
-
-    expect(sportDialogService.open).not.toHaveBeenCalled();
-    expect(mealLogsService.createSportLog).not.toHaveBeenCalled();
   });
 });
 
@@ -471,9 +462,6 @@ describe('saveSportToCatalogFromDialog$', () => {
   const buildStore = (isNameTaken: (name: string) => boolean): Store =>
     ({
       select: jest.fn((selector) => {
-        if (selector === authFeature.selectUserId) {
-          return of('user-1');
-        }
         if (selector === sportsFeature.selectSportNameAlreadyExists) {
           return of(isNameTaken);
         }
@@ -482,16 +470,13 @@ describe('saveSportToCatalogFromDialog$', () => {
     }) as unknown as Store;
 
   const buildMocks = () => {
-    const sportDialogService = {
-      open: jest.fn(),
-    } as unknown as jest.Mocked<SportDialogService>;
     const sportsService = {
       createSport: jest.fn(() => of(undefined)),
     } as unknown as jest.Mocked<SportsService>;
-    return { sportDialogService, sportsService };
+    return { sportsService };
   };
 
-  const confirmedResult = (sportName: string) => ({
+  const confirmedResult = (sportName: string): ConfirmedSportDialogResult => ({
     cancelled: false,
     date: new Date('2026-08-10T14:00'),
     duration: 1,
@@ -502,22 +487,28 @@ describe('saveSportToCatalogFromDialog$', () => {
     note: null,
   });
 
+  const dispatchConfirmed = (
+    actions$: Subject<Action>,
+    result: ReturnType<typeof confirmedResult>,
+  ) =>
+    actions$.next(
+      SportLogDialogActions.sportLogConfirmed({ uid: 'user-1', result }),
+    );
+
   it('creates the sport when the name is not already in the catalog', () => {
-    const { sportDialogService, sportsService } = buildMocks();
-    sportDialogService.open.mockReturnValue(of(confirmedResult('Cycling')));
+    const { sportsService } = buildMocks();
 
     const actions$ = new Subject<Action>();
     const results: Action[] = [];
     saveSportToCatalogFromDialog$(
       actions$.asObservable(),
-      sportDialogService,
       sportsService,
       buildStore(() => false),
     )
       .pipe(take(1))
       .subscribe((action) => results.push(action));
 
-    actions$.next(HistoryPageComponentActions.logSportClicked());
+    dispatchConfirmed(actions$, confirmedResult('Cycling'));
 
     expect(sportsService.createSport).toHaveBeenCalledWith({
       name: 'Cycling',
@@ -527,21 +518,19 @@ describe('saveSportToCatalogFromDialog$', () => {
   });
 
   it('blocks the save with a message when the name already exists without calling the service', () => {
-    const { sportDialogService, sportsService } = buildMocks();
-    sportDialogService.open.mockReturnValue(of(confirmedResult('cycling')));
+    const { sportsService } = buildMocks();
 
     const actions$ = new Subject<Action>();
     const results: Action[] = [];
     saveSportToCatalogFromDialog$(
       actions$.asObservable(),
-      sportDialogService,
       sportsService,
       buildStore(() => true),
     )
       .pipe(take(1))
       .subscribe((action) => results.push(action));
 
-    actions$.next(HistoryPageComponentActions.logSportClicked());
+    dispatchConfirmed(actions$, confirmedResult('cycling'));
 
     expect(sportsService.createSport).not.toHaveBeenCalled();
     expect(results).toEqual([
@@ -550,8 +539,7 @@ describe('saveSportToCatalogFromDialog$', () => {
   });
 
   it('dispatches sportSaveToCatalogFailed when creating fails', () => {
-    const { sportDialogService, sportsService } = buildMocks();
-    sportDialogService.open.mockReturnValue(of(confirmedResult('Cycling')));
+    const { sportsService } = buildMocks();
     sportsService.createSport.mockReturnValue(
       throwError(() => new Error('boom')),
     );
@@ -560,14 +548,13 @@ describe('saveSportToCatalogFromDialog$', () => {
     const results: Action[] = [];
     saveSportToCatalogFromDialog$(
       actions$.asObservable(),
-      sportDialogService,
       sportsService,
       buildStore(() => false),
     )
       .pipe(take(1))
       .subscribe((action) => results.push(action));
 
-    actions$.next(HistoryPageComponentActions.logSportClicked());
+    dispatchConfirmed(actions$, confirmedResult('Cycling'));
 
     expect(results).toEqual([
       SportLogDialogActions.sportSaveToCatalogFailed({
@@ -577,97 +564,47 @@ describe('saveSportToCatalogFromDialog$', () => {
   });
 
   it('does nothing when the free-text name is not checked for the catalog', () => {
-    const { sportDialogService, sportsService } = buildMocks();
-    sportDialogService.open.mockReturnValue(
-      of({ ...confirmedResult('Cycling'), saveToCatalog: false }),
-    );
+    const { sportsService } = buildMocks();
 
     const actions$ = new Subject<Action>();
     const results: Action[] = [];
     saveSportToCatalogFromDialog$(
       actions$.asObservable(),
-      sportDialogService,
       sportsService,
       buildStore(() => false),
     )
       .pipe(take(1))
       .subscribe((action) => results.push(action));
 
-    actions$.next(HistoryPageComponentActions.logSportClicked());
+    dispatchConfirmed(actions$, {
+      ...confirmedResult('Cycling'),
+      saveToCatalog: false,
+    });
 
     expect(sportsService.createSport).not.toHaveBeenCalled();
     expect(results).toEqual([]);
-  });
-
-  it('does nothing when the dialog is cancelled', () => {
-    const { sportDialogService, sportsService } = buildMocks();
-    sportDialogService.open.mockReturnValue(of({ cancelled: true }));
-
-    const actions$ = new Subject<Action>();
-    const results: Action[] = [];
-    saveSportToCatalogFromDialog$(
-      actions$.asObservable(),
-      sportDialogService,
-      sportsService,
-      buildStore(() => false),
-    )
-      .pipe(take(1))
-      .subscribe((action) => results.push(action));
-
-    actions$.next(HistoryPageComponentActions.logSportClicked());
-
-    expect(sportsService.createSport).not.toHaveBeenCalled();
-    expect(results).toEqual([]);
-  });
-
-  it('does nothing when there is no user id', () => {
-    const { sportDialogService, sportsService } = buildMocks();
-    const store = {
-      select: jest.fn(() => of(null)),
-    } as unknown as Store;
-
-    const actions$ = new Subject<Action>();
-    saveSportToCatalogFromDialog$(
-      actions$.asObservable(),
-      sportDialogService,
-      sportsService,
-      store,
-    )
-      .pipe(take(1))
-      .subscribe();
-
-    actions$.next(HistoryPageComponentActions.logSportClicked());
-
-    expect(sportDialogService.open).not.toHaveBeenCalled();
-    expect(sportsService.createSport).not.toHaveBeenCalled();
   });
 
   it('still saves to the catalog when creating the sport log fails', () => {
-    const { sportDialogService, sportsService } = buildMocks();
+    const { sportsService } = buildMocks();
     const mealLogsService = {
       createSportLog: jest.fn(() => throwError(() => new Error('boom'))),
     } as unknown as MealLogsService;
-    sportDialogService.open.mockReturnValue(of(confirmedResult('Swimming')));
     const store = buildStore(() => false);
 
     const actions$ = new Subject<Action>();
-    const sharedActions$ = actions$.asObservable();
     const logResults: Action[] = [];
     const catalogResults: Action[] = [];
-    createSportLog$(
-      sharedActions$,
-      sportDialogService,
-      mealLogsService,
-      store,
-    ).subscribe((action) => logResults.push(action));
+    createSportLog$(actions$.asObservable(), mealLogsService).subscribe(
+      (action) => logResults.push(action),
+    );
     saveSportToCatalogFromDialog$(
-      sharedActions$,
-      sportDialogService,
+      actions$.asObservable(),
       sportsService,
       store,
     ).subscribe((action) => catalogResults.push(action));
 
-    actions$.next(HistoryPageComponentActions.logSportClicked());
+    dispatchConfirmed(actions$, confirmedResult('Swimming'));
 
     expect(logResults).toEqual([
       MealLogsApiActions.sportLogCreationFailed({ error: expect.any(Error) }),
