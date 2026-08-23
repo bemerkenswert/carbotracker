@@ -56,6 +56,22 @@ check_prereqs() {
   fi
 }
 
+setup_verify_labels() {
+  setup_log "verifying triage labels exist on GitHub"
+  local labels=(needs-triage needs-info ready-for-human ready-for-agent wontfix)
+  local missing=0 label
+  for label in "${labels[@]}"; do
+    if ! gh label view "$label" >/dev/null 2>&1; then
+      echo "Error: required triage label '$label' does not exist on the repository." >&2
+      missing=1
+    fi
+  done
+  if [[ $missing -eq 1 ]]; then
+    echo "Provision labels via Terraform or GitHub UI before running setup." >&2
+    return 1
+  fi
+}
+
 setup_clone() {
   if [[ -d "$REPO_DIR/.git" ]]; then
     setup_log "updating existing clone at $REPO_DIR"
@@ -122,6 +138,7 @@ main() {
       setup_install_node
       setup_install_main_deps
       check_prereqs "${PREREQ_TOOLS[@]}"
+      setup_verify_labels
       setup_install_unit
       setup_enable_linger
       setup_enable_start
