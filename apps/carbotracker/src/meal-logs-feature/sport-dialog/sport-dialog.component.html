@@ -38,23 +38,21 @@
     }
   </mat-form-field>
   <mat-form-field>
-    <mat-label>Sport from your catalog</mat-label>
-    <mat-select
-      [formControl]="sportForm.controls.catalogSportId"
-      (selectionChange)="onCatalogSportSelected($event.value)"
-    >
-      @for (sport of catalogSports(); track sport.id) {
-        <mat-option [value]="sport.id">{{ sport.name }}</mat-option>
-      }
-    </mat-select>
-  </mat-form-field>
-  <mat-form-field>
-    <mat-label>Or type a sport name</mat-label>
+    <mat-label>Sport</mat-label>
     <input
       matInput
       [formControl]="sportForm.controls.sportName"
+      [matAutocomplete]="sportAutocomplete"
       (input)="onSportNameTyped()"
     />
+    <mat-autocomplete
+      #sportAutocomplete="matAutocomplete"
+      (optionSelected)="onCatalogSportSelected($event.option.value)"
+    >
+      @for (sport of filteredCatalogSports(); track sport.id) {
+        <mat-option [value]="sport.name">{{ sport.name }}</mat-option>
+      }
+    </mat-autocomplete>
     @if (sportForm.controls.sportName.invalid) {
       <mat-error>Enter a sport name.</mat-error>
     }

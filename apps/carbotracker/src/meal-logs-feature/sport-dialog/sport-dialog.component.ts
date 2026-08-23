@@ -1,4 +1,5 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import {
   AbstractControl,
   FormBuilder,
@@ -8,6 +9,7 @@ import {
   Validators,
 } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -15,7 +17,6 @@ import { MatDialogModule, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatRadioModule } from '@angular/material/radio';
-import { MatSelectModule } from '@angular/material/select';
 import { Store } from '@ngrx/store';
 import { sportsFeature } from '../../features/sports/+state';
 import { toLocalTimeString } from '../date.util';
@@ -70,12 +71,12 @@ const createSportFormGroup = (data: SportDialogData) => {
     MatDialogModule,
     MatButtonModule,
     MatCheckboxModule,
+    MatAutocompleteModule,
     MatFormFieldModule,
     MatInputModule,
     MatDatepickerModule,
     MatNativeDateModule,
     MatRadioModule,
-    MatSelectModule,
     ReactiveFormsModule,
   ],
   templateUrl: './sport-dialog.component.html',
@@ -91,22 +92,42 @@ export class SportDialogComponent {
 
   protected readonly sportForm = createSportFormGroup(this.data);
 
+  private readonly typedSportName = toSignal(
+    this.sportForm.controls.sportName.valueChanges,
+    { initialValue: this.sportForm.controls.sportName.value },
+  );
+
+  protected readonly filteredCatalogSports = computed(() => {
+    const query = this.typedSportName().trim().toLowerCase();
+    if (!query) {
+      return this.catalogSports();
+    }
+    return this.catalogSports().filter((sport) =>
+      sport.name.toLowerCase().includes(query),
+    );
+  });
+
   protected get canSave(): boolean {
     return this.sportForm.valid;
   }
 
-  protected onCatalogSportSelected(sportId: string) {
-    const sport = this.catalogSports().find((s) => s.id === sportId);
+  protected onCatalogSportSelected(sportName: string) {
+    const sport = this.catalogSports().find((s) => s.name === sportName);
     if (sport) {
-      this.sportForm.controls.sportName.setValue(sport.name, {
-        emitEvent: false,
-      });
+      this.sportForm.controls.catalogSportId.setValue(sport.id);
       this.sportForm.controls.saveToCatalog.setValue(false);
     }
   }
 
   protected onSportNameTyped() {
-    if (this.sportForm.controls.catalogSportId.value !== null) {
+    const selectedSportId = this.sportForm.controls.catalogSportId.value;
+    if (selectedSportId === null) {
+      return;
+    }
+    const selectedSport = this.catalogSports().find(
+      (s) => s.id === selectedSportId,
+    );
+    if (selectedSport?.name !== this.sportForm.controls.sportName.value) {
       this.sportForm.controls.catalogSportId.setValue(null);
     }
   }
