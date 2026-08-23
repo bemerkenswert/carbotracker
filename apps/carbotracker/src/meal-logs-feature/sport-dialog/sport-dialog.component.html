@@ -1,4 +1,6 @@
-<h2 mat-dialog-title>Log sport</h2>
+<h2 mat-dialog-title>
+  {{ isEditing ? 'Edit sport' : 'Log sport' }}
+</h2>
 <mat-dialog-content>
   <mat-form-field>
     <mat-label>Date</mat-label>

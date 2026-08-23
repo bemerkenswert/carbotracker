@@ -11,7 +11,7 @@ import { sportsFeature } from '../../features/sports/+state';
 import { SportsService } from '../../features/sports/services/sports.service';
 import { EditMealLogDialogService } from '../edit-meal-log-dialog/edit-meal-log-dialog.service';
 import { InsulinDoseDialogService } from '../insulin-dose-dialog/insulin-dose-dialog.service';
-import { MealLog, MealLogDocument } from '../meal-log.model';
+import { MealLog, MealLogDocument, SportLog } from '../meal-log.model';
 import { SportDialogService } from '../sport-dialog/sport-dialog.service';
 import { ConfirmedSportDialogResult } from '../sport-dialog/sport-dialog.model';
 import { MealLogsService } from '../services/meal-logs.service';
@@ -28,6 +28,7 @@ import {
   deleteMealLogDocument$,
   editInsulinDose$,
   editMealLog$,
+  editSportLog$,
   navigateToCurrentMeal$,
   openSportLogDialog$,
   reloadMealLogIntoMeal$,
@@ -645,6 +646,22 @@ const createMealLog = (
   creator: 'user-1',
 });
 
+const createSportLog = (
+  id = 's1',
+  createdAt = new Date('2026-08-10T18:00'),
+): SportLog => ({
+  id,
+  type: 'sport-log',
+  createdAt,
+  date: '2026-08-10',
+  duration: 2,
+  sportName: 'Cycling',
+  basalRate: null,
+  basalReductionPercent: null,
+  note: null,
+  creator: 'user-1',
+});
+
 describe('editInsulinDose$', () => {
   it('opens the edit dialog pre-filled and updates the dose on confirm', () => {
     const mealLogsService = {
@@ -856,6 +873,146 @@ describe('editMealLog$', () => {
 
     expect(results).toEqual([
       MealLogsApiActions.mealLogUpdateFailed({ error: expect.any(Error) }),
+    ]);
+  });
+});
+
+describe('editSportLog$', () => {
+  const buildMocks = () => {
+    const mealLogsService = {
+      updateSportLog: jest.fn(() => of(undefined)),
+    } as unknown as MealLogsService;
+    const sportDialogService = {
+      open: jest.fn(),
+    } as unknown as jest.Mocked<SportDialogService>;
+    return { mealLogsService, sportDialogService };
+  };
+
+  it('opens the edit dialog pre-filled and updates the sport log on confirm', () => {
+    const { mealLogsService, sportDialogService } = buildMocks();
+    sportDialogService.open.mockReturnValue(
+      of({
+        cancelled: false,
+        date: new Date('2026-08-11T19:30'),
+        duration: 3,
+        sportName: 'Running',
+        saveToCatalog: false,
+        basalRate: 0.5,
+        basalReductionPercent: null,
+        note: 'updated note',
+      }),
+    );
+
+    const actions$ = new Subject<Action>();
+    const results: Action[] = [];
+    editSportLog$(
+      actions$.asObservable(),
+      sportDialogService,
+      mealLogsService,
+    ).subscribe((action) => results.push(action));
+
+    actions$.next(
+      HistoryPageComponentActions.editSportLogClicked({
+        mealLog: createSportLog(),
+      }),
+    );
+
+    expect(sportDialogService.open).toHaveBeenCalledWith({
+      sportLog: {
+        createdAt: new Date('2026-08-10T18:00'),
+        duration: 2,
+        sportName: 'Cycling',
+        basalRate: null,
+        basalReductionPercent: null,
+        note: null,
+      },
+    });
+    expect(mealLogsService.updateSportLog).toHaveBeenCalledWith({
+      id: 's1',
+      date: new Date('2026-08-11T19:30'),
+      duration: 3,
+      sportName: 'Running',
+      basalRate: 0.5,
+      basalReductionPercent: null,
+      note: 'updated note',
+    });
+    expect(results).toEqual([MealLogsApiActions.sportLogUpdated()]);
+  });
+
+  it('does not update when the dialog is cancelled', () => {
+    const { mealLogsService, sportDialogService } = buildMocks();
+    sportDialogService.open.mockReturnValue(of({ cancelled: true }));
+
+    const actions$ = new Subject<Action>();
+    editSportLog$(
+      actions$.asObservable(),
+      sportDialogService,
+      mealLogsService,
+    ).subscribe();
+
+    actions$.next(
+      HistoryPageComponentActions.editSportLogClicked({
+        mealLog: createSportLog(),
+      }),
+    );
+
+    expect(mealLogsService.updateSportLog).not.toHaveBeenCalled();
+  });
+
+  it('does not update for a non-sport-log entry', () => {
+    const { mealLogsService, sportDialogService } = buildMocks();
+
+    const actions$ = new Subject<Action>();
+    editSportLog$(
+      actions$.asObservable(),
+      sportDialogService,
+      mealLogsService,
+    ).subscribe();
+
+    actions$.next(
+      HistoryPageComponentActions.editSportLogClicked({
+        mealLog: createDose(),
+      }),
+    );
+
+    expect(sportDialogService.open).not.toHaveBeenCalled();
+    expect(mealLogsService.updateSportLog).not.toHaveBeenCalled();
+  });
+
+  it('dispatches sportLogUpdateFailed when saving fails', () => {
+    const { mealLogsService, sportDialogService } = buildMocks();
+    sportDialogService.open.mockReturnValue(
+      of({
+        cancelled: false,
+        date: new Date('2026-08-10T19:00'),
+        duration: 2,
+        sportName: 'Cycling',
+        saveToCatalog: false,
+        basalRate: null,
+        basalReductionPercent: null,
+        note: null,
+      }),
+    );
+    mealLogsService.updateSportLog.mockReturnValue(
+      throwError(() => new Error('boom')),
+    );
+
+    const actions$ = new Subject<Action>();
+    const results: Action[] = [];
+    editSportLog$(
+      actions$.asObservable(),
+      sportDialogService,
+      mealLogsService,
+    ).subscribe((action) => results.push(action));
+
+    actions$.next(
+      HistoryPageComponentActions.editSportLogClicked({
+        mealLog: createSportLog(),
+      }),
+    );
+
+    expect(results).toEqual([
+      MealLogsApiActions.sportLogUpdateFailed({ error: expect.any(Error) }),
     ]);
   });
 });

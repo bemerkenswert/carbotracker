@@ -38,30 +38,46 @@ const greaterThanZero = (
 
 const createSportFormGroup = (data: SportDialogData) => {
   const fb = inject(FormBuilder);
+  const sportLog = data.sportLog;
+  const reductionMode: BasalReductionMode =
+    sportLog?.basalRate !== null && sportLog?.basalRate !== undefined
+      ? 'rate'
+      : sportLog?.basalReductionPercent !== null &&
+          sportLog?.basalReductionPercent !== undefined
+        ? 'percent'
+        : 'none';
   return fb.group({
-    date: new FormControl<Date>(data.defaultDate ?? new Date(), {
-      nonNullable: true,
-      validators: [Validators.required],
-    }),
-    time: new FormControl<string>(toLocalTimeString(new Date()), {
-      nonNullable: true,
-      validators: [Validators.required],
-    }),
-    duration: new FormControl<number | null>(null, {
+    date: new FormControl<Date>(
+      sportLog?.createdAt ?? data.defaultDate ?? new Date(),
+      {
+        nonNullable: true,
+        validators: [Validators.required],
+      },
+    ),
+    time: new FormControl<string>(
+      toLocalTimeString(sportLog?.createdAt ?? new Date()),
+      {
+        nonNullable: true,
+        validators: [Validators.required],
+      },
+    ),
+    duration: new FormControl<number | null>(sportLog?.duration ?? null, {
       validators: [Validators.required, greaterThanZero],
     }),
-    sportName: new FormControl<string>('', {
+    sportName: new FormControl<string>(sportLog?.sportName ?? '', {
       nonNullable: true,
       validators: [Validators.required],
     }),
     catalogSportId: new FormControl<string | null>(null),
     saveToCatalog: new FormControl<boolean>(false, { nonNullable: true }),
-    reductionMode: new FormControl<BasalReductionMode>('none', {
+    reductionMode: new FormControl<BasalReductionMode>(reductionMode, {
       nonNullable: true,
     }),
-    basalRate: new FormControl<number | null>(null),
-    basalReductionPercent: new FormControl<number | null>(null),
-    note: new FormControl<string>('', { nonNullable: true }),
+    basalRate: new FormControl<number | null>(sportLog?.basalRate ?? null),
+    basalReductionPercent: new FormControl<number | null>(
+      sportLog?.basalReductionPercent ?? null,
+    ),
+    note: new FormControl<string>(sportLog?.note ?? '', { nonNullable: true }),
   });
 };
 
@@ -86,11 +102,20 @@ export class SportDialogComponent {
   private readonly data = inject<SportDialogData>(MAT_DIALOG_DATA);
   private readonly store = inject(Store);
 
+  protected readonly isEditing = this.data.sportLog !== undefined;
+
   protected readonly catalogSports = this.store.selectSignal(
     sportsFeature.selectAll,
   );
 
   protected readonly sportForm = createSportFormGroup(this.data);
+
+  constructor() {
+    this.onReductionModeChange(this.sportForm.controls.reductionMode.value);
+    if (this.isEditing) {
+      this.sportForm.controls.saveToCatalog.disable();
+    }
+  }
 
   private readonly typedSportName = toSignal(
     this.sportForm.controls.sportName.valueChanges,

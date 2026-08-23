@@ -1,6 +1,15 @@
 export interface SportDialogData {
   /** Default day for the date field; time always defaults to now. */
   defaultDate?: Date;
+  /** When set, the dialog pre-fills its fields and titles itself "Edit". */
+  sportLog?: {
+    createdAt: Date;
+    duration: number;
+    sportName: string;
+    basalRate: number | null;
+    basalReductionPercent: number | null;
+    note: string | null;
+  };
 }
 
 export type BasalReductionMode = 'none' | 'rate' | 'percent';
