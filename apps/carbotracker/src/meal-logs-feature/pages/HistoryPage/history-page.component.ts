@@ -85,13 +85,12 @@ export default class HistoryPageComponent implements OnInit, OnDestroy {
   }
 
   protected onEntryClick(mealLog: MealLogDocument) {
-    if (mealLog.type === 'sport-log') {
-      return;
-    }
     this.store.dispatch(
       mealLog.type === 'meal-log'
         ? HistoryPageComponentActions.editMealLogClicked({ mealLog })
-        : HistoryPageComponentActions.editInsulinDoseClicked({ mealLog }),
+        : mealLog.type === 'insulin-dose'
+          ? HistoryPageComponentActions.editInsulinDoseClicked({ mealLog })
+          : HistoryPageComponentActions.editSportLogClicked({ mealLog }),
     );
   }
 

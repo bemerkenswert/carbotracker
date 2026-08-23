@@ -295,6 +295,67 @@ export const editMealLog$ = createEffect(
   { functional: true },
 );
 
+export const editSportLog$ = createEffect(
+  (
+    actions$ = inject(Actions),
+    sportDialogService = inject(SportDialogService),
+    mealLogsService = inject(MealLogsService),
+  ) =>
+    actions$.pipe(
+      ofType(HistoryPageComponentActions.editSportLogClicked),
+      switchMap(({ mealLog }) => {
+        if (mealLog.type !== 'sport-log') {
+          return EMPTY;
+        }
+        return sportDialogService
+          .open({
+            sportLog: {
+              createdAt: mealLog.createdAt,
+              duration: mealLog.duration,
+              sportName: mealLog.sportName,
+              basalRate: mealLog.basalRate,
+              basalReductionPercent: mealLog.basalReductionPercent,
+              note: mealLog.note,
+            },
+          })
+          .pipe(
+            filter(
+              (result): result is ConfirmedSportDialogResult =>
+                !result.cancelled,
+            ),
+            switchMap(
+              ({
+                date,
+                duration,
+                sportName,
+                basalRate,
+                basalReductionPercent,
+                note,
+              }) =>
+                mealLogsService
+                  .updateSportLog({
+                    id: mealLog.id,
+                    date,
+                    duration,
+                    sportName,
+                    basalRate,
+                    basalReductionPercent,
+                    note,
+                  })
+                  .pipe(
+                    mapResponse({
+                      next: () => MealLogsApiActions.sportLogUpdated(),
+                      error: (error) =>
+                        MealLogsApiActions.sportLogUpdateFailed({ error }),
+                    }),
+                  ),
+            ),
+          );
+      }),
+    ),
+  { functional: true },
+);
+
 export const deleteMealLogDocument$ = createEffect(
   (
     actions$ = inject(Actions),

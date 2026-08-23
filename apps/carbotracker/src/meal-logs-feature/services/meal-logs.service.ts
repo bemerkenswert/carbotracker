@@ -230,6 +230,29 @@ export class MealLogsService {
     );
   }
 
+  public updateSportLog(params: {
+    id: string;
+    date: Date;
+    duration: number;
+    sportName: string;
+    basalRate: number | null;
+    basalReductionPercent: number | null;
+    note: string | null;
+  }) {
+    const document = doc(getFirestore(), 'meal-logs', params.id);
+    return from(
+      updateDoc(document, {
+        date: toDateString(params.date),
+        createdAt: params.date,
+        duration: params.duration,
+        sportName: params.sportName,
+        basalRate: params.basalRate,
+        basalReductionPercent: params.basalReductionPercent,
+        note: params.note,
+      }),
+    );
+  }
+
   public deleteMealLogDocument(params: { id: string }) {
     return from(deleteDoc(doc(getFirestore(), 'meal-logs', params.id)));
   }
