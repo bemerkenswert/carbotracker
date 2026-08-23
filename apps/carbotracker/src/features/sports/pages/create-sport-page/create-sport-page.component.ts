@@ -1,4 +1,5 @@
 import { Component, computed, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import {
   FormControl,
   FormGroup,
@@ -56,8 +57,13 @@ export default class CreateSportPageComponent {
     }),
   });
 
+  private readonly enteredName = toSignal(
+    this.formGroup.controls.name.valueChanges,
+    { initialValue: this.formGroup.controls.name.value },
+  );
+
   protected readonly sportNameAlreadyExists = computed(() =>
-    this.nameAlreadyExists()(this.formGroup.controls.name.value),
+    this.nameAlreadyExists()(this.enteredName()),
   );
 
   protected onSubmit() {

@@ -3,7 +3,7 @@ import { filterNull } from '@carbotracker/utility';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { concatLatestFrom, mapResponse } from '@ngrx/operators';
 import { Store } from '@ngrx/store';
-import { exhaustMap, filter, map, mergeMap, switchMap, tap } from 'rxjs';
+import { exhaustMap, map, mergeMap, switchMap, tap } from 'rxjs';
 import {
   AuthApiActions,
   LogoutApiActions,
@@ -99,17 +99,8 @@ export const createSport$ = createEffect(
   ) =>
     actions$.pipe(
       ofType(CreateSportPageComponentActions.saveSportClicked),
-      concatLatestFrom(() => [
+      concatLatestFrom(() =>
         store.select(authFeature.selectUserId).pipe(filterNull()),
-        store.select(sportsFeature.selectAll),
-      ]),
-      filter(
-        ([{ newSport }, , sports]) =>
-          !sports.some(
-            (sport) =>
-              sport.name.trim().toLowerCase() ===
-              newSport.name.trim().toLowerCase(),
-          ),
       ),
       map(([{ newSport }, userId]) => ({ ...newSport, creator: userId })),
       mergeMap((newSport) =>

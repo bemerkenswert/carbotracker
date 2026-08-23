@@ -182,12 +182,6 @@ describe('createSport$', () => {
   let store: MockStore;
   let sportsService: jest.Mocked<SportsService>;
 
-  const existingSport = {
-    id: 's1',
-    name: 'cycling',
-    creator: 'user-a',
-  };
-
   beforeEach(() => {
     actions$ = new Subject<Action>();
     sportsService = {
@@ -198,10 +192,7 @@ describe('createSport$', () => {
       providers: [
         provideMockActions(() => actions$),
         provideMockStore({
-          selectors: [
-            { selector: authFeature.selectUserId, value: 'user-a' },
-            { selector: sportsFeature.selectAll, value: [] },
-          ],
+          selectors: [{ selector: authFeature.selectUserId, value: 'user-a' }],
         }),
         { provide: SportsService, useValue: sportsService },
       ],
@@ -230,26 +221,6 @@ describe('createSport$', () => {
       creator: 'user-a',
     });
     expect(results).toEqual([SportsApiActions.creatingSportSuccessful()]);
-  });
-
-  it('does not create the sport when its name already exists ignoring case', () => {
-    store.overrideSelector(sportsFeature.selectAll, [existingSport]);
-    const results: Action[] = [];
-
-    TestBed.runInInjectionContext(() =>
-      createSport$()
-        .pipe(take(1))
-        .subscribe((action) => results.push(action)),
-    );
-
-    actions$.next(
-      CreateSportPageComponentActions.saveSportClicked({
-        newSport: { name: 'Cycling' },
-      }),
-    );
-
-    expect(sportsService.createSport).not.toHaveBeenCalled();
-    expect(results).toEqual([]);
   });
 
   it('dispatches creatingSportFailed with the error payload when the create fails', () => {
